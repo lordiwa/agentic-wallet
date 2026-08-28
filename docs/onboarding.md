@@ -6,6 +6,10 @@ dashboard con datos reales.
 Este documento está escrito para que **un agente** (Claude Code) lo ejecute
 guiando a un humano, pero cada paso es un comando que se puede correr a mano.
 
+> **Si sos el humano** (no el agente): usá
+> [onboarding-para-humanos.md](onboarding-para-humanos.md) — explica en simple
+> qué va a pasar y qué te van a preguntar, sin comandos.
+
 ---
 
 ## Para el agente: cómo usar este documento

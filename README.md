@@ -58,9 +58,18 @@ npm run onboard
 ```
 
 A partir de ahí, `npm run onboard` es tu guía: imprime un checklist con lo que
-falta y el comando exacto para cada paso. **El flujo completo está en
-[docs/onboarding.md](docs/onboarding.md)** — está escrito para que un agente
-(Claude Code) te lo maneje de principio a fin, pero se puede seguir a mano.
+falta y el comando exacto para cada paso.
+
+**Dos guías, según quién sos:**
+
+- **Si sos la persona que va a usar el wallet** → leé
+  [docs/onboarding-para-humanos.md](docs/onboarding-para-humanos.md). Explica
+  en simple qué va a pasar, qué necesitás tener a mano, y qué te van a
+  preguntar. No necesitás saber comandos.
+- **Si sos un agente (o ayudás técnicamente)** → leé
+  [docs/onboarding.md](docs/onboarding.md). Tiene todos los comandos, el flujo
+  completo y las reglas de operación para manejar la instalación de punta a
+  punta guiando a un humano.
 
 Resumen de los cinco pasos:
 
