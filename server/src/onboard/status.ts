@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getStrategyConfig } from "../db/strategy-config.js";
 
-export type StepId = "env" | "claude" | "gmail" | "sync" | "profile";
+export type StepId = "env" | "claude" | "gmail" | "sync" | "huso" | "profile";
 
 export interface OnboardStep {
   id: StepId;
@@ -97,6 +97,20 @@ export function onboardStatus({ envPath, env, db }: OnboardInputs): OnboardStatu
       title: "Primer sync (historial en el ledger)",
       done: ledgerSize(db) > 0,
       action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`.",
+    },
+    {
+      // El motor asume -5 cuando la variable no esta (ver strategy/dates.ts).
+      // Es un default razonable, pero decide que cae en "hoy" y en "este mes"
+      // en TODOS los totales: aplicarlo en silencio le corre las cifras
+      // diarias a cualquiera que no viva en Quito/Lima/Bogota. Por eso el
+      // huso se elige explicitamente aunque el valor elegido sea el default.
+      id: "huso",
+      title: "Huso horario elegido (define que es 'hoy')",
+      done: hasValue(env, "WALLET_UTC_OFFSET_HOURS"),
+      action:
+        "Pon WALLET_UTC_OFFSET_HOURS en .env como offset entero de UTC: -5 Quito/Lima/Bogota, " +
+        "-3 Buenos Aires, -6 Ciudad de Mexico, +1 Madrid. Si no la pones se asume -5 y todos los " +
+        "totales de 'hoy' y 'este mes' se cortan con ese huso.",
     },
     {
       id: "profile",

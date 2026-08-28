@@ -68,6 +68,10 @@ Buenos Aires, `-6` Ciudad de México, `+1` Madrid). El default es `-5`. Esto
 define qué cuenta como "hoy" y "este mes" en todos los totales, así que si el
 usuario no está en UTC-5 y no se cambia, las cifras diarias quedan corridas.
 
+Por eso `--status` lo lista como un paso propio (`huso`) y lo deja pendiente
+mientras la variable no esté escrita: el default se aplica igual, pero elegido
+a propósito, no en silencio.
+
 ---
 
 ## Paso 2 — Credencial de Claude

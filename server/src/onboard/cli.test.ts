@@ -85,7 +85,7 @@ describe("--status", () => {
     const status = printedJson();
     expect(status.complete).toBe(false);
     expect(status.next.id).toBe("env");
-    expect(status.steps.map((s: any) => s.id)).toEqual(["env", "claude", "gmail", "sync", "profile"]);
+    expect(status.steps.map((s: any) => s.id)).toEqual(["env", "claude", "gmail", "sync", "huso", "profile"]);
   });
 
   it("advances to the sync step once .env and both credentials are present", async () => {
