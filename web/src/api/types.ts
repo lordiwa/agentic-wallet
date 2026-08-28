@@ -1,0 +1,159 @@
+/**
+ * Types mirroring the F1-09 read-only API's real response shapes, as read
+ * from server/src/api/{routes,queries,schemas}.ts and server/src/db/repository.ts.
+ * Kept hand-written (not imported from server/) because this ticket's file
+ * boundary is web/ only — server/ is owned by other tickets.
+ */
+
+export interface TransactionRow {
+  id: number;
+  gmail_msg_id: string;
+  gmail_thread_id: string | null;
+  ts: string;
+  direction: string;
+  type: string;
+  amount: number;
+  currency: string;
+  counterparty: string | null;
+  account: string | null;
+  category: string | null;
+  raw_subject: string | null;
+  is_reversed: number;
+  is_internal: number;
+  needs_review: number;
+  source: string;
+  created_at: string;
+}
+
+export interface TransactionsResponse {
+  transactions: TransactionRow[];
+  count: number;
+}
+
+export interface TransactionsFilter {
+  from?: string;
+  to?: string;
+  type?: string;
+  direction?: string;
+  counterparty?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CardOverview {
+  card_mask: string | null;
+  issue_date: string | null;
+  balance: number | null;
+  min_payment: number | null;
+  due_date: string | null;
+}
+
+export interface BalanceSnapshot {
+  amount: number;
+  currency: string;
+  at: string | null;
+}
+
+export interface OverviewCounts {
+  total: number;
+  needs_review: number;
+}
+
+/**
+ * F2-D strategy indicator shapes, mirrored (as read from
+ * server/src/strategy/{balance,card,transfers,spending}.ts and
+ * server/src/category/categorize.ts) rather than imported, per this
+ * ticket's web/-only file boundary.
+ */
+export interface ColchonStatus {
+  objetivo: number;
+  reservado: number;
+  financiado: boolean;
+  faltante: number;
+}
+
+export interface CardStatus {
+  saldoCorte: number;
+  minimo: number;
+  fechaMaxima: string | null;
+  saldoActualEstimado: number;
+  aTiempo: boolean;
+  requeridoPorQuincena: number;
+}
+
+export interface CounterpartyTotal {
+  counterparty: string;
+  total: number;
+}
+
+export interface TransfersSummary {
+  total: number;
+  tope: number;
+  restante: number;
+  sobrepasado: boolean;
+  topContrapartes: CounterpartyTotal[];
+}
+
+/** The glossary's fixed category set (server/src/category/categorize.ts Category). */
+export type Category =
+  | "comida"
+  | "transporte"
+  | "salud"
+  | "mascota"
+  | "servicios"
+  | "recarga"
+  | "efectivo"
+  | "transferencia_persona"
+  | "suscripcion"
+  | "otros";
+
+/** spending_by_category: only categories with at least one matching row appear. */
+export type SpendingByCategory = Partial<Record<Category, number>>;
+
+export interface OverviewResponse {
+  balance: BalanceSnapshot | null;
+  card: CardOverview | null;
+  counts: OverviewCounts;
+  safe_to_spend_hoy: number;
+  buffer_status: ColchonStatus;
+  card_status: CardStatus | null;
+  transfers_summary: TransfersSummary;
+  next_payday: string | null;
+  spending_by_category: SpendingByCategory;
+}
+
+/**
+ * /api/sync lands in a later ticket (F1-08); its response shape is not yet
+ * known, so this is deliberately an open record rather than a guessed
+ * contract. The UI renders whatever keys come back without inventing any.
+ */
+export type SyncResponse = Record<string, unknown>;
+
+/**
+ * F3-C chat shapes, mirrored (as read from
+ * server/src/chat/conversation-repository.ts and server/src/api/chat-route.ts)
+ * rather than imported, per this ticket's web/-only file boundary.
+ */
+export interface ConversationSummary {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  last_message: string | null;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  ts: string;
+}
+
+export interface ConversationsResponse {
+  conversations: ConversationSummary[];
+}
+
+export interface ConversationDetailResponse {
+  conversation: { id: string; created_at: string; updated_at: string };
+  messages: ChatMessageRow[];
+}

@@ -1,0 +1,27 @@
+node_modules/
+
+# Secretos. `.env` solo cubre el nombre exacto, por eso los respaldos van aparte.
+.env
+.env.bak*
+.env.local
+
+# La base es el historial bancario completo: NUNCA al repo.
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+
+dist/
+build/
+.DS_Store
+
+.claude/worktrees/
+.claude/context-monitor/
+**/.claude/context-monitor/
+
+# Estados de cuenta descargados del banco (cedula, direccion, numero de
+# tarjeta). Si los usas para reconstruir historial, se quedan fuera del repo.
+*estado-de-cuenta*.pdf
+*estado_de_cuenta*.pdf
+ESTADO CUENTA*.pdf
