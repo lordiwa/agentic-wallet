@@ -265,7 +265,8 @@ export function dedupeRetiros(transactions: ReconcilableTransaction[]): DedupeRe
 }
 
 export interface MarkInternalTransfersOptions {
-  titular: string;
+  /** `null`/vacio = titular sin configurar todavia; ver `markInternalTransfers`. */
+  titular: string | null;
 }
 
 /** Strips accents and case/whitespace so name matching is tolerant, mirroring
@@ -285,11 +286,17 @@ function normalizeName(name: string): string {
  * holder itself is an internal movement, not spend — mark
  * `is_internal = true` so it's excluded from the expense totals downstream.
  * Comparison is accent/case/whitespace tolerant.
+ *
+ * Sin titular configurado (`null` o vacio) la regla no se aplica: no hay
+ * nombre contra el cual comparar, y marcar por parecido seria inventar. Las
+ * filas quedan sin marcar — el usuario configura el titular y un backfill (o
+ * el siguiente sync sobre esos correos) las corrige.
  */
 export function markInternalTransfers(
   transactions: ReconcilableTransaction[],
   { titular }: MarkInternalTransfersOptions
 ): ReconcilableTransaction[] {
+  if (titular === null || titular.trim() === "") return transactions;
   const normalizedTitular = normalizeName(titular);
   return transactions.map((tx) => {
     if (tx.type !== "transferencia" || !tx.counterparty) return tx;
@@ -299,7 +306,8 @@ export function markInternalTransfers(
 }
 
 export interface ReconcileOptions {
-  titular: string;
+  /** `null` = sin configurar; la regla 3 (internas) se omite. */
+  titular: string | null;
 }
 
 export interface ReconcileResult {

@@ -77,6 +77,12 @@ function deps(gmailClient: GmailClient, extractor: EmailExtractor): IngestDeps {
   return { db, gmailClient, extractor, titular: TITULAR };
 }
 
+/** Igual que `deps`, pero con el titular sin configurar todavia — el estado
+ * real de cualquiera que sincroniza ANTES de terminar el onboarding. */
+function depsSinTitular(gmailClient: GmailClient, extractor: EmailExtractor): IngestDeps {
+  return { db, gmailClient, extractor, titular: null };
+}
+
 function txRow(gmailMsgId: string): Record<string, unknown> | undefined {
   return db.prepare("SELECT * FROM transactions WHERE gmail_msg_id = ?").get(gmailMsgId) as
     | Record<string, unknown>
@@ -154,6 +160,49 @@ describe("ingestOnce: amount cross-validation (AC2)", () => {
 
     expect(summary.needsReview).toBe(1);
     expect(txRow("msg-consumo-no-claude-amount")?.needs_review).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sync sin titular configurado — el orden real del onboarding es "sincroniza
+// primero, configura el perfil despues" (el titular se PROPONE leyendo el
+// ledger), asi que exigir titular para sincronizar hacia un deadlock.
+// ---------------------------------------------------------------------------
+
+describe("ingestOnce: sin titular configurado", () => {
+  function transferenciaASiMismo() {
+    return message({
+      gmail_msg_id: "msg-transferencia-propia",
+      subject: "Transferencia enviada por $30.00 desde Produbanco",
+      body: `Contacto: ${TITULAR} Banco Destino: Produbanco`,
+    });
+  }
+
+  function extractorDe(msg: GmailMessage) {
+    return new FakeEmailExtractor(new Map([[msg.subject, { amount_text_raw: "$30.00", counterparty: TITULAR }]]));
+  }
+
+  it("no falla: ingesta normal y solo omite el marcado de transferencias internas", async () => {
+    const transferencia = transferenciaASiMismo();
+    const summary = await ingestOnce(
+      depsSinTitular(new FakeGmailClient([transferencia]), extractorDe(transferencia)),
+      { sinceTs: "2026-06-01T00:00:00Z" }
+    );
+
+    expect(summary.inserted).toBe(1);
+    expect(summary.needsReview).toBe(0);
+    // Sin titular no hay con que comparar: la fila entra sin marcar, no se
+    // adivina. La marca correcta llega cuando el usuario confirme el titular.
+    expect(txRow("msg-transferencia-propia")?.is_internal).toBe(0);
+  });
+
+  it("con titular configurado marca la transferencia a si mismo como interna", async () => {
+    const transferencia = transferenciaASiMismo();
+    await ingestOnce(deps(new FakeGmailClient([transferencia]), extractorDe(transferencia)), {
+      sinceTs: "2026-06-01T00:00:00Z",
+    });
+
+    expect(txRow("msg-transferencia-propia")?.is_internal).toBe(1);
   });
 });
 

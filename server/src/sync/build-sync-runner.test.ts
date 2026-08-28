@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
-import { buildProductionSyncRunner } from "./build-sync-runner.js";
+import { buildProductionSyncRunner, type SyncRunnerFactories } from "./build-sync-runner.js";
 import type { Config } from "../config.js";
 
 function baseConfig(overrides: Partial<Config> = {}): Config {
@@ -21,6 +21,20 @@ function db() {
   const database = new Database(":memory:");
   migrate(database);
   return database;
+}
+
+/** Gmail y Claude reemplazados por fakes vacios: el runner corre entero sin
+ * red ni credenciales, que es lo unico que hace falta para probar el gate. */
+function offlineFactories(): SyncRunnerFactories {
+  return {
+    createGmailClient: async () => ({
+      searchMessageIds: async () => [],
+      getMessage: async () => {
+        throw new Error("sin mensajes");
+      },
+    }),
+    createExtractor: () => ({ extract: async () => ({ amount_text_raw: null, counterparty: null }) }),
+  };
 }
 
 describe("buildProductionSyncRunner", () => {
@@ -65,10 +79,12 @@ describe("buildProductionSyncRunner", () => {
     expect(dbOpened).toBe(false);
   });
 
-  it("the built runner rejects cleanly when strategy_config.titular isn't seeded (no crash)", async () => {
-    const database = db(); // no strategy_config seeded
-    const runner = buildProductionSyncRunner(baseConfig(), () => database);
+  // Exigir titular para sincronizar era un deadlock de onboarding: el titular
+  // se propone leyendo el ledger, y el ledger solo se llena sincronizando.
+  it("sincroniza aunque strategy_config.titular no este seedeado (no rechaza)", async () => {
+    const database = db(); // sin strategy_config
+    const runner = buildProductionSyncRunner(baseConfig(), () => database, offlineFactories());
 
-    await expect(runner!()).rejects.toThrow("strategy_config.titular is not seeded");
+    await expect(runner!()).resolves.toMatchObject({ seen: 0, inserted: 0 });
   });
 });

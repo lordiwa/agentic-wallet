@@ -41,8 +41,16 @@ export interface IngestDeps {
   db: Database.Database;
   gmailClient: GmailClient;
   extractor: EmailExtractor;
-  /** Account holder's full name, forwarded to F1-04's internal-transfer rule. */
-  titular: string;
+  /**
+   * Account holder's full name, forwarded to F1-04's internal-transfer rule.
+   *
+   * `null` cuando el usuario todavia no lo configuro. Es un estado legitimo,
+   * no un error: el onboarding PROPONE el titular leyendo el ledger, asi que
+   * el primer sync necesariamente ocurre antes de que exista. Sin titular se
+   * omite el marcado de `is_internal` (nada con que comparar) y el resto de
+   * la ingesta corre igual.
+   */
+  titular: string | null;
 }
 
 export interface IngestOptions {
