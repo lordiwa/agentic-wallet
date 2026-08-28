@@ -340,6 +340,17 @@ describe("markInternalTransfers", () => {
 
     expect(result.is_internal).toBeFalsy();
   });
+
+  // El titular en blanco no es un imposible: `strategy_config` puede tener la
+  // clave escrita con espacios, y `onboard/status.ts` la lee como "sin
+  // configurar" con este mismo `trim()`. Sin el guard, `normalizeName("  ")`
+  // colapsa a "" y marcaria como interna cualquier contraparte en blanco.
+  it.each([null, "", "   "])("does not mark anything when the titular is unset (%j)", (titular) => {
+    const txs = [transferencia({ counterparty: TITULAR }), transferencia({ counterparty: "   " })];
+
+    expect(() => markInternalTransfers(txs, { titular })).not.toThrow();
+    expect(markInternalTransfers(txs, { titular }).every((tx) => !tx.is_internal)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

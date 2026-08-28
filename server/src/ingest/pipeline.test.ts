@@ -196,6 +196,21 @@ describe("ingestOnce: sin titular configurado", () => {
     expect(txRow("msg-transferencia-propia")?.is_internal).toBe(0);
   });
 
+  // `null` no es la unica forma de "sin titular": `strategy_config` puede
+  // tener la clave escrita en blanco, y `onboard/status.ts` la lee como no
+  // configurada con un `trim()`. La ingesta tiene que coincidir con esa
+  // lectura, no marcar internas contra un nombre vacio.
+  it.each(["", "   "])("trata el titular en blanco (%j) igual que sin configurar", async (titular) => {
+    const transferencia = transferenciaASiMismo();
+    const summary = await ingestOnce(
+      { db, gmailClient: new FakeGmailClient([transferencia]), extractor: extractorDe(transferencia), titular },
+      { sinceTs: "2026-06-01T00:00:00Z" }
+    );
+
+    expect(summary.inserted).toBe(1);
+    expect(txRow("msg-transferencia-propia")?.is_internal).toBe(0);
+  });
+
   it("con titular configurado marca la transferencia a si mismo como interna", async () => {
     const transferencia = transferenciaASiMismo();
     await ingestOnce(deps(new FakeGmailClient([transferencia]), extractorDe(transferencia)), {
