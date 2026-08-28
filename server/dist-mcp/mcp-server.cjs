@@ -49623,9 +49623,10 @@ function suggestSalary(db) {
     dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
   }
   const recurring = [...dayCounts.entries()].filter(([, count]) => count > 1).map(([day]) => day);
-  const diasPago = (recurring.length > 0 ? recurring : [...dayCounts.keys()]).sort(
+  const dias = (recurring.length > 0 ? recurring : [...dayCounts.keys()]).sort(
     (a, b) => Number(a) - Number(b)
   );
+  const diasPago = dias.map((day) => `${day}-${day}`);
   const fuenteCounts = /* @__PURE__ */ new Map();
   for (const row of rows) {
     const name = row.counterparty?.trim();

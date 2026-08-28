@@ -171,7 +171,7 @@ Devuelve algo así:
     "fuente": "EMPRESA EJEMPLO SA",
     "cadencia": "quincenal",
     "montoEstimado": 1000,
-    "diasPago": ["15", "30"],
+    "diasPago": ["15-15", "30-30"],
     "sampleSize": 6
   },
   "uncategorized": [
@@ -194,7 +194,7 @@ npm run onboard -- --set '{
     "fuente": "EMPRESA EJEMPLO SA",
     "cadencia": "quincenal",
     "montoEstimado": 1000,
-    "diasPago": ["15", "30"]
+    "diasPago": ["15-15", "30-30"]
   }
 }'
 ```

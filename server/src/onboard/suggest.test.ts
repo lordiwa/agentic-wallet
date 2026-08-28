@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
 import { insertTransaction, type NewTransaction } from "../db/repository.js";
+import { parseDiasPago } from "../strategy/calendar.js";
 import { buildSuggestions, suggestSalary, suggestSpendBaseline, suggestTitular } from "./suggest.js";
 
 let db: Database.Database;
@@ -62,7 +63,7 @@ describe("suggestSalary", () => {
 
     expect(result).not.toBeNull();
     expect(result?.fuente).toBe("EMPRESA EJEMPLO SA");
-    expect(result?.diasPago).toEqual(["15", "30"]);
+    expect(result?.diasPago).toEqual(["15-15", "30-30"]);
     expect(result?.cadencia).toBe("quincenal");
     expect(result?.sampleSize).toBe(4);
   });
@@ -81,7 +82,7 @@ describe("suggestSalary", () => {
     insertTransaction(db, salary("2026-06-30T12:00:00Z", 800));
 
     const result = suggestSalary(db);
-    expect(result?.diasPago).toEqual(["30"]);
+    expect(result?.diasPago).toEqual(["30-30"]);
     expect(result?.cadencia).toBe("mensual");
   });
 
@@ -90,7 +91,25 @@ describe("suggestSalary", () => {
     insertTransaction(db, salary("2026-06-15T12:00:00Z", 500));
     insertTransaction(db, salary("2026-06-03T12:00:00Z", 500)); // one-off
 
-    expect(suggestSalary(db)?.diasPago).toEqual(["15"]);
+    expect(suggestSalary(db)?.diasPago).toEqual(["15-15"]);
+  });
+
+  // El calendario lee ventanas, no dias sueltos: un "15" pelado no parsea y
+  // deja next_payday en null sin avisar. La sugerencia tiene que salir en el
+  // mismo formato que el motor consume, porque el usuario la acepta tal cual.
+  it("emits paydays as windows the calendar can actually parse", () => {
+    insertTransaction(db, salary("2026-05-15T12:00:00Z", 1000));
+    insertTransaction(db, salary("2026-05-30T12:00:00Z", 1000));
+    insertTransaction(db, salary("2026-06-15T12:00:00Z", 1000));
+    insertTransaction(db, salary("2026-06-30T12:00:00Z", 1000));
+
+    const diasPago = suggestSalary(db)!.diasPago;
+
+    expect(diasPago).toEqual(["15-15", "30-30"]);
+    expect(parseDiasPago(diasPago)).toEqual([
+      { minDay: 15, maxDay: 15 },
+      { minDay: 30, maxDay: 30 },
+    ]);
   });
 
   it("returns null with no salary rows instead of guessing a payday", () => {

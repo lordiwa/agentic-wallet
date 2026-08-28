@@ -129,7 +129,7 @@ describe("--suggest", () => {
 
     const suggestion = printedJson();
     expect(suggestion.titular).toBe("PEREZ GOMEZ ANA MARIA");
-    expect(suggestion.salary.diasPago).toEqual(["15"]);
+    expect(suggestion.salary.diasPago).toEqual(["15-15"]);
   });
 
   it("fails cleanly when there is no database yet", async () => {
@@ -148,7 +148,7 @@ describe("--set", () => {
     const patch = JSON.stringify({
       titular: "PEREZ GOMEZ ANA MARIA",
       colchonObjetivo: 1500,
-      sueldo: { fuente: "EMPRESA EJEMPLO SA", cadencia: "quincenal", montoEstimado: 1000, diasPago: ["15", "30"] },
+      sueldo: { fuente: "EMPRESA EJEMPLO SA", cadencia: "quincenal", montoEstimado: 1000, diasPago: ["15-15", "30-30"] },
     });
 
     expect(await runOnboardCli(["--set", patch], deps())).toBe(0);
@@ -156,7 +156,7 @@ describe("--set", () => {
     const config = getStrategyConfig(db);
     expect(config.titular).toBe("PEREZ GOMEZ ANA MARIA");
     expect(config.colchonObjetivo).toBe(1500);
-    expect(config.sueldo.diasPago).toEqual(["15", "30"]);
+    expect(config.sueldo.diasPago).toEqual(["15-15", "30-30"]);
   });
 
   it("leaves untouched fields alone -- the profile is filled in stages", async () => {

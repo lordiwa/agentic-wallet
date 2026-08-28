@@ -22,7 +22,7 @@ export interface SalarySuggestion {
   cadencia: string;
   /** Median deposit amount -- median, not mean, so one bonus doesn't skew it. */
   montoEstimado: number;
-  /** Day-of-month strings, e.g. ["15", "30"]. */
+  /** Day-of-month windows the calendar can parse, e.g. ["15-15", "30-30"]. */
   diasPago: string[];
   /** How many deposits this reading is based on -- the agent should say this out loud. */
   sampleSize: number;
@@ -97,9 +97,14 @@ export function suggestSalary(db: Database.Database): SalarySuggestion | null {
   }
 
   const recurring = [...dayCounts.entries()].filter(([, count]) => count > 1).map(([day]) => day);
-  const diasPago = (recurring.length > 0 ? recurring : [...dayCounts.keys()]).sort(
+  const dias = (recurring.length > 0 ? recurring : [...dayCounts.keys()]).sort(
     (a, b) => Number(a) - Number(b)
   );
+  // Como ventana de un solo dia ("15" -> "15-15"): `parseDiasPago` sólo lee
+  // ventanas, y un dia suelto no parsea -- se descarta en silencio y el
+  // calendario de pagos queda mudo. La sugerencia se acepta tal cual via
+  // --set, asi que tiene que salir ya en el formato que el motor consume.
+  const diasPago = dias.map((day) => `${day}-${day}`);
 
   const fuenteCounts = new Map<string, number>();
   for (const row of rows) {
