@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "concurrently -n server,web \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
     "build": "npm run build --workspace=web && npm run build --workspace=server",
+    "build:mcp": "npm run build:mcp --workspace=server",
     "test": "vitest run",
     "seed": "npm run seed --workspace=server",
     "onboard": "npm run onboard --workspace=server --",

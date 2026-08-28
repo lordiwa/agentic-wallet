@@ -2,8 +2,26 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
+/**
+ * Raiz del repo. Normalmente se deduce de la ubicacion de este archivo
+ * (`server/src` -> dos niveles arriba), pero el MCP server corre desde un
+ * bundle CJS de esbuild y ahi `import.meta` esta vacio: `import.meta.dirname`
+ * es `undefined` y `path.resolve` reventaria al cargar el modulo. Por eso el
+ * entrypoint bundleado pasa la raiz explicita por env, igual que hace el
+ * protocolo MCP con `CLAUDE_PROJECT_DIR`.
+ */
+export function repoRoot(): string {
+  const fromEnv = process.env.WALLET_PROJECT_DIR ?? process.env.CLAUDE_PROJECT_DIR;
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return path.resolve(fromEnv);
+  // En el bundle CJS `import.meta.dirname` es undefined; ahi el cwd es el
+  // ultimo recurso razonable (y `.mcp.json` siempre pasa la raiz explicita,
+  // asi que este camino es la red de seguridad, no el normal).
+  const here: string | undefined = import.meta.dirname;
+  return here ? path.resolve(here, "../..") : process.cwd();
+}
+
 // Load .env from repo root (Node 22 native, no dotenv dependency needed).
-const rootEnvPath = path.resolve(import.meta.dirname, "../../.env");
+const rootEnvPath = path.join(repoRoot(), ".env");
 if (existsSync(rootEnvPath)) {
   process.loadEnvFile(rootEnvPath);
 }

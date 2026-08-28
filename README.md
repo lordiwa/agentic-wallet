@@ -146,6 +146,18 @@ adaptación. Todo lo demás (categorías, estrategia, chat, web) es agnóstico.
 | `npm run onboard` | Checklist de configuración (ver `docs/onboarding.md`) |
 | `npm run gmail-auth` | Genera el refresh token de Gmail |
 | `npm run seed` | Siembra la config inicial (idempotente) |
+| `npm run build:mcp` | Regenera el bundle del servidor MCP |
+
+## Como herramientas de un agente (MCP)
+
+El repo trae un servidor [MCP](https://modelcontextprotocol.io) ya registrado en
+`.mcp.json`: al abrir el proyecto con Claude Code (u otro cliente MCP), el
+agente ve el wallet como herramientas nativas —consultar movimientos, ver el
+saldo y el colchón, gasto por categoría, disparar el sync, y llevar adelante el
+onboarding— sin levantar el server HTTP.
+
+Es la misma SQLite local y las mismas funciones que usa el dashboard. Detalle
+completo en [`docs/mcp.md`](docs/mcp.md).
 
 ## Estructura
 
@@ -158,6 +170,7 @@ server/src/
   strategy/   saldo, gasto, sueldo, deudas, colchón, calendario
   chat/       chat sobre tu propio historial (Claude Agent SDK)
   onboard/    el flujo de configuración guiado
+  mcp/        el wallet como herramientas MCP para agentes
   api/        rutas Express
   db/         esquema SQLite, repositorio, telemetría
 web/src/      SPA React (dashboard, gráficos, chat, bandeja de revisión)

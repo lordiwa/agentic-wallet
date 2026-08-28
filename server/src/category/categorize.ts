@@ -43,18 +43,27 @@
  * an oversight: AC1 forbids guessing, so no such rule was invented.
  */
 
-/** The glossary's fixed category set (spec glosario §17). */
-export type Category =
-  | "comida"
-  | "transporte"
-  | "salud"
-  | "mascota"
-  | "servicios"
-  | "recarga"
-  | "efectivo"
-  | "transferencia_persona"
-  | "suscripcion"
-  | "otros";
+/**
+ * The glossary's fixed category set (spec glosario §17), como lista en
+ * runtime: quien tenga que validar una categoria que viene de afuera (el
+ * `--rule` del onboarding, el `set_rule` del MCP) necesita los valores, no
+ * solo el tipo. `Category` se deriva de aqui para que lista y tipo no puedan
+ * separarse.
+ */
+export const CATEGORIES = [
+  "comida",
+  "transporte",
+  "salud",
+  "mascota",
+  "servicios",
+  "recarga",
+  "efectivo",
+  "transferencia_persona",
+  "suscripcion",
+  "otros",
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
 
 /** The minimal transaction shape `categorize` needs — a structural subset of
  * `ReconcilableTransaction`/`TransactionRow`, so callers can pass either

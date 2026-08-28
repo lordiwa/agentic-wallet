@@ -32,6 +32,7 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 | Qué significa "hoy" / "este mes" | `server/src/strategy/dates.ts` |
 | El chat sobre el historial | `server/src/chat/` |
 | Configuración guiada | `server/src/onboard/` — ver `docs/onboarding.md` |
+| Las tools MCP | `server/src/mcp/` — ver `docs/mcp.md` |
 | Esquema de la base | `server/src/db/schema.ts` |
 | Rutas HTTP | `server/src/api/` |
 | Dashboard | `web/src/` |
@@ -44,6 +45,7 @@ npm run build        # web + server (tsc, sin emit en web)
 npm test             # toda la suite (vitest)
 npm run dev          # server + web
 npm run onboard      # checklist de configuración
+npm run build:mcp    # regenera el bundle MCP (ya incluido en `npm run build`)
 ```
 
 Antes de dar por terminado cualquier cambio: **`npm run build` y `npm test` en
@@ -75,3 +77,16 @@ escribir. Todo idempotente y reanudable.
 
 Si extendés el onboarding, mantené esa propiedad: **stdout parseable, cero
 prompts bloqueantes, y nunca escribir un valor que el usuario no confirmó.**
+
+## El servidor MCP
+
+`server/src/mcp/` expone el motor como herramientas para cualquier agente que
+hable MCP. Ver `docs/mcp.md`. Tres reglas al tocarlo:
+
+1. **Cero lógica financiera en esa capa.** Una tool valida argumentos, llama a
+   una función que ya existe en `strategy/`/`api/`/`onboard/`, y serializa. Si
+   te encontrás calculando algo ahí, va en el motor con su propio test.
+2. **`stdout` es JSON-RPC.** Un `console.log` rompe el protocolo. Los logs van
+   a `stderr`.
+3. **El bundle es un artefacto versionado.** Si tocás `server/src/mcp/`,
+   `npm run build` lo regenera y el `.cjs` entra en el mismo commit.

@@ -28,7 +28,7 @@ import type Database from "better-sqlite3";
 import { openDb } from "../db/open.js";
 import { setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
-import type { Category } from "../category/categorize.js";
+import { CATEGORIES, type Category } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
 import { buildSuggestions } from "./suggest.js";
 import { onboardStatus } from "./status.js";
@@ -37,20 +37,6 @@ import { onboardStatus } from "./status.js";
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 const ENV_EXAMPLE_PATH = path.join(REPO_ROOT, ".env.example");
-
-/** The glossary's category set, as a runtime list for `--rule` validation. */
-const CATEGORIES: readonly Category[] = [
-  "comida",
-  "transporte",
-  "salud",
-  "mascota",
-  "servicios",
-  "recarga",
-  "efectivo",
-  "transferencia_persona",
-  "suscripcion",
-  "otros",
-];
 
 export interface OnboardCliDeps {
   /** Opened lazily so `--init-env` works before any database exists. */
