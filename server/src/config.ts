@@ -42,7 +42,14 @@ const envSchema = z.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: z.string().default("127.0.0.1"),
-  WALLET_DB_PATH: z.string().default("./wallet.sqlite"),
+  WALLET_DB_PATH: z.string().optional(),
+  /**
+   * Nombre viejo de la misma variable, el que trae el `.env` de iwa-wallet.
+   * Se sigue aceptando para que migrar sea copiar el `.env` y nada mas:
+   * ignorarlo no fallaba de forma visible — abria una base vacia en la ruta
+   * por defecto, indistinguible de "nunca sincronizaste".
+   */
+  BOLSILLO_DB_PATH: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
   GMAIL_OAUTH_CLIENT_ID: z.string().optional(),
@@ -50,8 +57,22 @@ const envSchema = z.object({
   GMAIL_OAUTH_REFRESH_TOKEN: z.string().optional(),
 });
 
-export type Config = z.infer<typeof envSchema>;
+const DEFAULT_DB_PATH = "./wallet.sqlite";
+
+/** Primer valor con contenido real: una variable seteada en vacio (`FOO=` en
+ * el `.env`) cuenta como no seteada, no como ruta vacia. */
+function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
+  return values.find((value) => typeof value === "string" && value.trim() !== "");
+}
+
+/** `WALLET_DB_PATH` ya viene resuelto: el resto del codigo no necesita saber
+ * que existe un nombre viejo. */
+export type Config = z.infer<typeof envSchema> & { WALLET_DB_PATH: string };
 
 export function loadConfig(): Config {
-  return envSchema.parse(process.env);
+  const env = envSchema.parse(process.env);
+  return {
+    ...env,
+    WALLET_DB_PATH: firstNonEmpty(env.WALLET_DB_PATH, env.BOLSILLO_DB_PATH) ?? DEFAULT_DB_PATH,
+  };
 }
