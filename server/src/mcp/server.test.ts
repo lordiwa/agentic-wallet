@@ -233,6 +233,27 @@ describe("MCP server del wallet", () => {
     expect(conEnv.steps.find((s: any) => s.id === "env").done).toBe(true);
   });
 
+  it("onboarding_status manda a la tool `sync`, no a curl ni a `npm run dev`", async () => {
+    // El CLI sugiere levantar el server porque es su unico camino; un cliente
+    // MCP tiene la tool a un llamado de distancia, asi que la capa MCP
+    // reescribe esa sugerencia para el contexto en el que se lee.
+    const status = parse(await client.callTool({ name: "onboarding_status", arguments: {} }));
+    const sync = status.steps.find((s: any) => s.id === "sync");
+
+    expect(sync.action).toContain("sync");
+    expect(sync.action).not.toContain("curl");
+    expect(sync.action).not.toContain("npm run dev");
+  });
+
+  it("onboarding_status deja `next` identico a su paso en `steps`", async () => {
+    // Reescribir la sugerencia no debe desincronizar las dos vistas del mismo
+    // paso: si `next` y `steps` divergen, el agente lee dos instrucciones
+    // distintas para lo mismo.
+    const status = parse(await client.callTool({ name: "onboarding_status", arguments: {} }));
+
+    expect(status.next).toEqual(status.steps.find((s: any) => s.id === status.next.id));
+  });
+
   it("sync reporta gmail_not_configured sin tocar el ledger cuando faltan credenciales", async () => {
     const result = parse(await client.callTool({ name: "sync", arguments: {} }));
 

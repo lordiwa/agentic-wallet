@@ -27,7 +27,7 @@ import { upsertCategoryRule } from "../category/rules-repository.js";
 import { buildOverview } from "../api/routes.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
 import { setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
-import { onboardStatus } from "../onboard/status.js";
+import { onboardStatus, type OnboardStatus } from "../onboard/status.js";
 import { buildSuggestions } from "../onboard/suggest.js";
 import { buildProductionSyncRunner } from "../sync/index.js";
 import type { SyncRunner } from "../api/sync-route.js";
@@ -59,6 +59,22 @@ export interface WalletMcpDeps {
 /** Todo resultado de tool viaja como un bloque de texto con JSON adentro. */
 function json(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+/**
+ * El onboarding manda a levantar el server y pegarle con curl porque desde el
+ * CLI ese es el unico camino. Quien lee esto por MCP tiene la tool `sync` a un
+ * llamado de distancia, asi que decirle que abra una terminal aparte lo manda
+ * por el camino largo. Se reescribe la sugerencia, no el estado: que el paso
+ * este hecho o no lo sigue decidiendo `onboard/status.ts`.
+ */
+const SYNC_ACTION_MCP =
+  "Llama a la tool `sync` de este mismo servidor MCP: trae los correos nuevos y los incorpora al ledger.";
+
+function withMcpActions(status: OnboardStatus): OnboardStatus {
+  const steps = status.steps.map((step) => (step.id === "sync" ? { ...step, action: SYNC_ACTION_MCP } : step));
+  // `next` apunta al mismo paso que `steps`, no a la copia vieja.
+  return { ...status, steps, next: steps.find((step) => step.id === status.next?.id) ?? null };
 }
 
 /** Los campos de `strategy_config` que el onboarding puede escribir. Mismo
@@ -267,7 +283,9 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       } catch {
         db = null;
       }
-      return json(onboardStatus({ envPath: path.join(deps.projectRoot, ".env"), env: deps.env, db }));
+      return json(
+        withMcpActions(onboardStatus({ envPath: path.join(deps.projectRoot, ".env"), env: deps.env, db }))
+      );
     }
   );
 

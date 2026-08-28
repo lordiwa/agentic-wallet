@@ -48723,15 +48723,30 @@ var envSchema = external_exports.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: external_exports.string().default("127.0.0.1"),
-  WALLET_DB_PATH: external_exports.string().default("./wallet.sqlite"),
+  WALLET_DB_PATH: external_exports.string().optional(),
+  /**
+   * Nombre viejo de la misma variable, el que trae el `.env` de iwa-wallet.
+   * Se sigue aceptando para que migrar sea copiar el `.env` y nada mas:
+   * ignorarlo no fallaba de forma visible — abria una base vacia en la ruta
+   * por defecto, indistinguible de "nunca sincronizaste".
+   */
+  BOLSILLO_DB_PATH: external_exports.string().optional(),
   ANTHROPIC_API_KEY: external_exports.string().optional(),
   CLAUDE_CODE_OAUTH_TOKEN: external_exports.string().optional(),
   GMAIL_OAUTH_CLIENT_ID: external_exports.string().optional(),
   GMAIL_OAUTH_CLIENT_SECRET: external_exports.string().optional(),
   GMAIL_OAUTH_REFRESH_TOKEN: external_exports.string().optional()
 });
+var DEFAULT_DB_PATH = "./wallet.sqlite";
+function firstNonEmpty(...values) {
+  return values.find((value) => typeof value === "string" && value.trim() !== "");
+}
 function loadConfig() {
-  return envSchema.parse(process.env);
+  const env = envSchema.parse(process.env);
+  return {
+    ...env,
+    WALLET_DB_PATH: firstNonEmpty(env.WALLET_DB_PATH, env.BOLSILLO_DB_PATH) ?? DEFAULT_DB_PATH
+  };
 }
 
 // src/db/open.ts
@@ -48750,6 +48765,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   currency TEXT NOT NULL DEFAULT 'USD',
   counterparty TEXT,
   account TEXT,
+  account_holder TEXT,
   category TEXT,
   raw_subject TEXT,
   is_reversed INTEGER NOT NULL DEFAULT 0,
@@ -48882,6 +48898,11 @@ CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions (direction
 CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counterparty);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
 `;
+function addColumnIfMissing(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 function migrate(db) {
   db.exec(CREATE_TRANSACTIONS);
   db.exec(CREATE_STATEMENTS);
@@ -48897,6 +48918,7 @@ function migrate(db) {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
   db.exec(CREATE_INDEXES);
 }
 
@@ -49586,6 +49608,17 @@ function onboardStatus({ envPath, env, db }) {
       action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`."
     },
     {
+      // El motor asume -5 cuando la variable no esta (ver strategy/dates.ts).
+      // Es un default razonable, pero decide que cae en "hoy" y en "este mes"
+      // en TODOS los totales: aplicarlo en silencio le corre las cifras
+      // diarias a cualquiera que no viva en Quito/Lima/Bogota. Por eso el
+      // huso se elige explicitamente aunque el valor elegido sea el default.
+      id: "huso",
+      title: "Huso horario elegido (define que es 'hoy')",
+      done: hasValue(env, "WALLET_UTC_OFFSET_HOURS"),
+      action: "Pon WALLET_UTC_OFFSET_HOURS en .env como offset entero de UTC: -5 Quito/Lima/Bogota, -3 Buenos Aires, -6 Ciudad de Mexico, +1 Madrid. Si no la pones se asume -5 y todos los totales de 'hoy' y 'este mes' se cortan con ese huso."
+    },
+    {
       id: "profile",
       title: "Perfil financiero configurado",
       done: profileConfigured(db),
@@ -49602,13 +49635,22 @@ function median(values) {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
+var MASKED_ACCOUNT_TOKEN = /^[x*·•\-]*\d+$/i;
+function stripMaskedAccount(value) {
+  return value.trim().split(/\s+/).filter((token) => !MASKED_ACCOUNT_TOKEN.test(token)).join(" ");
+}
 function suggestTitular(db) {
-  const row = db.prepare(
-    `SELECT account, COUNT(*) as c FROM transactions
-        WHERE account IS NOT NULL AND TRIM(account) != ''
-        GROUP BY account ORDER BY c DESC LIMIT 1`
-  ).get();
-  return row?.account ?? null;
+  const rows = db.prepare(
+    `SELECT COALESCE(NULLIF(TRIM(account_holder), ''), TRIM(account)) as name, COUNT(*) as c
+         FROM transactions
+        WHERE name IS NOT NULL AND name != ''
+        GROUP BY name ORDER BY c DESC`
+  ).all();
+  for (const row of rows) {
+    const name = stripMaskedAccount(row.name);
+    if (name !== "") return name;
+  }
+  return null;
 }
 function suggestSalary(db) {
   const rows = db.prepare(
@@ -49716,10 +49758,10 @@ function insertTransaction(db, tx) {
   const result = db.prepare(
     `INSERT INTO transactions (
         gmail_msg_id, gmail_thread_id, ts, direction, type, amount, currency,
-        counterparty, account, category, raw_subject, is_reversed, is_internal, needs_review, source
+        counterparty, account, account_holder, category, raw_subject, is_reversed, is_internal, needs_review, source
       ) VALUES (
         @gmail_msg_id, @gmail_thread_id, @ts, @direction, @type, @amount, @currency,
-        @counterparty, @account, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
+        @counterparty, @account, @account_holder, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
       )
       ON CONFLICT(gmail_msg_id) DO NOTHING`
   ).run({
@@ -49732,6 +49774,7 @@ function insertTransaction(db, tx) {
     currency: tx.currency ?? "USD",
     counterparty: tx.counterparty ?? null,
     account: tx.account ?? null,
+    account_holder: tx.account_holder ?? null,
     category: tx.category ?? null,
     raw_subject: tx.raw_subject ?? null,
     is_reversed: tx.is_reversed ? 1 : 0,
@@ -49832,6 +49875,12 @@ function extractDebitAccount(body) {
   const tokens = field.split(/\s+/);
   return tokens.length > 0 ? tokens[tokens.length - 1] : null;
 }
+function extractDebitAccountHolder(body) {
+  const field = extractField2(body, "Cuenta\\s*d[e\xE9]bito");
+  if (!field) return null;
+  const name = field.split(/\s+/).slice(0, -1).join(" ").trim();
+  return name === "" ? null : name;
+}
 function transaction(params) {
   const needsReview = params.amount === null || params.forceReview === true;
   return {
@@ -49842,6 +49891,7 @@ function transaction(params) {
     currency: params.currency ?? "USD",
     counterparty: params.counterparty ?? null,
     account: params.account ?? null,
+    account_holder: params.account_holder ?? null,
     raw_subject: params.raw_subject,
     needs_review: needsReview,
     ...needsReview ? { review_reason: params.reviewReason ?? "amount_not_found" } : {}
@@ -49931,6 +49981,7 @@ function classify(email2) {
       // bodies can list other figures (saldo disponible, etc.) first.
       amount: extractLabeledAmount(body, "Monto"),
       account: extractDebitAccount(body),
+      account_holder: extractDebitAccountHolder(body),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body"
     });
@@ -49977,7 +50028,14 @@ var produbancoParser = {
   canParse(email2) {
     return /produbanco/i.test(email2.subject) || /produbanco/i.test(email2.body);
   },
-  parse: classify
+  /** El nombre del titular se completa aqui y no en cada rama de `classify`:
+   * el campo "Cuenta débito" aparece en cuerpos de varios tipos (consumo,
+   * retiro, ...) y siempre significa lo mismo. */
+  parse(email2) {
+    const result = classify(email2);
+    if (result.kind !== "transaction" || result.account_holder) return result;
+    return { ...result, account_holder: extractDebitAccountHolder(email2.body) };
+  }
 };
 
 // src/parser/registry.ts
@@ -50084,6 +50142,7 @@ function normalizeName(name) {
   return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 function markInternalTransfers(transactions, { titular }) {
+  if (titular === null || titular.trim() === "") return transactions;
   const normalizedTitular = normalizeName(titular);
   return transactions.map((tx) => {
     if (tx.type !== "transferencia" || !tx.counterparty) return tx;
@@ -50221,6 +50280,7 @@ function toNewTransaction(tx, threadId, source, rules) {
     currency: tx.currency,
     counterparty: tx.counterparty ?? null,
     account: tx.account ?? null,
+    account_holder: tx.account_holder ?? null,
     // F2-B (TASK-024, AC3): populate `category` deterministically at
     // persist time from the same fields F1-04's reconcile pass already
     // resolved (type/counterparty/is_internal) — see category/categorize.ts.
@@ -50492,7 +50552,11 @@ function readTitular(db) {
     return null;
   }
 }
-function buildProductionSyncRunner(config2, getDb) {
+var productionFactories = {
+  createGmailClient: createGoogleapisGmailClient,
+  createExtractor: createClaudeEmailExtractor
+};
+function buildProductionSyncRunner(config2, getDb, factories = productionFactories) {
   if (!config2.ANTHROPIC_API_KEY && !config2.CLAUDE_CODE_OAUTH_TOKEN) return null;
   if (!config2.GMAIL_OAUTH_CLIENT_ID || !config2.GMAIL_OAUTH_CLIENT_SECRET || !config2.GMAIL_OAUTH_REFRESH_TOKEN) {
     return null;
@@ -50503,11 +50567,8 @@ function buildProductionSyncRunner(config2, getDb) {
   return async () => {
     const db = getDb();
     const titular = readTitular(db);
-    if (!titular) {
-      throw new Error("sync: strategy_config.titular is not seeded");
-    }
-    const gmailClient = await createGoogleapisGmailClient({ clientId, clientSecret, refreshToken });
-    const extractor = createClaudeEmailExtractor();
+    const gmailClient = await factories.createGmailClient({ clientId, clientSecret, refreshToken });
+    const extractor = factories.createExtractor();
     return runSync({ db, gmailClient, extractor, titular });
   };
 }
@@ -50517,6 +50578,11 @@ var WALLET_MCP_NAME = "agentic-wallet";
 var WALLET_MCP_VERSION = "0.1.0";
 function json(value) {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
+}
+var SYNC_ACTION_MCP = "Llama a la tool `sync` de este mismo servidor MCP: trae los correos nuevos y los incorpora al ledger.";
+function withMcpActions(status) {
+  const steps = status.steps.map((step) => step.id === "sync" ? { ...step, action: SYNC_ACTION_MCP } : step);
+  return { ...status, steps, next: steps.find((step) => step.id === status.next?.id) ?? null };
 }
 var SETTABLE_CONFIG_KEYS = [
   "moneda",
@@ -50681,7 +50747,9 @@ function createWalletMcpServer(deps) {
       } catch {
         db = null;
       }
-      return json(onboardStatus({ envPath: import_node_path2.default.join(deps.projectRoot, ".env"), env: deps.env, db }));
+      return json(
+        withMcpActions(onboardStatus({ envPath: import_node_path2.default.join(deps.projectRoot, ".env"), env: deps.env, db }))
+      );
     }
   );
   server.registerTool(
