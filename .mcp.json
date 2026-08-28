@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentic-wallet": {
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR}/server/dist-mcp/mcp-server.cjs"],
+      "env": {
+        "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}
