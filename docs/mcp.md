@@ -27,6 +27,7 @@ tiene tests. Si un número no cuadra, el bug está en `strategy/` o en
 | `suggest_profile` | Propone perfil leyendo el ledger real | `onboard/suggest.ts` |
 | `set_profile` | Guarda los campos de `strategy_config` confirmados | `db/strategy-config.ts` |
 | `set_rule` | Asocia un comercio a una categoría | `category/rules-repository.ts` |
+| `apply_rules` | Aplica las reglas al historial ya sincronizado | `category/backfill.ts` (`backfillCategories`) |
 
 Todas devuelven JSON. Las de lectura excluyen por defecto reversos,
 transferencias internas y filas en `needs_review` — que es lo correcto para
@@ -39,6 +40,11 @@ muestra la propuesta al humano, el humano corrige, y recién ahí `set_profile`
 guarda. Es la misma propiedad que tiene `npm run onboard` y por la misma razón:
 nunca se escribe un valor que el usuario no confirmó. Si no hay evidencia en el
 ledger, la sugerencia viene en `null` en vez de una cifra inventada.
+
+`set_rule` sólo afecta lo que entre de ahí en adelante; el historial ya
+sincronizado se recategoriza con `apply_rules` (el equivalente MCP de
+`npm run onboard -- --backfill`). Es idempotente y nunca repisa una categoría ya
+asignada, así que se puede llamar después de cada regla sin miedo.
 
 Ojo con `sueldo.diasPago`: el motor lee **ventanas**, no días sueltos.
 `["15-15", "30-30"]` es "el 15 y el 30", `["18-20"]` es "entre el 18 y el 20",

@@ -23,6 +23,7 @@ import { z } from "zod";
 import { loadConfig, repoRoot } from "../config.js";
 import { openDb } from "../db/open.js";
 import { CATEGORIES } from "../category/categorize.js";
+import { backfillCategories } from "../category/backfill.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
 import { buildOverview } from "../api/routes.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
@@ -360,8 +361,8 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       title: "Regla de categoria para un comercio",
       description:
         "Asocia un patron de comercio a una categoria, p.ej. 'veterinaria' -> mascota. El patron matchea por " +
-        "substring y el mas largo gana. Aplica a movimientos futuros; para el historial ya sincronizado corre " +
-        "`npm run onboard -- --backfill`.",
+        "substring y el mas largo gana. Aplica a movimientos futuros; para el historial ya sincronizado llama " +
+        "despues a la tool `apply_rules`.",
       inputSchema: {
         pattern: z.string().min(1).describe("Substring del nombre del comercio"),
         category: z.enum(CATEGORIES),
@@ -372,6 +373,19 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       if (!saved) throw new Error("set_rule: el patron queda vacio al normalizarlo; da un texto con contenido.");
       return json({ ok: true, pattern, category });
     }
+  );
+
+  server.registerTool(
+    "apply_rules",
+    {
+      title: "Aplicar las reglas al historial",
+      description:
+        "Categoriza los movimientos ya sincronizados que todavia no tienen categoria, usando las reglas " +
+        "vigentes. Es el equivalente de `npm run onboard -- --backfill`. Idempotente: nunca repisa una " +
+        "categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo.",
+      inputSchema: {},
+    },
+    async () => json({ ok: true, updated: await backfillCategories(deps.getDb()) })
   );
 
   return server;

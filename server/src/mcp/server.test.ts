@@ -127,6 +127,7 @@ describe("MCP server del wallet", () => {
         "get_spending_by_category",
         "onboarding_status",
         "query_transactions",
+        "apply_rules",
         "set_profile",
         "set_rule",
         "suggest_profile",
@@ -192,6 +193,25 @@ describe("MCP server del wallet", () => {
 
     const despues = parse(await client.callTool({ name: "get_spending_by_category", arguments: {} }));
     expect(despues.spending_by_category.mascota).toBe(30);
+  });
+
+  it("apply_rules escribe la categoria en el historial ya sincronizado", async () => {
+    await client.callTool({ name: "set_rule", arguments: { pattern: "veterinaria", category: "mascota" } });
+
+    const result = parse(await client.callTool({ name: "apply_rules", arguments: {} }));
+
+    // Las 4 filas del fixture entran sin categoria, asi que el backfill las
+    // resuelve todas de una.
+    expect(result).toEqual({ ok: true, updated: 4 });
+    const fila = db.prepare("SELECT category FROM transactions WHERE gmail_msg_id = 'm1'").get() as {
+      category: string;
+    };
+    expect(fila.category).toBe("mascota");
+  });
+
+  it("apply_rules es idempotente: la segunda corrida no repisa nada", async () => {
+    expect(parse(await client.callTool({ name: "apply_rules", arguments: {} })).updated).toBe(4);
+    expect(parse(await client.callTool({ name: "apply_rules", arguments: {} })).updated).toBe(0);
   });
 
   it("set_rule rechaza una categoria que no esta en el glosario", async () => {

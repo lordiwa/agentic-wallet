@@ -48980,6 +48980,34 @@ function categorize(tx, rules = []) {
   return matchEstablishment(tx.counterparty, rules) ?? "otros";
 }
 
+// src/ingest/telemetry.ts
+var import_node_crypto = require("node:crypto");
+function emit(level, event, fields) {
+  const line = JSON.stringify({ level, event, ...fields });
+  if (level === "error") console.error(line);
+  else console.log(line);
+}
+async function withSpan(name, attributes, fn) {
+  const span = { trace_id: (0, import_node_crypto.randomUUID)(), span_id: (0, import_node_crypto.randomUUID)() };
+  const startedAt = Date.now();
+  emit("info", `${name}.start`, { ...span, ...attributes });
+  try {
+    const result = await fn(span);
+    emit("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
+    return result;
+  } catch (error2) {
+    emit("error", `${name}.error`, {
+      ...span,
+      duration_ms: Date.now() - startedAt,
+      error: error2 instanceof Error ? error2.message : String(error2)
+    });
+    throw error2;
+  }
+}
+function emitMetric(name, attributes) {
+  emit("info", `metric.${name}`, attributes);
+}
+
 // src/category/rules-repository.ts
 function listCategoryRules(db) {
   const rows = db.prepare("SELECT pattern, category FROM category_rules ORDER BY LENGTH(pattern) DESC, pattern ASC").all();
@@ -49007,6 +49035,31 @@ function topUncategorizedCounterparties(db, limit = 15) {
         ORDER BY total DESC, count DESC
         LIMIT ?`
   ).all(limit);
+}
+
+// src/category/backfill.ts
+async function backfillCategories(db) {
+  return withSpan("category.backfill", {}, async () => {
+    const rows = db.prepare("SELECT id, type, counterparty, is_internal FROM transactions WHERE category IS NULL OR category = ''").all();
+    const rules = listCategoryRules(db);
+    const update = db.prepare("UPDATE transactions SET category = @category WHERE id = @id");
+    const runUpdates = db.transaction((toUpdate) => {
+      for (const row of toUpdate) {
+        const category = categorize(
+          {
+            type: row.type,
+            counterparty: row.counterparty,
+            is_internal: Boolean(row.is_internal)
+          },
+          rules
+        );
+        update.run({ id: row.id, category });
+      }
+    });
+    runUpdates(rows);
+    emitMetric("category.backfill.summary", { updated: rows.length });
+    return rows.length;
+  });
 }
 
 // src/api/routes.ts
@@ -49100,26 +49153,26 @@ var DEFAULT_STRATEGY_CONFIG = {
 };
 
 // src/db/telemetry.ts
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 function silenced() {
   const raw = process.env.WALLET_TELEMETRY_SILENT;
   return raw === "1" || raw === "true";
 }
-function emit(level, event, fields) {
+function emit2(level, event, fields) {
   const line = JSON.stringify({ level, event, ...fields });
   if (level === "error") console.error(line);
   else if (!silenced()) console.log(line);
 }
 function withSpanSync(name, attributes, fn) {
-  const span = { trace_id: (0, import_node_crypto.randomUUID)(), span_id: (0, import_node_crypto.randomUUID)() };
+  const span = { trace_id: (0, import_node_crypto2.randomUUID)(), span_id: (0, import_node_crypto2.randomUUID)() };
   const startedAt = Date.now();
-  emit("info", `${name}.start`, { ...span, ...attributes });
+  emit2("info", `${name}.start`, { ...span, ...attributes });
   try {
     const result = fn(span);
-    emit("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
+    emit2("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
     return result;
   } catch (error2) {
-    emit("error", `${name}.error`, {
+    emit2("error", `${name}.error`, {
       ...span,
       duration_ms: Date.now() - startedAt,
       error: error2 instanceof Error ? error2.message : String(error2)
@@ -49128,7 +49181,7 @@ function withSpanSync(name, attributes, fn) {
   }
 }
 function logInfo(event, fields) {
-  emit("info", event, fields);
+  emit2("info", event, fields);
 }
 
 // src/db/strategy-config.ts
@@ -50220,34 +50273,6 @@ function ingestStatementEmail(db, email2) {
   return { persisted: true, ...result };
 }
 
-// src/ingest/telemetry.ts
-var import_node_crypto2 = require("node:crypto");
-function emit2(level, event, fields) {
-  const line = JSON.stringify({ level, event, ...fields });
-  if (level === "error") console.error(line);
-  else console.log(line);
-}
-async function withSpan(name, attributes, fn) {
-  const span = { trace_id: (0, import_node_crypto2.randomUUID)(), span_id: (0, import_node_crypto2.randomUUID)() };
-  const startedAt = Date.now();
-  emit2("info", `${name}.start`, { ...span, ...attributes });
-  try {
-    const result = await fn(span);
-    emit2("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
-    return result;
-  } catch (error2) {
-    emit2("error", `${name}.error`, {
-      ...span,
-      duration_ms: Date.now() - startedAt,
-      error: error2 instanceof Error ? error2.message : String(error2)
-    });
-    throw error2;
-  }
-}
-function emitMetric2(name, attributes) {
-  emit2("info", `metric.${name}`, attributes);
-}
-
 // src/ingest/pipeline.ts
 function buildSearchQuery(sinceTs, senders = registeredSenders()) {
   const parsed = new Date(sinceTs);
@@ -50312,7 +50337,7 @@ function reversoAuditRow(candidate, threadId, needsReview) {
 async function ingestOnce(deps, options) {
   return withSpan("ingest.run", { since_ts: options.sinceTs }, async () => {
     const summary = await runIngest(deps, options);
-    emitMetric2("ingest.summary", { ...summary });
+    emitMetric("ingest.summary", { ...summary });
     return summary;
   });
 }
@@ -50805,7 +50830,7 @@ function createWalletMcpServer(deps) {
     "set_rule",
     {
       title: "Regla de categoria para un comercio",
-      description: "Asocia un patron de comercio a una categoria, p.ej. 'veterinaria' -> mascota. El patron matchea por substring y el mas largo gana. Aplica a movimientos futuros; para el historial ya sincronizado corre `npm run onboard -- --backfill`.",
+      description: "Asocia un patron de comercio a una categoria, p.ej. 'veterinaria' -> mascota. El patron matchea por substring y el mas largo gana. Aplica a movimientos futuros; para el historial ya sincronizado llama despues a la tool `apply_rules`.",
       inputSchema: {
         pattern: external_exports.string().min(1).describe("Substring del nombre del comercio"),
         category: external_exports.enum(CATEGORIES)
@@ -50816,6 +50841,15 @@ function createWalletMcpServer(deps) {
       if (!saved) throw new Error("set_rule: el patron queda vacio al normalizarlo; da un texto con contenido.");
       return json({ ok: true, pattern, category });
     }
+  );
+  server.registerTool(
+    "apply_rules",
+    {
+      title: "Aplicar las reglas al historial",
+      description: "Categoriza los movimientos ya sincronizados que todavia no tienen categoria, usando las reglas vigentes. Es el equivalente de `npm run onboard -- --backfill`. Idempotente: nunca repisa una categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo.",
+      inputSchema: {}
+    },
+    async () => json({ ok: true, updated: await backfillCategories(deps.getDb()) })
   );
   return server;
 }
