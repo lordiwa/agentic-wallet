@@ -48,23 +48,50 @@ function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+/** Token de cuenta enmascarada tal como lo escribe el banco: "XXXXXX20924",
+ * "****1234", "2200112233". Nunca es un nombre. */
+const MASKED_ACCOUNT_TOKEN = /^[x*·•\-]*\d+$/i;
+
+/** Quita el token de cuenta enmascarada que las filas viejas guardaban pegado
+ * al nombre ("PEREZ GOMEZ ANA MARIA XXXXXX20924"). */
+function stripMaskedAccount(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter((token) => !MASKED_ACCOUNT_TOKEN.test(token))
+    .join(" ");
+}
+
 /**
- * The account holder as the bank spells it, read off the `account` column of
- * the user's own rows. Returns the most frequent non-empty value; null when
- * the ledger has none. The strategy engine uses this to recognise the user's
- * own transfers as internal, so a wrong value silently mis-classifies
- * money -- which is exactly why this is a suggestion to confirm, not an
- * automatic write.
+ * The account holder as the bank spells it, read off `account_holder` (the
+ * name the parser lifts from "Cuenta débito: <NOMBRE> <cuenta>"). Returns the
+ * most frequent non-empty name; null when the ledger has none.
+ *
+ * NUNCA devuelve un numero de cuenta enmascarado. El titular se compara
+ * despues contra el `Contacto:` de cada transferencia para marcarla interna
+ * (`rules/reconcile.ts`): proponer "XXXXXX20924" daba un valor que el usuario
+ * confirmaba de buena fe y que despues no matcheaba con nada, dejando las
+ * transferencias propias contadas como gasto. Sin evidencia de nombre la
+ * respuesta correcta es null y que el onboarding pregunte.
+ *
+ * `account` se sigue leyendo como fallback por las filas sincronizadas antes
+ * de que existiera `account_holder`, que guardaban el campo entero ahi.
  */
 export function suggestTitular(db: Database.Database): string | null {
-  const row = db
+  const rows = db
     .prepare(
-      `SELECT account, COUNT(*) as c FROM transactions
-        WHERE account IS NOT NULL AND TRIM(account) != ''
-        GROUP BY account ORDER BY c DESC LIMIT 1`
+      `SELECT COALESCE(NULLIF(TRIM(account_holder), ''), TRIM(account)) as name, COUNT(*) as c
+         FROM transactions
+        WHERE name IS NOT NULL AND name != ''
+        GROUP BY name ORDER BY c DESC`
     )
-    .get() as { account: string; c: number } | undefined;
-  return row?.account ?? null;
+    .all() as { name: string; c: number }[];
+
+  for (const row of rows) {
+    const name = stripMaskedAccount(row.name);
+    if (name !== "") return name;
+  }
+  return null;
 }
 
 /**

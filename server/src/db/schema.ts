@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   currency TEXT NOT NULL DEFAULT 'USD',
   counterparty TEXT,
   account TEXT,
+  account_holder TEXT,
   category TEXT,
   raw_subject TEXT,
   is_reversed INTEGER NOT NULL DEFAULT 0,
@@ -190,6 +191,21 @@ CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counte
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
 `;
 
+/**
+ * Agrega una columna a una tabla ya creada si todavia no existe.
+ *
+ * `CREATE TABLE IF NOT EXISTS` no toca una tabla que ya existe, asi que una
+ * base creada antes de que la columna entrara al esquema nunca la veria. Este
+ * es el unico mecanismo de migracion aditiva del proyecto: sin tabla de
+ * migraciones, idempotente, y solo para columnas nullable (una fila vieja no
+ * tiene con que llenarlas).
+ */
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 /** Creates the 14 tables + indexes if they don't already exist. Safe to call on every startup. */
 export function migrate(db: Database.Database): void {
   db.exec(CREATE_TRANSACTIONS);
@@ -206,5 +222,7 @@ export function migrate(db: Database.Database): void {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  // Bases creadas antes de que el parser guardara el nombre del titular.
+  addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
   db.exec(CREATE_INDEXES);
 }

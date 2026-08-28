@@ -35,9 +35,35 @@ function salary(ts: string, amount: number, counterparty = "EMPRESA EJEMPLO SA")
 
 describe("suggestTitular", () => {
   it("returns the most frequent account-holder spelling in the ledger", () => {
-    insertTransaction(db, tx({ account: "PEREZ GOMEZ ANA MARIA" }));
-    insertTransaction(db, tx({ account: "PEREZ GOMEZ ANA MARIA" }));
-    insertTransaction(db, tx({ account: "OTRO NOMBRE" }));
+    insertTransaction(db, tx({ account_holder: "PEREZ GOMEZ ANA MARIA" }));
+    insertTransaction(db, tx({ account_holder: "PEREZ GOMEZ ANA MARIA" }));
+    insertTransaction(db, tx({ account_holder: "OTRO NOMBRE" }));
+
+    expect(suggestTitular(db)).toBe("PEREZ GOMEZ ANA MARIA");
+  });
+
+  // El titular es un NOMBRE: es lo que se compara contra el `Contacto:` de una
+  // transferencia para marcarla interna. Proponer "XXXXXX20924" hacia que el
+  // usuario lo confirmara y que despues ninguna transferencia propia matcheara.
+  it("nunca propone el numero de cuenta enmascarado como titular", () => {
+    insertTransaction(db, tx({ account: "XXXXXX20924" }));
+    insertTransaction(db, tx({ account: "XXXXXX20924" }));
+    insertTransaction(db, tx({ account: "2200112233" }));
+
+    expect(suggestTitular(db)).toBeNull();
+  });
+
+  it("lee el nombre del titular aunque la fila tambien traiga la cuenta enmascarada", () => {
+    insertTransaction(db, tx({ account: "XXXXXX20924", account_holder: "PEREZ GOMEZ ANA MARIA" }));
+
+    expect(suggestTitular(db)).toBe("PEREZ GOMEZ ANA MARIA");
+  });
+
+  // Filas viejas (sincronizadas antes de que existiera account_holder) guardan
+  // el campo entero "NOMBRE XXXXXX1234" en `account`: se acepta como evidencia,
+  // pero sin el token enmascarado pegado al nombre.
+  it("recorta el token enmascarado de un valor heredado 'NOMBRE XXXXXX1234'", () => {
+    insertTransaction(db, tx({ account: "PEREZ GOMEZ ANA MARIA XXXXXX20924" }));
 
     expect(suggestTitular(db)).toBe("PEREZ GOMEZ ANA MARIA");
   });

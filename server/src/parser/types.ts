@@ -42,6 +42,15 @@ export interface ParsedTransaction {
   currency: string;
   counterparty?: string | null;
   account?: string | null;
+  /**
+   * El titular de la cuenta como lo escribe el banco, cuando el correo lo
+   * trae ("Cuenta débito: <NOMBRE> <cuenta enmascarada>"). Es la unica
+   * evidencia del titular en todo el ledger, y de aqui la lee el onboarding
+   * para proponerlo (`onboard/suggest.ts`). Va aparte de `account`: ese campo
+   * es el token enmascarado con el que se aparean reverso y consumo, y mezclar
+   * las dos cosas rompe ese apareo.
+   */
+  account_holder?: string | null;
   raw_subject: string;
   needs_review: boolean;
   review_reason?: string;

@@ -80,12 +80,27 @@ function extractDebitAccount(body: string): string | null {
   return tokens.length > 0 ? tokens[tokens.length - 1] : null;
 }
 
+/**
+ * El NOMBRE del titular que precede a la cuenta enmascarada en el mismo campo
+ * ("Cuenta débito: PEREZ GOMEZ ANA MARIA XXXXXX20924" -> "PEREZ GOMEZ ANA
+ * MARIA"). Se guarda porque es la unica pista del titular que dejan los
+ * correos, y el onboarding la necesita para proponerlo en vez de proponer el
+ * numero de cuenta. Devuelve null cuando el campo solo trae la cuenta.
+ */
+function extractDebitAccountHolder(body: string): string | null {
+  const field = extractField(body, "Cuenta\\s*d[eé]bito");
+  if (!field) return null;
+  const name = field.split(/\s+/).slice(0, -1).join(" ").trim();
+  return name === "" ? null : name;
+}
+
 function transaction(params: {
   type: TransactionType;
   direction: Direction;
   amount: number | null;
   counterparty?: string | null;
   account?: string | null;
+  account_holder?: string | null;
   raw_subject: string;
   reviewReason?: string;
   /** ISO-4217 del consumo. Por defecto USD — el único caso que lo pasa
@@ -103,6 +118,7 @@ function transaction(params: {
     currency: params.currency ?? "USD",
     counterparty: params.counterparty ?? null,
     account: params.account ?? null,
+    account_holder: params.account_holder ?? null,
     raw_subject: params.raw_subject,
     needs_review: needsReview,
     ...(needsReview ? { review_reason: params.reviewReason ?? "amount_not_found" } : {}),
@@ -209,6 +225,7 @@ function classify(email: InboundEmail): ParseResult {
       // bodies can list other figures (saldo disponible, etc.) first.
       amount: extractLabeledAmount(body, "Monto"),
       account: extractDebitAccount(body),
+      account_holder: extractDebitAccountHolder(body),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body",
     });
@@ -267,5 +284,12 @@ export const produbancoParser: BankEmailParser = {
   canParse(email) {
     return /produbanco/i.test(email.subject) || /produbanco/i.test(email.body);
   },
-  parse: classify,
+  /** El nombre del titular se completa aqui y no en cada rama de `classify`:
+   * el campo "Cuenta débito" aparece en cuerpos de varios tipos (consumo,
+   * retiro, ...) y siempre significa lo mismo. */
+  parse(email) {
+    const result = classify(email);
+    if (result.kind !== "transaction" || result.account_holder) return result;
+    return { ...result, account_holder: extractDebitAccountHolder(email.body) };
+  },
 };

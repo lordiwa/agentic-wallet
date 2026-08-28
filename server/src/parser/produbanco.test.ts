@@ -89,6 +89,34 @@ describe("spec 5.5 fixtures", () => {
     expect(result.account).toBe("XXXXXX20924");
   });
 
+  // "Cuenta débito: <NOMBRE DEL TITULAR> <cuenta enmascarada>": el nombre es la
+  // unica evidencia del titular que traen los correos, y hasta ahora se tiraba.
+  it("guarda el nombre del titular aparte de la cuenta enmascarada", () => {
+    const result = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Retiro sin tarjeta de débito Produbanco en cajero automático",
+          body: "Detalle Monto: $20.00 Cuenta débito: PEREZ GOMEZ ANA MARIA XXXXXX20924",
+        })
+      )
+    );
+    expect(result.account).toBe("XXXXXX20924");
+    expect(result.account_holder).toBe("PEREZ GOMEZ ANA MARIA");
+  });
+
+  it("deja account_holder en null cuando el campo solo trae la cuenta", () => {
+    const result = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Retiro sin tarjeta de débito Produbanco en cajero automático",
+          body: "Detalle Monto: $20.00 Cuenta débito: XXXXXX20924",
+        })
+      )
+    );
+    expect(result.account).toBe("XXXXXX20924");
+    expect(result.account_holder).toBeNull();
+  });
+
   it("5.00 recarga Claro", () => {
     const result = asTransaction(
       produbancoParser.parse(

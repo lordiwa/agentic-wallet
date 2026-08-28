@@ -11,6 +11,8 @@ export interface TransactionRow {
   currency: string;
   counterparty: string | null;
   account: string | null;
+  /** Titular como lo escribe el banco; null cuando el correo no lo trae. */
+  account_holder: string | null;
   category: string | null;
   raw_subject: string | null;
   is_reversed: number;
@@ -30,6 +32,7 @@ export interface NewTransaction {
   currency?: string;
   counterparty?: string | null;
   account?: string | null;
+  account_holder?: string | null;
   category?: string | null;
   raw_subject?: string | null;
   is_reversed?: boolean;
@@ -89,10 +92,10 @@ export function insertTransaction(db: Database.Database, tx: NewTransaction): In
     .prepare(
       `INSERT INTO transactions (
         gmail_msg_id, gmail_thread_id, ts, direction, type, amount, currency,
-        counterparty, account, category, raw_subject, is_reversed, is_internal, needs_review, source
+        counterparty, account, account_holder, category, raw_subject, is_reversed, is_internal, needs_review, source
       ) VALUES (
         @gmail_msg_id, @gmail_thread_id, @ts, @direction, @type, @amount, @currency,
-        @counterparty, @account, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
+        @counterparty, @account, @account_holder, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
       )
       ON CONFLICT(gmail_msg_id) DO NOTHING`
     )
@@ -106,6 +109,7 @@ export function insertTransaction(db: Database.Database, tx: NewTransaction): In
       currency: tx.currency ?? "USD",
       counterparty: tx.counterparty ?? null,
       account: tx.account ?? null,
+      account_holder: tx.account_holder ?? null,
       category: tx.category ?? null,
       raw_subject: tx.raw_subject ?? null,
       is_reversed: tx.is_reversed ? 1 : 0,

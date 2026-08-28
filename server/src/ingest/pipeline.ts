@@ -150,6 +150,7 @@ function toNewTransaction(
     currency: tx.currency,
     counterparty: tx.counterparty ?? null,
     account: tx.account ?? null,
+    account_holder: tx.account_holder ?? null,
     // F2-B (TASK-024, AC3): populate `category` deterministically at
     // persist time from the same fields F1-04's reconcile pass already
     // resolved (type/counterparty/is_internal) — see category/categorize.ts.
