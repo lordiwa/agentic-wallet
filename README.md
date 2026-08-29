@@ -1,5 +1,7 @@
 # Agentic Wallet
 
+Sitio público: [Agentic Wallet — tu copiloto financiero local-first](https://lordiwa.github.io/agentic-wallet/)
+
 Copiloto financiero personal **local-first**: lee los correos que tu banco ya
 te manda, arma tu historial de gastos en una base SQLite en tu máquina, y te
 deja preguntarle cosas en lenguaje natural.

@@ -233,6 +233,45 @@ a.card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border
 a.card h3 { color: var(--brand); }
 a.card .more { display: inline-block; margin-top: .8rem; font-size: .88rem; font-weight: 600; color: var(--brand-mid); }
 
+/* ---------- Capturas del tablero ---------- */
+
+/* Las capturas son de un dashboard sin hoja de estilos: fondo blanco y texto
+   negro. El marco (borde + barra de ventana) es lo que evita que floten sobre
+   el papel del sitio sin un límite visible. */
+
+.shots-note {
+  margin: 0 0 1.6rem; padding: .85rem 1.1rem;
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: .95rem; color: var(--ink-soft);
+}
+.shots-note strong { color: var(--ink); }
+
+.shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem; }
+@media (max-width: 860px) { .shots { grid-template-columns: 1fr; } }
+
+.shot { margin: 0; }
+.shot.wide { grid-column: 1 / -1; }
+
+.shot a {
+  display: block; background: #fff; border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.shot a:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--brand-mid); }
+
+/* `max-height` recorta las capturas más altas para que ninguna domine la
+   grilla; el enlace lleva a la imagen completa. */
+.shot img {
+  display: block; width: 100%; height: auto; max-height: 460px;
+  object-fit: cover; object-position: top left;
+}
+
+.shot figcaption {
+  margin-top: .7rem; font-size: .9rem; line-height: 1.55; color: var(--ink-soft);
+}
+.shot figcaption strong { color: var(--ink); }
+
 /* ---------- Flujo (cómo funciona) ---------- */
 
 .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .9rem; margin-bottom: 2.2rem; }

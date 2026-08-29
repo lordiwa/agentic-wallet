@@ -7,12 +7,23 @@
   <meta name="description" content="{{ page.description | default: site.description | strip_newlines }}">
   <meta name="theme-color" content="#0f4c46">
 
+  {%- assign og_image = page.og_image | default: site.og_image -%}
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="{{ site.title }}">
   <meta property="og:title" content="{% if page.title and page.url != '/' %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}">
   <meta property="og:description" content="{{ page.description | default: site.description | strip_newlines }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
   <meta property="og:locale" content="es_ES">
+  {%- if og_image %}
+  <meta property="og:image" content="{{ og_image | absolute_url }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Agentic Wallet — tu plata, en tus propias manos. Copiloto financiero local-first.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ og_image | absolute_url }}">
+  {%- else %}
   <meta name="twitter:card" content="summary">
+  {%- endif %}
 
   <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
   <link rel="icon" href="{{ '/assets/img/favicon.svg' | relative_url }}" type="image/svg+xml">

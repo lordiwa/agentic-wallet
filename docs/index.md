@@ -36,7 +36,7 @@ description: >-
         <p class="bubble you">¿Me alcanza para la cuota de la moto?</p>
         <p class="bubble wallet">Sí. Después de reservar tu colchón te queda margen, y tu próximo sueldo entra en <span class="num">6 días</span>.</p>
       </div>
-      <p class="hero-card-foot">Ejemplo ilustrativo. Los números salen de tu propio historial, guardado en tu máquina.</p>
+      <p class="hero-card-foot">Ejemplo ilustrativo con datos de demostración. <a href="#pantallas">Las capturas reales del tablero están más abajo.</a></p>
     </div>
   </div>
 </section>
@@ -80,6 +80,48 @@ description: >-
         <h3>Sin cuenta, sin suscripción al servicio</h3>
         <p>No hay registro, no hay plan mensual, no hay base de datos de usuarios. Es un programa que corrés vos, con tus datos, en tu equipo.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="pantallas">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Cómo se ve</p>
+      <h2>El tablero, tal cual sale</h2>
+      <p>Estas son capturas <strong>reales</strong> del tablero corriendo en una máquina, contra una base de datos de demostración. Sin retoques y sin maquillaje: hoy el proyecto pone el esfuerzo en que cada número sea correcto y verificable antes que en la presentación.</p>
+    </div>
+
+    <p class="shots-note"><strong>Todo lo que ves acá es inventado.</strong> La titular, los comercios y los montos son ficticios y no corresponden a ninguna persona real — el repositorio no incluye datos de nadie.</p>
+
+    <div class="shots">
+      <figure class="shot">
+        <a href="{{ '/assets/img/dashboard-resumen.png' | relative_url }}">
+          <img src="{{ '/assets/img/dashboard-resumen.png' | relative_url }}" width="620" height="1185" loading="lazy" decoding="async" alt="Tablero con las tarjetas de saldo, tarjeta de crédito, safe to spend, colchón, transferencias del mes y próximo pago, con datos de demostración.">
+        </a>
+        <figcaption>Saldo, estado de la tarjeta, cuánto podés gastar hoy, el colchón, las transferencias del mes y cuándo entra el próximo sueldo.</figcaption>
+      </figure>
+
+      <figure class="shot">
+        <a href="{{ '/assets/img/dashboard-gasto.png' | relative_url }}">
+          <img src="{{ '/assets/img/dashboard-gasto.png' | relative_url }}" width="420" height="521" loading="lazy" decoding="async" alt="Gráfico de barras de gasto por categoría del mes y línea de gasto diario contra el promedio, con datos de demostración.">
+        </a>
+        <figcaption>Gasto por categoría del mes — con <em>tus</em> categorías, las que definiste vos — y el gasto diario contra tu propio promedio.</figcaption>
+      </figure>
+
+      <figure class="shot wide">
+        <a href="{{ '/assets/img/dashboard-transacciones.png' | relative_url }}">
+          <img src="{{ '/assets/img/dashboard-transacciones.png' | relative_url }}" width="912" height="620" loading="lazy" decoding="async" alt="Bandeja de movimientos que necesitan revisión y tabla de transacciones con filtros por fecha, tipo, dirección y contraparte, con datos de demostración.">
+        </a>
+        <figcaption>Arriba, la bandeja de los movimientos que <strong>no</strong> entran en ningún total hasta que los mires. Abajo, la tabla completa con filtros por fecha, tipo, dirección y comercio.</figcaption>
+      </figure>
+
+      <figure class="shot wide">
+        <a href="{{ '/assets/img/dashboard-chat.png' | relative_url }}">
+          <img src="{{ '/assets/img/dashboard-chat.png' | relative_url }}" width="912" height="466" loading="lazy" decoding="async" alt="Chat del wallet respondiendo cuánto se gastó en comida en el mes y si alcanza para una cuota, con datos de demostración.">
+        </a>
+        <figcaption>El chat contesta sobre tu propio historial: cuánto va en comida, si te alcanza para algo, cuánto falta para el colchón. Y te dice cuántos movimientos dejó fuera por estar en revisión.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
