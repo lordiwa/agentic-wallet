@@ -5,6 +5,14 @@
 > del commit en el que se escribió. Las que no pude verificar están marcadas
 > como tales.
 
+> **Seguimiento — leer antes de actuar sobre el §4 o el §7:**
+> [`investigacion-riesgos.md`](investigacion-riesgos.md) mide la propuesta contra
+> el ledger real. Corrige dos cosas de este documento: **`review_reason` no es
+> una columna**, así que la consulta de la "Fase 0" (§7) no se puede correr tal
+> como está escrita; y el guarda determinista del §4.5.3, formulado como "más de
+> un monto en la región leída", produce 100 % de falsos positivos en las ramas
+> ancladas al cuerpo. La respuesta al número que el §4.5.1 pedía es **0**.
+
 ## Respuesta corta
 
 **El wallet ya es casi todo scripts.** De los 15 procesos que tiene, **11 son
