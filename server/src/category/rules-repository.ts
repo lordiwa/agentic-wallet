@@ -153,6 +153,14 @@ export interface UncategorizedCounterparty {
  * The counterparties currently landing in `'otros'`, ranked by money spent --
  * i.e. exactly the list worth asking a human about, biggest impact first.
  * Only outgoing rows are considered: income has no merchant to classify.
+ *
+ * `total` es un total, y por eso se filtra igual que cualquier otro:
+ * `needs_review` afuera (su monto no esta confirmado — invariante del proyecto:
+ * una fila en revision no suma en ningun total) e `is_internal` afuera (una
+ * transferencia a una cuenta propia del usuario no es un comercio que
+ * categorizar). Sin esos dos filtros, `--suggest` ordenaba la lista por un
+ * monto que el motor no da por bueno y podia poner una fila dudosa primera,
+ * mandando al agente a preguntarle al humano por un "comercio" fantasma.
  */
 export function topUncategorizedCounterparties(
   db: Database.Database,
@@ -166,6 +174,8 @@ export function topUncategorizedCounterparties(
           AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
           AND (category IS NULL OR category = '' OR category = 'otros')
           AND is_reversed = 0
+          AND is_internal = 0
+          AND needs_review = 0
         GROUP BY counterparty
         ORDER BY total DESC, count DESC
         LIMIT ?`

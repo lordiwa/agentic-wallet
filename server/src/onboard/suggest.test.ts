@@ -203,4 +203,16 @@ describe("buildSuggestions", () => {
     const result = buildSuggestions(db);
     expect(result.uncategorized.map((u) => u.counterparty)).toEqual(["TIENDA GRANDE", "TIENDA CHICA"]);
   });
+
+  // `total` es un total, y un total no puede incluir una fila cuyo monto el
+  // motor no da por bueno. Ademas de inflar la cifra, el orden es "por plata
+  // gastada": una fila dudosa cara se colaba PRIMERA y el agente terminaba
+  // preguntandole al humano por un comercio fantasma.
+  it("deja afuera las filas en needs_review y las transferencias internas", () => {
+    insertTransaction(db, tx({ counterparty: "TIENDA REAL", amount: 5, category: "otros" }));
+    insertTransaction(db, tx({ counterparty: "MONTO DUDOSO", amount: 999, category: "otros", needs_review: true }));
+    insertTransaction(db, tx({ counterparty: "CUENTA PROPIA", amount: 800, category: "otros", is_internal: true }));
+
+    expect(buildSuggestions(db).uncategorized).toEqual([{ counterparty: "TIENDA REAL", count: 1, total: 5 }]);
+  });
 });

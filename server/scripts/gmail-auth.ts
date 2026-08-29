@@ -86,8 +86,8 @@ async function main(): Promise<void> {
     console.error(
       'Faltan GMAIL_OAUTH_CLIENT_ID / GMAIL_OAUTH_CLIENT_SECRET en .env.\n' +
         'Crea un cliente OAuth2 tipo "Desktop app" en Google Cloud Console y completa ' +
-        "ambas variables antes de correr este script (ver README.md, seccion " +
-        '"Autenticacion Gmail").'
+        "ambas variables antes de correr este script (el paso a paso esta en " +
+        "docs/conectar-gmail.md)."
     );
     process.exitCode = 1;
     return;

@@ -32,9 +32,14 @@ Reglas de operación:
    preguntale al usuario, no lo rellenes.
 4. **Confirmá antes de escribir.** El ciclo es: `--suggest` → mostrar la
    propuesta al usuario → él corrige → `--set` con el JSON confirmado.
-5. **La salida de cada subcomando es JSON parseable en stdout.** Los logs de
-   telemetría van silenciados en el CLI; los errores van a stderr con
-   `{"ok": false, "error": "..."}` y exit code 1.
+5. **Todo sale por stdout, siempre como JSON.** También los errores: son
+   `{"ok": false, "error": "..."}` en **stdout** con exit code 1 (stderr queda
+   para los spans de telemetría, que en el CLI van silenciados). Un solo stream
+   que parsear, tanto si salió bien como si salió mal.
+
+   > Ojo con `npm run`: cuando el exit code es 1, npm agrega su propio bloque
+   > `npm error ...` **después** del JSON. Leé la primera línea `{...}`, no el
+   > buffer entero.
 
 Subcomandos:
 
@@ -47,7 +52,9 @@ Subcomandos:
 | `npm run onboard -- --set '<json>'` | Escribe campos de `strategy_config` |
 | `npm run onboard -- --rule <patrón>=<categoría>` | Agrega una regla de comercio |
 | `npm run onboard -- --learn-rules` | Deriva reglas del historial que ya clasificaste |
-| `npm run onboard -- --backfill` | Aplica las reglas al historial ya sincronizado |
+| `npm run onboard -- --backfill` | Categoriza el historial que **todavía no tiene** categoría |
+| `npm run onboard -- --reclassify` | **Repisa** categorías ya asignadas y marca las internas |
+| `npm run onboard -- --heal-counterparties` | Relee el correo de las filas sin comercio (necesita Gmail) |
 
 ---
 
@@ -134,21 +141,47 @@ borrar correo. Se revoca cuando quieras desde
 
 ## Paso 4 — Primer sync
 
-Trae el historial. Puede tardar: son varios minutos si hay meses de correos.
+Trae el historial. **No entra en una sola llamada:** el sync se drena por lotes
+(50 correos o 45 segundos, lo que llegue primero) y guarda un checkpoint entre
+lote y lote. Un buzón con años de historial necesita decenas de llamadas.
+
+Cada respuesta trae `progress`:
+
+```json
+{ "processed": 340, "total": 1717, "remaining": 1377, "complete": false }
+```
+
+**Volvé a llamar mientras `complete` sea `false`.** Lo ya procesado queda
+guardado; nada se reprocesa.
+
+Si estás por MCP —el camino corto— es la tool `sync`:
+
+```
+sync {}          → repetir hasta que progress.complete sea true
+```
+
+Por HTTP hace falta levantar el server:
 
 ```bash
+npm run build     # la primera vez: el server sirve la SPA ya compilada
 npm run dev
-# en otra terminal:
+# en otra terminal, una vez por lote:
 curl -X POST localhost:3000/api/sync
 ```
 
 O desde la web (`http://localhost:3000`), botón **Sincronizar**.
 
-Verificá que entraron transacciones:
+Verificá cómo va:
 
 ```bash
-npm run onboard -- --status   # el paso `sync` debe estar en done: true
+npm run onboard -- --status
 ```
+
+El paso `sync` pasa a `done: true` recién cuando **no queda backlog**. Mientras
+tanto trae un `progress` propio, para poder decirle al usuario "procesando
+340 de 1717" en vez de dejarlo mirando una barra muda. No sigas al paso 5 con
+el sync a medias: `--suggest` leería medio historial y propondría un perfil
+construido sobre él.
 
 Si el sync trae **cero** transacciones, casi siempre es una de dos cosas:
 
@@ -272,6 +305,51 @@ npm run onboard -- --backfill
 
 Las filas que ya tenían categoría no se tocan, así que correrlo dos veces es
 inofensivo.
+
+#### `--backfill` no alcanza cuando la fila ya tenía categoría
+
+Los dos comandos hacen cosas distintas y es fácil elegir el que no era:
+
+| | `--backfill` | `--reclassify` |
+|---|---|---|
+| Qué toca | sólo filas **sin** categoría | filas **con** categoría, las recalcula |
+| Marca internas | no | sí, contra el `titular` |
+| Idempotente | sí | sí (recalcula, no acumula) |
+| Cuándo | después de cargar reglas nuevas | cuando **cambió el insumo** del cálculo |
+
+"Cambió el insumo" es, en la práctica, dos casos: **acabás de configurar el
+`titular`** (hasta ese momento las transferencias a cuentas propias del usuario
+se contaban como gasto y le inflaban los totales), o **agregaste una regla que
+pisa una clasificación vieja** — una fila que ya decía `otros` es una fila "con
+categoría", y `--backfill` la va a saltear para siempre.
+
+```bash
+npm run onboard -- --reclassify
+# → {"ok": true, "markedInternal": 12, "recategorized": 87}
+```
+
+El orden que funciona al terminar de cargar reglas es: `--set` (titular) →
+`--backfill` → `--reclassify`.
+
+Por MCP los dos viven en la misma tool: `apply_rules {}` es el `--backfill`, y
+`apply_rules {"reclassify": true}` corre los dos, en ese orden.
+
+#### Filas que quedaron sin nombre de comercio
+
+Si el historial entró con un parser más viejo (o migrado de otra base), puede
+haber filas con `counterparty` vacío. No tienen contra qué enganchar una regla:
+caen en `otros` y ninguna `--rule` las saca de ahí. `--heal-counterparties`
+relee en Gmail el correo original de cada una y le devuelve el nombre:
+
+```bash
+npm run onboard -- --heal-counterparties
+# → {"ok": true, "healed": 23, ..., "next": "npm run onboard -- --reclassify"}
+```
+
+Sólo escribe la contraparte, **nunca el monto**, y sólo sobre filas que la
+tienen vacía. No categoriza nada: por eso el `next` manda a `--reclassify`.
+Necesita las credenciales de Gmail; sin ellas responde
+`{"ok": false, "error": "gmail_not_configured"}` y no toca nada.
 
 ### 5c. Colchón, sueldo y topes
 

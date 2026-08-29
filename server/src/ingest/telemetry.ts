@@ -23,10 +23,29 @@ export interface SpanContext {
   span_id: string;
 }
 
+/**
+ * Suppresses the `info` lines when `WALLET_TELEMETRY_SILENT` is set — la misma
+ * regla que `db/telemetry.ts`, y por el mismo motivo, pero aqui importa mas:
+ * de este modulo cuelgan `ingest/pipeline`, `category/backfill` y
+ * `category/reclassify`, que son justo lo que corren las tools MCP `sync`,
+ * `apply_rules` y `heal_counterparties`. En el server MCP **stdout es el canal
+ * JSON-RPC**: cada linea de span que salia por ahi entraba al parser del
+ * cliente y era rechazada como mensaje invalido. Se lee por llamada, no al
+ * importar, porque los entrypoints ponen la variable despues de resolver el
+ * grafo de imports.
+ *
+ * `error` nunca se silencia — va a stderr, que es un stream aparte y no puede
+ * corromper ni el resultado JSON de un CLI ni el protocolo.
+ */
+function silenced(): boolean {
+  const raw = process.env.WALLET_TELEMETRY_SILENT;
+  return raw === "1" || raw === "true";
+}
+
 function emit(level: "info" | "error", event: string, fields: Record<string, unknown>): void {
   const line = JSON.stringify({ level, event, ...fields });
   if (level === "error") console.error(line);
-  else console.log(line);
+  else if (!silenced()) console.log(line);
 }
 
 /**

@@ -49014,10 +49014,14 @@ function categorize(tx, rules = []) {
 
 // src/ingest/telemetry.ts
 var import_node_crypto = require("node:crypto");
+function silenced() {
+  const raw = process.env.WALLET_TELEMETRY_SILENT;
+  return raw === "1" || raw === "true";
+}
 function emit(level, event, fields) {
   const line = JSON.stringify({ level, event, ...fields });
   if (level === "error") console.error(line);
-  else console.log(line);
+  else if (!silenced()) console.log(line);
 }
 async function withSpan(name, attributes, fn) {
   const span = { trace_id: (0, import_node_crypto.randomUUID)(), span_id: (0, import_node_crypto.randomUUID)() };
@@ -49063,6 +49067,8 @@ function topUncategorizedCounterparties(db, limit = 15) {
           AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
           AND (category IS NULL OR category = '' OR category = 'otros')
           AND is_reversed = 0
+          AND is_internal = 0
+          AND needs_review = 0
         GROUP BY counterparty
         ORDER BY total DESC, count DESC
         LIMIT ?`
@@ -49343,14 +49349,14 @@ var DEFAULT_STRATEGY_CONFIG = {
 
 // src/db/telemetry.ts
 var import_node_crypto2 = require("node:crypto");
-function silenced() {
+function silenced2() {
   const raw = process.env.WALLET_TELEMETRY_SILENT;
   return raw === "1" || raw === "true";
 }
 function emit2(level, event, fields) {
   const line = JSON.stringify({ level, event, ...fields });
   if (level === "error") console.error(line);
-  else if (!silenced()) console.log(line);
+  else if (!silenced2()) console.log(line);
 }
 function withSpanSync(name, attributes, fn) {
   const span = { trace_id: (0, import_node_crypto2.randomUUID)(), span_id: (0, import_node_crypto2.randomUUID)() };
