@@ -24,10 +24,11 @@ import { loadConfig, repoRoot } from "../config.js";
 import { openDb } from "../db/open.js";
 import { CATEGORIES } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
+import { reclassifyTransactions } from "../category/reclassify.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
 import { buildOverview } from "../api/routes.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
-import { setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
+import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
 import { onboardStatus, type OnboardStatus } from "../onboard/status.js";
 import { buildSuggestions } from "../onboard/suggest.js";
 import { buildProductionSyncRunner } from "../sync/index.js";
@@ -406,10 +407,25 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       description:
         "Categoriza los movimientos ya sincronizados que todavia no tienen categoria, usando las reglas " +
         "vigentes. Es el equivalente de `npm run onboard -- --backfill`. Idempotente: nunca repisa una " +
-        "categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo.",
-      inputSchema: {},
+        "categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo. " +
+        "Con `reclassify: true` ademas RECALCULA las categorias ya asignadas y marca las transferencias a " +
+        "cuentas del titular como internas: usalo cuando cambio el insumo del calculo (se configuro el " +
+        "titular, se agrego una regla) y el historial quedo con categorias viejas. Nunca desmarca una " +
+        "interna ni toca montos.",
+      inputSchema: {
+        reclassify: z
+          .boolean()
+          .optional()
+          .describe("Ademas de categorizar lo que falta, repisa lo ya asignado. Default false."),
+      },
     },
-    async () => json({ ok: true, updated: await backfillCategories(deps.getDb()) })
+    async ({ reclassify }) => {
+      const db = deps.getDb();
+      const updated = await backfillCategories(db);
+      if (!reclassify) return json({ ok: true, updated });
+      const result = await reclassifyTransactions(db, { titular: getStrategyConfig(db).titular });
+      return json({ ok: true, updated, ...result });
+    }
   );
 
   return server;

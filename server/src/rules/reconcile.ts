@@ -281,11 +281,76 @@ function normalizeName(name: string): string {
 }
 
 /**
+ * Cuantos tokens del titular tienen que aparecer en la contraparte para darlas
+ * por la misma persona cuando la escritura no es identica.
+ *
+ * Tres, no dos: con el patron de nombre latinoamericano (dos nombres + dos
+ * apellidos) dos tokens compartidos todavia pueden ser dos personas de la
+ * misma familia -- un "GONZALO PATRICIO <apellido> <apellido>" comparte
+ * apellido con el titular y NO es una interna. Tres ya es identidad en la
+ * practica. Menos de tres nunca se marca aunque "suene" parecido: marcar de
+ * mas convierte un gasto real en una interna y lo borra de los totales.
+ */
+const INTERNAL_NAME_TOKEN_MATCH = 3;
+
+/** Los tokens de un nombre, sin puntuacion: el banco (y las anotaciones a mano
+ * del historial migrado) agregan parentesis y puntos suspensivos alrededor del
+ * nombre -- "JOSE RAFAEL PEREZ (Otro Banco)" -- que no son parte de el. */
+function nameTokens(name: string): Set<string> {
+  return new Set(
+    normalizeName(name)
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((token) => token !== "")
+  );
+}
+
+/**
+ * Si una contraparte y el titular son la misma persona.
+ *
+ * No alcanza con comparar los strings normalizados: el banco no escribe el
+ * nombre en un orden estable. El titular configurado puede ser
+ * "<apellidos> <nombres>" y el mismo correo del banco escribir
+ * "<nombres> <apellidos>", o agregar entre parentesis a que banco fue la
+ * transferencia. Comparar por conjunto de tokens cubre las tres formas sin
+ * inventar equivalencias: o los tokens son exactamente los mismos, o
+ * comparten al menos `INTERNAL_NAME_TOKEN_MATCH`.
+ */
+export function isSameHolder(counterparty: string, titular: string): boolean {
+  const cpTokens = nameTokens(counterparty);
+  const titularTokens = nameTokens(titular);
+  if (cpTokens.size === 0 || titularTokens.size === 0) return false;
+
+  let shared = 0;
+  for (const token of titularTokens) if (cpTokens.has(token)) shared += 1;
+
+  // Misma escritura (mismo conjunto exacto): vale aunque el titular tenga uno
+  // o dos tokens, que es el caso que cubria la comparacion por igualdad.
+  if (shared === titularTokens.size && shared === cpTokens.size) return true;
+  return shared >= INTERNAL_NAME_TOKEN_MATCH;
+}
+
+/**
+ * Si una transaccion ya parseada es un movimiento entre cuentas propias.
+ * Compartida entre `markInternalTransfers` (durante el sync) y el
+ * re-etiquetado del historial ya sincronizado (`category/reclassify.ts`), para
+ * que ambos caminos usen exactamente el mismo criterio.
+ */
+export function isInternalTransfer(
+  tx: { type: string; counterparty?: string | null },
+  titular: string | null
+): boolean {
+  if (titular === null || titular.trim() === "") return false;
+  if (tx.type !== "transferencia" || !tx.counterparty) return false;
+  return isSameHolder(tx.counterparty, titular);
+}
+
+/**
  * Rule 3 (spec 5.3.3 / AC3): a transferencia whose counterparty
  * (Contacto/Beneficiario, already extracted by F1-03) is the account
  * holder itself is an internal movement, not spend — mark
  * `is_internal = true` so it's excluded from the expense totals downstream.
- * Comparison is accent/case/whitespace tolerant.
+ * Comparison is accent/case/whitespace/orden tolerante — ver `isSameHolder`.
  *
  * Sin titular configurado (`null` o vacio) la regla no se aplica: no hay
  * nombre contra el cual comparar, y marcar por parecido seria inventar. Las
@@ -297,12 +362,7 @@ export function markInternalTransfers(
   { titular }: MarkInternalTransfersOptions
 ): ReconcilableTransaction[] {
   if (titular === null || titular.trim() === "") return transactions;
-  const normalizedTitular = normalizeName(titular);
-  return transactions.map((tx) => {
-    if (tx.type !== "transferencia" || !tx.counterparty) return tx;
-    if (normalizeName(tx.counterparty) !== normalizedTitular) return tx;
-    return { ...tx, is_internal: true };
-  });
+  return transactions.map((tx) => (isInternalTransfer(tx, titular) ? { ...tx, is_internal: true } : tx));
 }
 
 export interface ReconcileOptions {

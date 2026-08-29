@@ -9,6 +9,8 @@
  * duplicated reader rather than reaching into another ticket's file).
  */
 
+import { cleanFieldValue } from "../parser/html-text.js";
+
 const LABELED_AMOUNT_RE = /Monto\s*:\s*(?:USD\s*|\$\s*)([0-9]+\.[0-9]{2})\b/i;
 
 // TASK-041: real "Reverso Consumo Tarjeta de Débito" emails carry the amount
@@ -26,7 +28,7 @@ const FIELD_STOP_WORDS = "(?:Fecha|Hora|Referencia|Establecimiento|Monto)\\s*:";
 function extractField(body: string, label: string): string | null {
   const re = new RegExp(`${label}\\s*:\\s*(.+?)(?=\\s+${FIELD_STOP_WORDS}|\\n|$)`, "i");
   const match = body.match(re);
-  return match ? match[1].trim() : null;
+  return match ? cleanFieldValue(match[1]) : null;
 }
 
 export interface ExtractedReversoFields {

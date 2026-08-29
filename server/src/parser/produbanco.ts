@@ -1,3 +1,4 @@
+import { cleanFieldValue } from "./html-text.js";
 import type { BankEmailParser, Direction, InboundEmail, ParseResult, TransactionType } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -65,11 +66,17 @@ function extractLabeledAmount(text: string, label: string): number | null {
 const FIELD_STOP_WORDS =
   "(?:Banco Destino|Cuenta Destino|Cuenta\\s*d[eé]bito|Fecha|Hora|Referencia|Establecimiento|Contacto|Beneficiario|Monto|Cuenta)\\s*:";
 
-/** Extracts the value of a "Label: value" field from a body, stopping before the next known field label, a newline, or the end of the string. */
+/** Extracts the value of a "Label: value" field from a body, stopping before
+ * the next known field label, a newline, or the end of the string.
+ *
+ * El valor pasa por `cleanFieldValue` porque no todo cuerpo llega ya en texto
+ * plano: los que se reconstruyen desde un respaldo, o los que el cliente de
+ * Gmail no pudo desarmar, traen HTML y el marcado terminaba guardado dentro de
+ * `counterparty` (ver `html-text.ts`). */
 function extractField(body: string, label: string): string | null {
   const re = new RegExp(`${label}\\s*:\\s*(.+?)(?=\\s+${FIELD_STOP_WORDS}|\\n|$)`, "i");
   const match = body.match(re);
-  return match ? match[1].trim() : null;
+  return match ? cleanFieldValue(match[1]) : null;
 }
 
 /** Extracts the trailing masked-account token from a "Cuenta débito: NAME XXXXXX1234" field. */

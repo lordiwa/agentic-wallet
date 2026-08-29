@@ -17,6 +17,7 @@
  *   npm run onboard -- --set '<json>'    write strategy_config fields
  *   npm run onboard -- --rule <pat>=<cat>  add a merchant category rule
  *   npm run onboard -- --backfill        apply the rules to already-synced rows
+ *   npm run onboard -- --reclassify      recompute categories/internals already set
  *
  * `--set` takes the same shape `--suggest` emits, so the agent's confirm loop
  * is "show suggestion -> user edits -> pass it straight back".
@@ -26,10 +27,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import { openDb } from "../db/open.js";
-import { setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
+import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
 import { CATEGORIES, type Category } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
+import { reclassifyTransactions } from "../category/reclassify.js";
 import { buildSuggestions } from "./suggest.js";
 import { onboardStatus } from "./status.js";
 
@@ -206,6 +208,19 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
         return 0;
       }
 
+      case "--reclassify": {
+        if (!db) {
+          deps.log(JSON.stringify({ ok: false, error: "No hay base de datos todavia. Corre un sync primero." }));
+          return 1;
+        }
+        // A diferencia de --backfill, esta si repisa: es para cuando cambio el
+        // insumo del calculo (llego el titular, se agrego una regla) y la
+        // categoria guardada quedo vieja. Ver category/reclassify.ts.
+        const result = await reclassifyTransactions(db, { titular: getStrategyConfig(db).titular });
+        deps.log(JSON.stringify({ ok: true, ...result }, null, 2));
+        return 0;
+      }
+
       case "--rule": {
         if (!db) {
           deps.log(JSON.stringify({ ok: false, error: "No hay base de datos todavia. Corre un sync primero." }));
@@ -230,6 +245,7 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
             "  npm run onboard -- --set '<json>'      escribe campos de strategy_config",
             "  npm run onboard -- --rule <pat>=<cat>  agrega una regla de comercio",
             "  npm run onboard -- --backfill          aplica las reglas al historial ya sincronizado",
+            "  npm run onboard -- --reclassify        recalcula categorias e internas ya asignadas (si repisa)",
           ].join("\n")
         );
         return 1;

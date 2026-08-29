@@ -334,6 +334,33 @@ describe("markInternalTransfers", () => {
     expect(result.is_internal).toBeFalsy();
   });
 
+  // El banco no escribe el nombre en un orden estable, y el titular del perfil
+  // se guarda como lo escribio el usuario. Comparar los strings tal cual
+  // dejaba sin marcar la mayoria de las internas reales.
+  it.each([
+    ["orden invertido", "ANA MARIA PEREZ GOMEZ"],
+    ["orden invertido y un apellido de menos", "ANA MARIA PEREZ"],
+    ["con el banco destino anotado entre parentesis", "ANA MARIA PEREZ GOMEZ (Otro Banco)"],
+  ])("marks the same person written %s", (_caso, counterparty) => {
+    const txs = [transferencia({ counterparty })];
+    const [result] = markInternalTransfers(txs, { titular: TITULAR });
+
+    expect(result.is_internal).toBe(true);
+  });
+
+  // El contraejemplo que fija el umbral: un familiar comparte apellidos con el
+  // titular y sus transferencias SI son gasto. Marcarlas de mas las borraria
+  // de los totales.
+  it.each([
+    ["un pariente con los mismos apellidos", "JORGE LUIS PEREZ GOMEZ"],
+    ["alguien que comparte solo el nombre de pila", "ANA MARIA TORRES CEVALLOS"],
+  ])("does not mark %s", (_caso, counterparty) => {
+    const txs = [transferencia({ counterparty })];
+    const [result] = markInternalTransfers(txs, { titular: TITULAR });
+
+    expect(result.is_internal).toBeFalsy();
+  });
+
   it("only applies to type 'transferencia'", () => {
     const txs = [consumo({ counterparty: TITULAR })];
     const [result] = markInternalTransfers(txs, { titular: TITULAR });

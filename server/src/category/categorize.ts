@@ -101,7 +101,17 @@ export interface EstablishmentRule {
   pattern: string;
 }
 
-function matchEstablishment(
+/**
+ * La categoria que una regla de comercio del usuario le asigna a esta
+ * contraparte, o `null` si ninguna matchea.
+ *
+ * Exportada aparte de `categorize` porque hay una diferencia que importa: esto
+ * es una afirmacion EXPLICITA del usuario sobre un comercio, mientras que el
+ * resto de `categorize` son fallbacks estructurales por `type`. Quien
+ * re-etiqueta historial ya clasificado (`reclassify.ts`) necesita distinguir
+ * las dos cosas para saber cuando pisar una categoria que ya existia.
+ */
+export function matchEstablishment(
   counterparty: string | null | undefined,
   rules: readonly EstablishmentRule[]
 ): Category | null {

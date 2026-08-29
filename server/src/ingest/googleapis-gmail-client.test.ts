@@ -94,4 +94,69 @@ describe("createGoogleapisGmailClient", () => {
     expect(message.subject).toBe("Consumo tarjeta de débito por USD 9.42");
     expect(message.body).toBe("Hola desde Produbanco, USD 9.42");
   });
+
+  it("encuentra el text/plain anidado dentro de un multipart, no solo el del primer nivel", async () => {
+    // Produbanco alterna estructuras: con adjunto o imagen embebida el
+    // text/plain cuelga de un multipart/alternative dentro de un
+    // multipart/mixed. Mirar solo el primer nivel caia al body crudo de la
+    // raiz (HTML) en esos correos y no en los demas.
+    getMock.mockReset();
+    const rawBody = Buffer.from("Contacto: ANA PEREZ").toString("base64url");
+    getMock.mockResolvedValueOnce({
+      data: {
+        id: "msg-2",
+        threadId: "thread-2",
+        internalDate: "1751328000000",
+        payload: {
+          mimeType: "multipart/mixed",
+          headers: [{ name: "Subject", value: "Transferencia enviada" }],
+          parts: [
+            {
+              mimeType: "multipart/alternative",
+              parts: [{ mimeType: "text/plain", body: { data: rawBody } }],
+            },
+          ],
+        },
+      },
+    });
+    const { createGoogleapisGmailClient } = await import("./googleapis-gmail-client.js");
+
+    const client = await createGoogleapisGmailClient({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-token",
+    });
+    const message = await client.getMessage("msg-2");
+
+    expect(message.body).toBe("Contacto: ANA PEREZ");
+  });
+
+  it("convierte a texto el correo que solo trae text/html en vez de devolver el marcado", async () => {
+    // El fallo que dejaba contrapartes como
+    // "</STRONG><SPAN>&nbsp;</SPAN>NOMBRE<BR><STRONG>Banco" en la base.
+    getMock.mockReset();
+    const html = "<STRONG>Contacto:</STRONG><SPAN>&nbsp;</SPAN>ANA PEREZ<BR><STRONG>Banco Destino:</STRONG> Produbanco";
+    getMock.mockResolvedValueOnce({
+      data: {
+        id: "msg-3",
+        threadId: "thread-3",
+        internalDate: "1751328000000",
+        payload: {
+          mimeType: "multipart/alternative",
+          headers: [{ name: "Subject", value: "Transferencia enviada" }],
+          parts: [{ mimeType: "text/html", body: { data: Buffer.from(html).toString("base64url") } }],
+        },
+      },
+    });
+    const { createGoogleapisGmailClient } = await import("./googleapis-gmail-client.js");
+
+    const client = await createGoogleapisGmailClient({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-token",
+    });
+    const message = await client.getMessage("msg-3");
+
+    expect(message.body).toBe("Contacto: ANA PEREZ\nBanco Destino: Produbanco");
+  });
 });

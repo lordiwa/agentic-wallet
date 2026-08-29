@@ -7,6 +7,7 @@
  * in-memory fake `GmailClient` used by pipeline.test.ts) never needs the
  * real package to resolve at module-load time.
  */
+import { htmlToText } from "../parser/html-text.js";
 import type { GmailClient, GmailMessage } from "./types.js";
 
 export interface GoogleapisGmailClientConfig {
@@ -20,15 +21,55 @@ export interface GoogleapisGmailClientConfig {
 // of 50" guidance.
 const PAGE_SIZE = 50;
 
-function decodeBody(payload: { mimeType?: string | null; parts?: unknown[]; body?: { data?: string | null } } | undefined): string {
+interface MessagePart {
+  mimeType?: string | null;
+  parts?: unknown[];
+  body?: { data?: string | null };
+}
+
+// Gmail returns body data base64url-encoded — decoding as plain base64
+// silently corrupts '-'/'_' characters (see the skill's Common Pitfalls).
+function decodePartData(part: MessagePart | undefined): string {
+  const data = part?.body?.data;
+  return data ? Buffer.from(data, "base64url").toString("utf-8") : "";
+}
+
+/** Primer descendiente con este mimeType, en profundidad. Produbanco no manda
+ * siempre la misma estructura: a veces el `text/plain` cuelga de la raíz y a
+ * veces de un `multipart/alternative` anidado dentro de un `multipart/mixed`
+ * (cuando el correo trae adjunto o imagen embebida). Mirar sólo el primer
+ * nivel encontraba el cuerpo en unos correos y no en otros. */
+function findPart(part: MessagePart | undefined, mimeType: string): MessagePart | undefined {
+  if (!part) return undefined;
+  if (part.mimeType === mimeType && part.body?.data) return part;
+  for (const child of (part.parts ?? []) as MessagePart[]) {
+    const found = findPart(child, mimeType);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * Cuerpo del correo como texto plano.
+ *
+ * Se prefiere `text/plain`; si el correo sólo trae `text/html` se convierte
+ * en vez de devolverlo crudo. Devolverlo crudo era un fallo silencioso: el
+ * parser aplicaba sus regex sobre el marcado y guardaba contrapartes como
+ * `"</STRONG><SPAN>&nbsp;</SPAN>NOMBRE<BR><STRONG>Banco"`, que además rompen
+ * el matching por substring de `category/categorize.ts`.
+ */
+function decodeBody(payload: MessagePart | undefined): string {
   if (!payload) return "";
-  const parts = (payload.parts ?? []) as Array<{ mimeType?: string | null; body?: { data?: string | null } }>;
-  const plainTextPart = parts.find((p) => p.mimeType === "text/plain");
-  const data = plainTextPart?.body?.data ?? payload.body?.data ?? "";
-  if (!data) return "";
-  // Gmail returns body data base64url-encoded — decoding as plain base64
-  // silently corrupts '-'/'_' characters (see the skill's Common Pitfalls).
-  return Buffer.from(data, "base64url").toString("utf-8");
+
+  const plain = decodePartData(findPart(payload, "text/plain"));
+  if (plain) return plain;
+
+  const html = decodePartData(findPart(payload, "text/html"));
+  if (html) return htmlToText(html);
+
+  // Correo de una sola parte: el mimeType vive en la raíz.
+  const root = decodePartData(payload);
+  return payload.mimeType === "text/html" ? htmlToText(root) : root;
 }
 
 /**

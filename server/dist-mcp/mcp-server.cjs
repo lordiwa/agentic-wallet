@@ -49091,9 +49091,6 @@ async function backfillCategories(db) {
   });
 }
 
-// src/api/routes.ts
-var import_express = __toESM(require_express2(), 1);
-
 // src/strategy/dates.ts
 var DEFAULT_UTC_OFFSET_HOURS = -5;
 var MS_PER_DAY = 24 * 60 * 60 * 1e3;
@@ -49136,6 +49133,166 @@ function daysBetween(from, to) {
 function addDays(date3, days) {
   return new Date(date3.getTime() + days * MS_PER_DAY);
 }
+
+// src/rules/reconcile.ts
+var REVERSAL_CROSS_MIDNIGHT_WINDOW_HOURS = 6;
+function isWithinReversalWindow(consumoTs, reversoTs) {
+  const consumoDay = localDayKey(consumoTs);
+  const reversoDay = localDayKey(reversoTs);
+  if (consumoDay === null || reversoDay === null) return false;
+  if (consumoDay === reversoDay) return true;
+  const diffMs = Math.abs(new Date(reversoTs).getTime() - new Date(consumoTs).getTime());
+  return diffMs <= REVERSAL_CROSS_MIDNIGHT_WINDOW_HOURS * 60 * 60 * 1e3;
+}
+function amountsEqual(a, b) {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+function accountsEqual(a, b) {
+  return (a ?? null) === (b ?? null);
+}
+function applyReversals(transactions, reversos) {
+  const result = transactions.map((tx) => ({ ...tx }));
+  for (const tx of result) {
+    if (localDayKey(tx.ts) === null) {
+      tx.needs_review = true;
+      tx.review_reason = tx.review_reason ?? "invalid_ts";
+    }
+  }
+  const reversalsApplied = [];
+  const ambiguous = [];
+  const unmatched = [];
+  for (const reverso of reversos) {
+    if (localDayKey(reverso.ts) === null) {
+      unmatched.push(reverso);
+      continue;
+    }
+    const candidates = result.filter(
+      (tx) => tx.type === "debito" && tx.direction === "out" && !tx.is_reversed && tx.amount !== null && amountsEqual(tx.amount, reverso.amount) && accountsEqual(tx.account, reverso.account) && isWithinReversalWindow(tx.ts, reverso.ts)
+    );
+    if (candidates.length === 0) {
+      unmatched.push(reverso);
+      continue;
+    }
+    if (candidates.length > 1) {
+      ambiguous.push(reverso);
+      for (const candidate of candidates) {
+        candidate.needs_review = true;
+        candidate.review_reason = candidate.review_reason ?? "ambiguous_reversal_match";
+      }
+      continue;
+    }
+    candidates[0].is_reversed = true;
+    reversalsApplied.push({ reverso, consumo: candidates[0] });
+  }
+  return { transactions: result, reversalsApplied, ambiguous, unmatched };
+}
+var ORDEN_SUBJECT_RE = /orden/i;
+function dedupeRetiros(transactions) {
+  const result = transactions.map((tx) => ({ ...tx }));
+  const groups = /* @__PURE__ */ new Map();
+  for (const tx of result) {
+    if (tx.type !== "retiro" || tx.amount === null) continue;
+    const dayKey = localDayKey(tx.ts);
+    if (dayKey === null) {
+      tx.needs_review = true;
+      tx.review_reason = tx.review_reason ?? "invalid_ts";
+      continue;
+    }
+    const key = `${dayKey}|${Math.round(tx.amount * 100)}`;
+    const group = groups.get(key);
+    if (group) group.push(tx);
+    else groups.set(key, [tx]);
+  }
+  const removed = [];
+  for (const group of groups.values()) {
+    if (group.length <= 1) continue;
+    const ordenTxs = group.filter((tx) => ORDEN_SUBJECT_RE.test(tx.raw_subject));
+    const cajeroTxs = group.filter((tx) => !ORDEN_SUBJECT_RE.test(tx.raw_subject));
+    if (ordenTxs.length === 1 && cajeroTxs.length === 1) {
+      removed.push(ordenTxs[0]);
+      continue;
+    }
+    for (const tx of group) {
+      tx.needs_review = true;
+      tx.review_reason = tx.review_reason ?? "ambiguous_retiro_group";
+    }
+  }
+  const removedSet = new Set(removed);
+  const kept = result.filter((tx) => !removedSet.has(tx));
+  return { transactions: kept, removed };
+}
+function normalizeName(name) {
+  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+}
+var INTERNAL_NAME_TOKEN_MATCH = 3;
+function nameTokens(name) {
+  return new Set(
+    normalizeName(name).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((token) => token !== "")
+  );
+}
+function isSameHolder(counterparty, titular) {
+  const cpTokens = nameTokens(counterparty);
+  const titularTokens = nameTokens(titular);
+  if (cpTokens.size === 0 || titularTokens.size === 0) return false;
+  let shared = 0;
+  for (const token of titularTokens) if (cpTokens.has(token)) shared += 1;
+  if (shared === titularTokens.size && shared === cpTokens.size) return true;
+  return shared >= INTERNAL_NAME_TOKEN_MATCH;
+}
+function isInternalTransfer(tx, titular) {
+  if (titular === null || titular.trim() === "") return false;
+  if (tx.type !== "transferencia" || !tx.counterparty) return false;
+  return isSameHolder(tx.counterparty, titular);
+}
+function markInternalTransfers(transactions, { titular }) {
+  if (titular === null || titular.trim() === "") return transactions;
+  return transactions.map((tx) => isInternalTransfer(tx, titular) ? { ...tx, is_internal: true } : tx);
+}
+function reconcile(transactions, reversos, options) {
+  const {
+    transactions: afterReversals,
+    reversalsApplied,
+    ambiguous,
+    unmatched
+  } = applyReversals(transactions, reversos);
+  const { transactions: afterDedupe, removed: retirosRemoved } = dedupeRetiros(afterReversals);
+  const afterInternal = markInternalTransfers(afterDedupe, options);
+  return { transactions: afterInternal, reversalsApplied, ambiguous, unmatched, retirosRemoved };
+}
+
+// src/category/reclassify.ts
+async function reclassifyTransactions(db, { titular }) {
+  return withSpan("category.reclassify", {}, async () => {
+    const rows = db.prepare("SELECT id, type, counterparty, is_internal, category FROM transactions").all();
+    const rules = listCategoryRules(db);
+    const updateInternal = db.prepare("UPDATE transactions SET is_internal = 1 WHERE id = @id");
+    const updateCategory = db.prepare("UPDATE transactions SET category = @category WHERE id = @id");
+    let markedInternal = 0;
+    let recategorized = 0;
+    const runUpdates = db.transaction((toUpdate) => {
+      for (const row of toUpdate) {
+        const wasInternal = row.is_internal === 1;
+        const isInternal = wasInternal || isInternalTransfer(row, titular);
+        if (isInternal && !wasInternal) {
+          updateInternal.run({ id: row.id });
+          markedInternal += 1;
+        }
+        const storedIsSpecific = row.category !== null && row.category !== "" && row.category !== "otros";
+        const category = storedIsSpecific ? matchEstablishment(row.counterparty, rules) : categorize({ type: row.type, counterparty: row.counterparty, is_internal: isInternal }, rules);
+        if (category !== null && category !== row.category) {
+          updateCategory.run({ id: row.id, category });
+          recategorized += 1;
+        }
+      }
+    });
+    runUpdates(rows);
+    emitMetric("category.reclassify.summary", { markedInternal, recategorized });
+    return { markedInternal, recategorized };
+  });
+}
+
+// src/api/routes.ts
+var import_express = __toESM(require_express2(), 1);
 
 // src/strategy/money.ts
 function toCents(amount) {
@@ -49895,7 +50052,7 @@ function deriveAmountFromText(text) {
   const match = text.match(USD_AMOUNT_RE) ?? text.match(DOLLAR_AMOUNT_RE);
   return match ? Number(match[1]) : null;
 }
-function amountsEqual(a, b) {
+function amountsEqual2(a, b) {
   return Math.round(a * 100) === Math.round(b * 100);
 }
 function validateAmount(parserAmount, claudeAmountText) {
@@ -49903,7 +50060,35 @@ function validateAmount(parserAmount, claudeAmountText) {
   if (parserAmount === null || derived === null) {
     return { ok: false, derived };
   }
-  return { ok: amountsEqual(parserAmount, derived), derived };
+  return { ok: amountsEqual2(parserAmount, derived), derived };
+}
+
+// src/parser/html-text.ts
+var ENTITIES = [
+  [/&nbsp;/gi, " "],
+  [/&amp;/gi, "&"],
+  [/&lt;/gi, "<"],
+  [/&gt;/gi, ">"],
+  [/&quot;/gi, '"'],
+  [/&#39;|&apos;/gi, "'"]
+];
+var NON_TEXT_ELEMENTS = /<(script|style|head)\b[^>]*>[\s\S]*?<\/\1>/gi;
+var LINE_BREAK_ELEMENTS = /<\s*(?:br|\/p|\/div|\/tr|\/li|\/h[1-6])\b[^>]*>/gi;
+var ANY_TAG = /<[^>]*>/g;
+function decodeEntities(text) {
+  let out = text;
+  for (const [pattern, replacement] of ENTITIES) out = out.replace(pattern, replacement);
+  return out.replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code))).replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+function htmlToText(html) {
+  const withBreaks = html.replace(NON_TEXT_ELEMENTS, " ").replace(LINE_BREAK_ELEMENTS, "\n");
+  const text = decodeEntities(withBreaks.replace(ANY_TAG, " "));
+  return text.replace(/ /g, " ").replace(/[^\S\n]+/g, " ").replace(/ *\n[ \n]*/g, "\n").trim();
+}
+function cleanFieldValue(value) {
+  if (value === null || value === void 0) return null;
+  const cleaned = htmlToText(value).split("\n")[0].trim();
+  return cleaned === "" ? null : cleaned;
 }
 
 // src/ingest/reverso-extract.ts
@@ -49914,7 +50099,7 @@ var FIELD_STOP_WORDS = "(?:Fecha|Hora|Referencia|Establecimiento|Monto)\\s*:";
 function extractField(body, label) {
   const re = new RegExp(`${label}\\s*:\\s*(.+?)(?=\\s+${FIELD_STOP_WORDS}|\\n|$)`, "i");
   const match = body.match(re);
-  return match ? match[1].trim() : null;
+  return match ? cleanFieldValue(match[1]) : null;
 }
 function extractReversoFields(body) {
   const amountMatch = body.match(VALOR_AMOUNT_RE) ?? body.match(LABELED_AMOUNT_RE) ?? body.match(PROSE_AMOUNT_RE);
@@ -50038,7 +50223,7 @@ var FIELD_STOP_WORDS2 = "(?:Banco Destino|Cuenta Destino|Cuenta\\s*d[e\xE9]bito|
 function extractField2(body, label) {
   const re = new RegExp(`${label}\\s*:\\s*(.+?)(?=\\s+${FIELD_STOP_WORDS2}|\\n|$)`, "i");
   const match = body.match(re);
-  return match ? match[1].trim() : null;
+  return match ? cleanFieldValue(match[1]) : null;
 }
 function extractDebitAccount(body) {
   const field = extractField2(body, "Cuenta\\s*d[e\xE9]bito");
@@ -50220,117 +50405,6 @@ function parseEmail(email2) {
     return { kind: "ignored", reason: "no_matching_bank_parser" };
   }
   return parser.parse(email2);
-}
-
-// src/rules/reconcile.ts
-var REVERSAL_CROSS_MIDNIGHT_WINDOW_HOURS = 6;
-function isWithinReversalWindow(consumoTs, reversoTs) {
-  const consumoDay = localDayKey(consumoTs);
-  const reversoDay = localDayKey(reversoTs);
-  if (consumoDay === null || reversoDay === null) return false;
-  if (consumoDay === reversoDay) return true;
-  const diffMs = Math.abs(new Date(reversoTs).getTime() - new Date(consumoTs).getTime());
-  return diffMs <= REVERSAL_CROSS_MIDNIGHT_WINDOW_HOURS * 60 * 60 * 1e3;
-}
-function amountsEqual2(a, b) {
-  return Math.round(a * 100) === Math.round(b * 100);
-}
-function accountsEqual(a, b) {
-  return (a ?? null) === (b ?? null);
-}
-function applyReversals(transactions, reversos) {
-  const result = transactions.map((tx) => ({ ...tx }));
-  for (const tx of result) {
-    if (localDayKey(tx.ts) === null) {
-      tx.needs_review = true;
-      tx.review_reason = tx.review_reason ?? "invalid_ts";
-    }
-  }
-  const reversalsApplied = [];
-  const ambiguous = [];
-  const unmatched = [];
-  for (const reverso of reversos) {
-    if (localDayKey(reverso.ts) === null) {
-      unmatched.push(reverso);
-      continue;
-    }
-    const candidates = result.filter(
-      (tx) => tx.type === "debito" && tx.direction === "out" && !tx.is_reversed && tx.amount !== null && amountsEqual2(tx.amount, reverso.amount) && accountsEqual(tx.account, reverso.account) && isWithinReversalWindow(tx.ts, reverso.ts)
-    );
-    if (candidates.length === 0) {
-      unmatched.push(reverso);
-      continue;
-    }
-    if (candidates.length > 1) {
-      ambiguous.push(reverso);
-      for (const candidate of candidates) {
-        candidate.needs_review = true;
-        candidate.review_reason = candidate.review_reason ?? "ambiguous_reversal_match";
-      }
-      continue;
-    }
-    candidates[0].is_reversed = true;
-    reversalsApplied.push({ reverso, consumo: candidates[0] });
-  }
-  return { transactions: result, reversalsApplied, ambiguous, unmatched };
-}
-var ORDEN_SUBJECT_RE = /orden/i;
-function dedupeRetiros(transactions) {
-  const result = transactions.map((tx) => ({ ...tx }));
-  const groups = /* @__PURE__ */ new Map();
-  for (const tx of result) {
-    if (tx.type !== "retiro" || tx.amount === null) continue;
-    const dayKey = localDayKey(tx.ts);
-    if (dayKey === null) {
-      tx.needs_review = true;
-      tx.review_reason = tx.review_reason ?? "invalid_ts";
-      continue;
-    }
-    const key = `${dayKey}|${Math.round(tx.amount * 100)}`;
-    const group = groups.get(key);
-    if (group) group.push(tx);
-    else groups.set(key, [tx]);
-  }
-  const removed = [];
-  for (const group of groups.values()) {
-    if (group.length <= 1) continue;
-    const ordenTxs = group.filter((tx) => ORDEN_SUBJECT_RE.test(tx.raw_subject));
-    const cajeroTxs = group.filter((tx) => !ORDEN_SUBJECT_RE.test(tx.raw_subject));
-    if (ordenTxs.length === 1 && cajeroTxs.length === 1) {
-      removed.push(ordenTxs[0]);
-      continue;
-    }
-    for (const tx of group) {
-      tx.needs_review = true;
-      tx.review_reason = tx.review_reason ?? "ambiguous_retiro_group";
-    }
-  }
-  const removedSet = new Set(removed);
-  const kept = result.filter((tx) => !removedSet.has(tx));
-  return { transactions: kept, removed };
-}
-function normalizeName(name) {
-  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
-}
-function markInternalTransfers(transactions, { titular }) {
-  if (titular === null || titular.trim() === "") return transactions;
-  const normalizedTitular = normalizeName(titular);
-  return transactions.map((tx) => {
-    if (tx.type !== "transferencia" || !tx.counterparty) return tx;
-    if (normalizeName(tx.counterparty) !== normalizedTitular) return tx;
-    return { ...tx, is_internal: true };
-  });
-}
-function reconcile(transactions, reversos, options) {
-  const {
-    transactions: afterReversals,
-    reversalsApplied,
-    ambiguous,
-    unmatched
-  } = applyReversals(transactions, reversos);
-  const { transactions: afterDedupe, removed: retirosRemoved } = dedupeRetiros(afterReversals);
-  const afterInternal = markInternalTransfers(afterDedupe, options);
-  return { transactions: afterInternal, reversalsApplied, ambiguous, unmatched, retirosRemoved };
 }
 
 // src/statement/parse-statement.ts
@@ -50589,13 +50663,27 @@ async function runIngest(deps, options) {
 
 // src/ingest/googleapis-gmail-client.ts
 var PAGE_SIZE = 50;
+function decodePartData(part) {
+  const data = part?.body?.data;
+  return data ? Buffer.from(data, "base64url").toString("utf-8") : "";
+}
+function findPart(part, mimeType) {
+  if (!part) return void 0;
+  if (part.mimeType === mimeType && part.body?.data) return part;
+  for (const child of part.parts ?? []) {
+    const found = findPart(child, mimeType);
+    if (found) return found;
+  }
+  return void 0;
+}
 function decodeBody(payload) {
   if (!payload) return "";
-  const parts = payload.parts ?? [];
-  const plainTextPart = parts.find((p) => p.mimeType === "text/plain");
-  const data = plainTextPart?.body?.data ?? payload.body?.data ?? "";
-  if (!data) return "";
-  return Buffer.from(data, "base64url").toString("utf-8");
+  const plain = decodePartData(findPart(payload, "text/plain"));
+  if (plain) return plain;
+  const html = decodePartData(findPart(payload, "text/html"));
+  if (html) return htmlToText(html);
+  const root = decodePartData(payload);
+  return payload.mimeType === "text/html" ? htmlToText(root) : root;
 }
 async function createGoogleapisGmailClient(config2) {
   const { google } = await import("googleapis");
@@ -51032,10 +51120,18 @@ function createWalletMcpServer(deps) {
     "apply_rules",
     {
       title: "Aplicar las reglas al historial",
-      description: "Categoriza los movimientos ya sincronizados que todavia no tienen categoria, usando las reglas vigentes. Es el equivalente de `npm run onboard -- --backfill`. Idempotente: nunca repisa una categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo.",
-      inputSchema: {}
+      description: "Categoriza los movimientos ya sincronizados que todavia no tienen categoria, usando las reglas vigentes. Es el equivalente de `npm run onboard -- --backfill`. Idempotente: nunca repisa una categoria ya asignada, asi que correrlo dos veces no cambia nada. Devuelve cuantas filas actualizo. Con `reclassify: true` ademas RECALCULA las categorias ya asignadas y marca las transferencias a cuentas del titular como internas: usalo cuando cambio el insumo del calculo (se configuro el titular, se agrego una regla) y el historial quedo con categorias viejas. Nunca desmarca una interna ni toca montos.",
+      inputSchema: {
+        reclassify: external_exports.boolean().optional().describe("Ademas de categorizar lo que falta, repisa lo ya asignado. Default false.")
+      }
     },
-    async () => json({ ok: true, updated: await backfillCategories(deps.getDb()) })
+    async ({ reclassify }) => {
+      const db = deps.getDb();
+      const updated = await backfillCategories(db);
+      if (!reclassify) return json({ ok: true, updated });
+      const result = await reclassifyTransactions(db, { titular: getStrategyConfig(db).titular });
+      return json({ ok: true, updated, ...result });
+    }
   );
   return server;
 }
