@@ -38,6 +38,23 @@ describe("openDb", () => {
     }).not.toThrow();
   });
 
+  it("ancla una ruta relativa a la raiz del repo, no al cwd", () => {
+    // Sin esto cada entrypoint (server, onboard, MCP) corre con un cwd
+    // distinto y abre su propia base vacia con el mismo WALLET_DB_PATH.
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "agentic-wallet-db-test-"));
+    const repoRootDir = path.resolve(import.meta.dirname, "../../..");
+    const relative = path.relative(repoRootDir, path.join(tmpDir, "relativa.sqlite"));
+    const prevCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const db = openDb(relative);
+      db.close();
+      expect(existsSync(path.resolve(repoRootDir, relative))).toBe(true);
+    } finally {
+      process.chdir(prevCwd);
+    }
+  });
+
   it("falls back to WALLET_DB_PATH from config when no path is given", () => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), "agentic-wallet-db-test-"));
     const dbPath = path.join(tmpDir, "from-env.sqlite");
