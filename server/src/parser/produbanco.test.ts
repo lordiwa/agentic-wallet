@@ -186,20 +186,24 @@ describe("catalog: transferencia enviada", () => {
   });
 });
 
+// El nombre del servicio va pegado al `Transacción:` y ocupa el resto de la
+// linea ("Pago de Servicio Combos Tuenti"), no una sola palabra: el correo real
+// no trae ningun campo "Empresa". Ver docs/formato-correos-produbanco.md 4.5.
 describe("catalog: pago de servicio", () => {
   it("classifies Combos Tuenti as servicio/out", () => {
     const result = asTransaction(
       produbancoParser.parse(
         email({
           subject: "Pago de servicio por USD 12.50",
-          body: "Pago de Servicio Combos Tuenti realizado con éxito.",
+          body: "Transacción: Pago de Servicio Combos Tuenti\nMonto: USD 12.50\nCuenta Débito: XXXXXXXXXXXXX20924",
         })
       )
     );
     expect(result.type).toBe("servicio");
     expect(result.direction).toBe("out");
     expect(result.amount).toBe(12.5);
-    expect(result.counterparty).toBe("Tuenti");
+    expect(result.counterparty).toBe("Combos Tuenti");
+    expect(result.account).toBe("XXXXXXXXXXXXX20924");
   });
 
   it("classifies Combos Claro as servicio/out", () => {
@@ -207,21 +211,26 @@ describe("catalog: pago de servicio", () => {
       produbancoParser.parse(
         email({
           subject: "Pago de servicio por USD 8.00",
-          body: "Pago de Servicio Combos Claro realizado con éxito.",
+          body: "Transacción: Pago de Servicio Combos Claro\nMonto: USD 8.00\nDescripción: Combos Claro",
         })
       )
     );
-    expect(result.counterparty).toBe("Claro");
+    expect(result.counterparty).toBe("Combos Claro");
   });
 });
 
+// El remitente NO viene en un campo `De:`/`Remitente:` — esos campos no
+// existen en el correo real. Esta en la prosa del encabezado, y `Cuenta
+// Destino` es acá la cuenta del usuario. Ver docs/formato-correos-produbanco.md 4.4.
 describe("catalog: transferencia recibida", () => {
   it("classifies as recibido/in and reads the sender", () => {
     const result = asTransaction(
       produbancoParser.parse(
         email({
           subject: "Transferencia recibida desde Produbanco",
-          body: "De: Juan Perez Monto: $45.00 Cuenta: XXXXXX1111",
+          body:
+            "Te confirmamos que Juan Perez ha realizado una transferencia a tu cuenta en BANCO EJEMPLO, enviada desde Produbanco.\n" +
+            "Monto: $45.00\nCuenta Destino: XXXXXX1111",
         })
       )
     );
@@ -368,7 +377,10 @@ describe("review fix HIGH-2: recibido amount is anchored, not the first $ in the
       produbancoParser.parse(
         email({
           subject: "Transferencia recibida desde Produbanco",
-          body: "Tu saldo era $999.99. De: Juan Perez Monto: $45.00 Cuenta: XXXXXX1111",
+          body:
+            "Tu saldo era $999.99.\n" +
+            "Te confirmamos que Juan Perez ha realizado una transferencia a tu cuenta en BANCO EJEMPLO.\n" +
+            "Monto: $45.00\nCuenta Destino: XXXXXX1111",
         })
       )
     );
@@ -382,7 +394,10 @@ describe("review fix HIGH-2: recibido amount is anchored, not the first $ in the
       produbancoParser.parse(
         email({
           subject: "Transferencia recibida desde Produbanco",
-          body: "Tu saldo era $999.99. De: Juan Perez Cuenta: XXXXXX1111",
+          body:
+            "Tu saldo era $999.99.\n" +
+            "Te confirmamos que Juan Perez ha realizado una transferencia a tu cuenta en BANCO EJEMPLO.\n" +
+            "Cuenta Destino: XXXXXX1111",
         })
       )
     );

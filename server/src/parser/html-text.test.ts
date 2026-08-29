@@ -19,6 +19,24 @@ describe("htmlToText", () => {
     );
   });
 
+  // El mailer de Produbanco (MSHTML) envuelve el HTML a ~72 columnas y el
+  // salto del codigo fuente cae en cualquier parte. En HTML eso es espacio en
+  // blanco y nada mas: preservarlo partia los campos en lugares arbitrarios.
+  // Ver docs/formato-correos-produbanco.md seccion 2.
+  it("colapsa el salto de linea del codigo fuente que cae DENTRO de un valor", () => {
+    expect(htmlToText("<STRONG>Cuenta Débito:</STRONG> ANA\nXXXXXX54321<BR>Fin")).toBe(
+      "Cuenta Débito: ANA XXXXXX54321\nFin"
+    );
+  });
+
+  it("colapsa el salto que cae ENTRE el label y su valor", () => {
+    expect(htmlToText("<P><STRONG>Monto:</STRONG>\n$12.34</P>")).toBe("Monto: $12.34");
+  });
+
+  it("colapsa el salto que cae DENTRO del label", () => {
+    expect(htmlToText("<STRONG>Cuenta\nDestino:</STRONG> XXXXX54321")).toBe("Cuenta Destino: XXXXX54321");
+  });
+
   it("descarta el contenido de <style>, no solo la etiqueta", () => {
     expect(htmlToText("<style>body{color:red}</style><p>Monto: $10.00</p>")).toBe("Monto: $10.00");
   });

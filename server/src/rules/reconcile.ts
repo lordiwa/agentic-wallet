@@ -112,6 +112,10 @@ function amountsEqual(a: number, b: number): boolean {
  *
  * Desconocida es compatible con todo. Lo que excluye es un desacuerdo real
  * entre dos cuentas conocidas: eso sí es evidencia de que son otra tarjeta.
+ *
+ * Y son dos identificadores distintos, no dos lecturas del mismo: el consumo
+ * identifica la CUENTA (`Cuenta Débito: ... XXXXXX54321`) y el reverso la
+ * TARJETA. Ver docs/formato-correos-produbanco.md sección 4.9.
  */
 function accountsCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a === null || a === undefined || b === null || b === undefined) return true;

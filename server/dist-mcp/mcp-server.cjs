@@ -50098,15 +50098,21 @@ var ENTITIES = [
 var NON_TEXT_ELEMENTS = /<(script|style|head)\b[^>]*>[\s\S]*?<\/\1>/gi;
 var LINE_BREAK_ELEMENTS = /<\s*(?:br|\/p|\/div|\/tr|\/li|\/h[1-6])\b[^>]*>/gi;
 var ANY_TAG = /<[^>]*>/g;
+var BLOCK_BREAK = "\0";
+var HAS_MARKUP = /<[a-z!/][^>]*>/i;
 function decodeEntities(text) {
   let out = text;
   for (const [pattern, replacement] of ENTITIES) out = out.replace(pattern, replacement);
   return out.replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code))).replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 function htmlToText(html) {
-  const withBreaks = html.replace(NON_TEXT_ELEMENTS, " ").replace(LINE_BREAK_ELEMENTS, "\n");
+  if (!HAS_MARKUP.test(html)) return collapsePlainText(decodeEntities(html));
+  const withBreaks = html.replace(NON_TEXT_ELEMENTS, " ").replace(LINE_BREAK_ELEMENTS, BLOCK_BREAK);
   const text = decodeEntities(withBreaks.replace(ANY_TAG, " "));
-  return text.replace(/ /g, " ").replace(/[^\S\n]+/g, " ").replace(/ *\n[ \n]*/g, "\n").trim();
+  return text.replace(/\s+/g, " ").replace(new RegExp(` ?${BLOCK_BREAK}[${BLOCK_BREAK} ]*`, "g"), "\n").trim();
+}
+function collapsePlainText(text) {
+  return text.replace(/\u00a0/g, " ").replace(/[^\S\n]+/g, " ").replace(/ *\n[ \n]*/g, "\n").trim();
 }
 function cleanFieldValue(value) {
   if (value === null || value === void 0) return null;
@@ -50115,68 +50121,88 @@ function cleanFieldValue(value) {
 }
 
 // src/parser/field-extract.ts
-var CURRENCY_PREFIX = "(?:USD\\s*|\\$\\s*)";
-var STRICT_AMOUNT = "([0-9]+\\.[0-9]{2})\\b";
-var LABEL_VALUE_GAP = "[^\\S\\n]*\\n?[^\\S\\n]*";
+var MASKED_ACCOUNT_RE = /(?<![0-9A-Za-z])(?:[Xx]{3,}|\*{3,}|•{3,})[0-9]{3,}(?![0-9])/;
 function normalizeBody(body) {
   return htmlToText(body);
 }
-function labelPattern(label) {
-  return `${label}\\s*:`;
+function fold(text) {
+  let out = "";
+  for (const char of text) {
+    const folded = char.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    out += folded.length === char.length ? folded : char.toLowerCase();
+  }
+  return out;
 }
-function extractLabeledAmount(body, label) {
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function labelPattern(label) {
+  return fold(label).trim().split(/\s+/).map(escapeRegExp).join("\\s+");
+}
+var LABEL_VALUE_GAP = "[^\\S\\n]*(?:\\n(?![^\\S\\n]*[^\\n:]{1,30}:)[^\\S\\n]*)?";
+function fieldRegExp(label, stopLabels, flags) {
+  const stop = stopLabels.length > 0 ? `\\s+(?:${stopLabels.map(labelPattern).join("|")})\\s*:|` : "";
+  return new RegExp(`(?<![0-9a-z])${labelPattern(label)}\\s*:${LABEL_VALUE_GAP}(.*?)(?=${stop}\\n|$)`, flags);
+}
+function extractFieldValues(body, label, stopLabels) {
   const text = normalizeBody(body);
-  const anchored = new RegExp(`${labelPattern(label)}${LABEL_VALUE_GAP}${CURRENCY_PREFIX}${STRICT_AMOUNT}`, "gi");
+  const values = [];
+  for (const match of fold(text).matchAll(fieldRegExp(label, stopLabels, "dg"))) {
+    const indices = match.indices?.[1];
+    if (!indices) continue;
+    const value = cleanFieldValue(text.slice(indices[0], indices[1]));
+    if (value !== null) values.push(value);
+  }
+  return values;
+}
+function extractField(body, label, stopLabels = []) {
+  return extractFieldValues(body, label, stopLabels)[0] ?? null;
+}
+var VALUE_AMOUNT_RE = /^(?:USD|\$)\s*([0-9]+\.[0-9]{2})(?![0-9])/i;
+function extractLabeledAmount(body, label) {
   const readings = /* @__PURE__ */ new Set();
-  for (const match of text.matchAll(anchored)) readings.add(Number(match[1]));
+  for (const value of extractFieldValues(body, label, [])) {
+    const match = value.match(VALUE_AMOUNT_RE);
+    if (match) readings.add(Number(match[1]));
+  }
   if (readings.size === 0) return { amount: null, ambiguous: false };
   if (readings.size > 1) return { amount: null, ambiguous: true };
   return { amount: [...readings][0], ambiguous: false };
 }
-function stopLookahead(stopLabels) {
-  if (stopLabels.length === 0) return "";
-  return `\\s+(?:${stopLabels.join("|")})\\s*:|`;
+function maskedAccount(value) {
+  return value?.match(MASKED_ACCOUNT_RE)?.[0] ?? null;
 }
-function extractLabeledField(body, label, stopLabels = []) {
+function maskedAccountHolder(value) {
+  if (value === null || value === void 0) return null;
+  const match = value.match(MASKED_ACCOUNT_RE);
+  return match?.index === void 0 ? null : cleanFieldValue(value.slice(0, match.index));
+}
+function fieldWindow(body, label, stopLabels) {
   const text = normalizeBody(body);
-  const notAnotherLabel = stopLabels.length === 0 ? "" : `(?!(?:${stopLabels.join("|")})\\s*:)`;
-  const re = new RegExp(
-    `${labelPattern(label)}${LABEL_VALUE_GAP}${notAnotherLabel}(.+?)(?=${stopLookahead(stopLabels)}\\n|$)`,
-    "i"
-  );
-  const match = text.match(re);
-  return match ? cleanFieldValue(match[1]) : null;
-}
-var MASKED_ACCOUNT_TOKEN2 = /[Xx*•]{2,}[-\s]?[0-9]{2,}/;
-function fieldWindow(text, label, stopLabels) {
-  const start = new RegExp(`${labelPattern(label)}`, "i").exec(text);
+  const folded = fold(text);
+  const start = new RegExp(`(?<![0-9a-z])${labelPattern(label)}\\s*:`).exec(folded);
   if (!start) return null;
   const rest = text.slice(start.index + start[0].length);
   if (stopLabels.length === 0) return rest;
-  const stop = new RegExp(`(?:${stopLabels.join("|")})\\s*:`, "i").exec(rest);
+  const stop = new RegExp(`(?:${stopLabels.map(labelPattern).join("|")})\\s*:`).exec(fold(rest));
   return stop ? rest.slice(0, stop.index) : rest;
 }
 function extractMaskedAccount(body, label, stopLabels = []) {
-  const window2 = fieldWindow(normalizeBody(body), label, stopLabels);
-  if (window2 === null) return null;
-  const match = window2.match(MASKED_ACCOUNT_TOKEN2);
-  return match ? match[0].replace(/\s/g, "") : null;
+  const window2 = fieldWindow(body, label, stopLabels);
+  return window2 === null ? null : maskedAccount(window2.replace(/\s+/g, " "));
 }
 function extractAccountHolder(body, label, stopLabels = []) {
-  const window2 = fieldWindow(normalizeBody(body), label, stopLabels);
-  if (window2 === null) return null;
-  const match = window2.match(MASKED_ACCOUNT_TOKEN2);
-  if (!match) return null;
-  const name = window2.slice(0, match.index).replace(/\s+/g, " ").trim();
-  return name === "" ? null : name;
+  const window2 = fieldWindow(body, label, stopLabels);
+  return window2 === null ? null : maskedAccountHolder(window2.replace(/\s+/g, " "));
 }
 
 // src/ingest/reverso-extract.ts
 var AMOUNT_LABELS = ["Valor", "Monto"];
 var PROSE_AMOUNT_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
-var DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[e\xE9]bito";
+var DEBIT_ACCOUNT_LABEL = "Cuenta d\xE9bito";
 var ESTABLISHMENT_LABEL = "Establecimiento";
 var FIELD_STOP_LABELS = [
+  "Fecha y Hora",
   "Fecha",
   "Hora",
   ESTABLISHMENT_LABEL,
@@ -50188,8 +50214,11 @@ var FIELD_STOP_LABELS = [
 function extractReversoFields(body) {
   return {
     amount: extractAmount(body),
+    // Suele quedar null: el reverso real identifica la TARJETA, y sólo en
+    // prosa. `reconcile.ts` trata esa ausencia como "no sé", no como "otra
+    // cuenta".
     account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS),
-    counterparty: extractLabeledField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS)
+    counterparty: extractField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS)
   };
 }
 function extractAmount(body) {
@@ -50301,42 +50330,41 @@ var FOREIGN_CONSUMO_RE = /consumo tarjeta de (debito|credito) por ([a-z]{3})/;
 var FOREIGN_AMOUNT_RE = /[A-Z]{3}\s*([0-9]+(?:\.[0-9]{2})?)/;
 function extractAmount2(text, format) {
   let match = null;
-  if (format === "usd" || format === "either") {
-    match = text.match(USD_AMOUNT_RE2);
-  }
-  if (!match && (format === "dollar" || format === "either")) {
-    match = text.match(DOLLAR_AMOUNT_RE2);
-  }
+  if (format === "usd" || format === "either") match = text.match(USD_AMOUNT_RE2);
+  if (!match && (format === "dollar" || format === "either")) match = text.match(DOLLAR_AMOUNT_RE2);
   return match ? Number(match[1]) : null;
 }
-var FIELD_STOP_LABELS2 = [
-  "Banco Destino",
-  "Cuenta Destino",
-  "Cuenta\\s*d[e\xE9]bito",
+function crossCheckAmount(fromSubject, fromBody) {
+  if (fromBody.ambiguous) return { amount: null, reason: "ambiguous_labeled_amount" };
+  if (fromSubject !== null && fromBody.amount !== null && !sameAmount(fromSubject, fromBody.amount)) {
+    return { amount: null, reason: "subject_body_amount_mismatch" };
+  }
+  return { amount: fromSubject ?? fromBody.amount, reason: null };
+}
+function sameAmount(a, b) {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+var AFTER_CONTACTO = ["Banco Destino", "Cuenta Destino", "Cuenta", "Monto", "Descripci\xF3n", "Canal", "Referencia"];
+var AFTER_CUENTA = [
+  "Cajero",
+  "Fecha y Hora",
   "Fecha",
   "Hora",
+  "Descripci\xF3n",
   "Referencia",
-  "Establecimiento",
-  "Contacto",
-  "Beneficiario",
-  "Descripci[o\xF3]n",
-  "Cajero",
   "Monto",
   "Valor",
-  "Cuenta"
+  "Establecimiento"
 ];
-var DEBIT_ACCOUNT_LABEL2 = "Cuenta\\s*d[e\xE9]bito";
-function extractField(body, label) {
-  return extractLabeledField(body, label, FIELD_STOP_LABELS2);
+var AFTER_ESTABLECIMIENTO = ["Cuenta D\xE9bito", "Cuenta", "Fecha y Hora", "Fecha", "Referencia", "Valor", "Monto"];
+var DEBIT_ACCOUNT_LABEL2 = "Cuenta D\xE9bito";
+var HEADER_HOLDER_RE = /Estimado\/a[:\s]*\n[^\S\n]*([^\n:]{2,60})\n/;
+function accountHolder(body) {
+  const fromHeader = cleanFieldValue(body.match(HEADER_HOLDER_RE)?.[1]);
+  return fromHeader ?? extractAccountHolder(body, DEBIT_ACCOUNT_LABEL2, AFTER_CUENTA);
 }
-function extractDebitAccount(body) {
-  return extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL2, FIELD_STOP_LABELS2);
-}
-function extractDebitAccountHolder(body) {
-  return extractAccountHolder(body, DEBIT_ACCOUNT_LABEL2, FIELD_STOP_LABELS2);
-}
-function extractBodyAmount(body) {
-  return extractLabeledAmount(body, "Monto");
+function fromProse(body, re) {
+  return cleanFieldValue(body.match(re)?.[1]);
 }
 function transaction(params) {
   const needsReview = params.amount === null || params.forceReview === true;
@@ -50353,6 +50381,21 @@ function transaction(params) {
     needs_review: needsReview,
     ...needsReview ? { review_reason: params.reviewReason ?? "amount_not_found" } : {}
   };
+}
+function reviewed(reading, reasonWhenMissing) {
+  return { amount: reading.amount, reviewReason: reading.reason ?? reasonWhenMissing };
+}
+var CREDIT_CARD_RE = new RegExp(`tarjeta de cr[e\xE9]dito[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+var REMITENTE_RE = /te confirmamos que\s+(.+?)\s+ha realizado una transferencia/i;
+var CUENTA_ACREDITADA_RE = new RegExp(`en tu cuenta\\s+(${MASKED_ACCOUNT_RE.source})`, "i");
+var CUENTA_DEBITADA_RE = new RegExp(`de la cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+var VALOR_PROSA_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+var VALOR_INTERNACIONAL_RE = /por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+var EMPRESA_INTERNACIONAL_RE = /\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i;
+var SERVICIO_RE = /Pago de Servicio\s+(.+?)(?=\n|$)/i;
+function amountFromProse(body, re) {
+  const match = body.match(re);
+  return match ? Number(match[1]) : null;
 }
 function classify(email2) {
   const subject = normalize2(email2.subject);
@@ -50383,99 +50426,99 @@ function classify(email2) {
       direction: "out",
       amount: rawSubject.match(FOREIGN_AMOUNT_RE) ? Number(rawSubject.match(FOREIGN_AMOUNT_RE)[1]) : null,
       currency: foreign[2].toUpperCase(),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL2, AFTER_CUENTA)),
       raw_subject: rawSubject,
       forceReview: true,
       reviewReason: `foreign_currency_${foreign[2]}`
     });
   }
   if (subject.includes("consumo tarjeta de debito por usd")) {
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "usd"), extractLabeledAmount(body, "Valor"));
     return transaction({
       type: "debito",
       direction: "out",
-      amount: extractAmount2(rawSubject, "usd"),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL2, AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject"
+      ...reviewed(reading, "amount_not_found_in_subject")
     });
   }
   if (subject.includes("consumo tarjeta de credito por usd")) {
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "usd"), extractLabeledAmount(body, "Valor"));
     return transaction({
       type: "credito",
       direction: "out",
-      amount: extractAmount2(rawSubject, "usd"),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: fromProse(body, CREDIT_CARD_RE),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject"
+      ...reviewed(reading, "amount_not_found_in_subject")
     });
   }
   if (subject.includes("transferencia enviada por")) {
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "dollar"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "transferencia",
       direction: "out",
-      amount: extractAmount2(rawSubject, "dollar"),
-      counterparty: extractField(body, "Contacto") ?? extractField(body, "Beneficiario"),
+      counterparty: extractField(body, "Contacto", AFTER_CONTACTO) ?? extractField(body, "Beneficiario", AFTER_CONTACTO),
+      account: null,
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject"
+      ...reviewed(reading, "amount_not_found_in_subject")
     });
   }
   if (subject.includes("pago de servicio por usd")) {
-    const serviceMatch = body.match(/Pago de Servicio Combos\s+(\S+)/i);
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "usd"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "servicio",
       direction: "out",
-      amount: extractAmount2(rawSubject, "usd"),
-      counterparty: serviceMatch ? serviceMatch[1] : null,
+      counterparty: fromProse(body, SERVICIO_RE) ?? extractField(body, "Descripci\xF3n", AFTER_CUENTA),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL2, AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject"
+      ...reviewed(reading, "amount_not_found_in_subject")
     });
   }
   if (subject.includes("retiro sin tarjeta de debito") && subject.includes("cajero automatico")) {
-    const monto = extractBodyAmount(body);
+    const monto = extractLabeledAmount(body, "Monto");
     return transaction({
       type: "retiro",
       direction: "out",
       amount: monto.amount,
-      account: extractDebitAccount(body),
-      account_holder: extractDebitAccountHolder(body),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL2, AFTER_CUENTA)),
       raw_subject: rawSubject,
       reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body"
     });
   }
   if (subject.includes("compra minutos claro")) {
-    const bodyMatch = body.match(/por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i);
     return transaction({
       type: "recarga",
       direction: "out",
-      amount: bodyMatch ? Number(bodyMatch[1]) : null,
+      amount: amountFromProse(body, VALOR_PROSA_RE),
       counterparty: "Claro",
+      account: fromProse(body, CUENTA_DEBITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body"
     });
   }
   if (subject.includes("transferencia internacional recibida")) {
-    const empresaMatch = body.match(/\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i);
-    const amountMatch = body.match(/por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i);
     return transaction({
       type: "sueldo",
       direction: "in",
-      amount: amountMatch ? Number(amountMatch[1]) : null,
-      counterparty: empresaMatch ? empresaMatch[1].trim() : null,
+      amount: amountFromProse(body, VALOR_INTERNACIONAL_RE),
+      counterparty: fromProse(body, EMPRESA_INTERNACIONAL_RE),
+      account: fromProse(body, CUENTA_ACREDITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body"
     });
   }
   if (subject.includes("transferencia recibida desde produbanco")) {
-    const fromSubject = extractAmount2(rawSubject, "either");
-    const fromBody = extractBodyAmount(body);
-    const disagree = fromSubject !== null && fromBody.amount !== null && fromSubject !== fromBody.amount;
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "either"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "recibido",
       direction: "in",
-      amount: fromBody.ambiguous || disagree ? null : fromSubject ?? fromBody.amount,
-      counterparty: extractField(body, "De") ?? extractField(body, "Remitente"),
+      counterparty: fromProse(body, REMITENTE_RE),
+      account: maskedAccount(extractField(body, "Cuenta Destino", AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: fromBody.ambiguous ? "ambiguous_labeled_amount" : disagree ? "subject_body_amount_mismatch" : "amount_not_found"
+      ...reviewed(reading, "amount_not_found_in_body")
     });
   }
   return { kind: "ignored", reason: "unrecognized_subject" };
@@ -50486,26 +50529,12 @@ var produbancoParser = {
   canParse(email2) {
     return /produbanco/i.test(email2.subject) || /produbanco/i.test(email2.body);
   },
-  /**
-   * La cuenta y el titular se completan aqui y no en cada rama de `classify`:
-   * el campo "Cuenta débito" aparece en cuerpos de varios tipos (consumo,
-   * retiro, ...) y siempre significa lo mismo.
-   *
-   * `account` se poblaba SOLO en la rama de retiro, asi que los consumos
-   * entraban sin cuenta — y `rules/reconcile.ts` considera iguales a dos
-   * cuentas desconocidas, con lo que el apareo de un reverso degeneraba a
-   * "mismo monto, mismo dia" y marcaba para siempre a los dos consumos que
-   * coincidieran. Poblarla acá es lo que le devuelve al apareo su segundo eje.
-   */
+  /** El nombre del titular se completa aquí y no en cada rama de `classify`:
+   * sale del encabezado, que es igual en todos los tipos de correo. */
   parse(email2) {
     const result = classify(email2);
-    if (result.kind !== "transaction") return result;
-    const body = normalizeBody(email2.body);
-    return {
-      ...result,
-      account: result.account ?? extractDebitAccount(body),
-      account_holder: result.account_holder ?? extractDebitAccountHolder(body)
-    };
+    if (result.kind !== "transaction" || result.account_holder) return result;
+    return { ...result, account_holder: accountHolder(normalizeBody(email2.body)) };
   }
 };
 

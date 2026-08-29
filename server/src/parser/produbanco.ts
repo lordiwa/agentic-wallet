@@ -1,10 +1,38 @@
+/**
+ * Parser de las notificaciones de Produbanco.
+ *
+ * Está escrito contra el formato REAL de los correos, medido sobre una bandeja
+ * de verdad y documentado en docs/formato-correos-produbanco.md. Cada rama de
+ * `classify` corresponde a una sección de ese documento; si algo acá no cierra,
+ * el documento es la fuente de verdad y este archivo el que está mal.
+ *
+ * La mecánica de leer campos (normalizar el marcado, anclar a la etiqueta,
+ * cortar antes de la siguiente) NO vive acá: está en `parser/field-extract.ts`
+ * y la comparten todos los bancos. Lo específico de Produbanco es qué etiquetas
+ * usa, cuáles pueden seguir a cuál, y qué significa cada una — eso es lo que
+ * declara este archivo.
+ *
+ * Dos cosas que el formato impone y que no son obvias leyendo sólo el código:
+ *
+ * - **El mismo label significa cosas distintas según el sentido del
+ *   movimiento.** `Cuenta Destino` es la cuenta del usuario en una
+ *   transferencia recibida y la del beneficiario en una enviada, así que sólo
+ *   la primera va en `account`.
+ * - **A veces el dato existe únicamente en la prosa.** La tarjeta de un consumo
+ *   con crédito, la contraparte de una transferencia recibida y todo lo de la
+ *   transferencia internacional no aparecen en ningún campo etiquetado.
+ */
+
 import {
   extractAccountHolder,
+  extractField,
   extractLabeledAmount,
-  extractLabeledField,
-  extractMaskedAccount,
+  MASKED_ACCOUNT_RE,
+  maskedAccount,
   normalizeBody,
+  type LabeledAmount,
 } from "./field-extract.js";
+import { cleanFieldValue } from "./html-text.js";
 import type { BankEmailParser, Direction, InboundEmail, ParseResult, TransactionType } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -44,66 +72,86 @@ type AmountFormat = "usd" | "dollar" | "either";
 
 function extractAmount(text: string, format: AmountFormat): number | null {
   let match: RegExpMatchArray | null = null;
-  if (format === "usd" || format === "either") {
-    match = text.match(USD_AMOUNT_RE);
-  }
-  if (!match && (format === "dollar" || format === "either")) {
-    match = text.match(DOLLAR_AMOUNT_RE);
-  }
+  if (format === "usd" || format === "either") match = text.match(USD_AMOUNT_RE);
+  if (!match && (format === "dollar" || format === "either")) match = text.match(DOLLAR_AMOUNT_RE);
   return match ? Number(match[1]) : null;
 }
 
 /**
- * El vocabulario de etiquetas de Produbanco. Es lo ÚNICO específico del banco
- * en la lectura de campos: el cómo (normalizar el marcado, anclar a la
- * etiqueta, cortar antes de la siguiente) vive en `field-extract.ts` y lo
- * comparten todos los bancos. Un banco nuevo declara su propia lista.
+ * Los correos que traen el monto DOS veces (en el asunto y en un campo del
+ * cuerpo) se leen de las dos fuentes y se comparan. Las dos lecturas son
+ * deterministas: que no coincidan no significa "elegí una", significa que una
+ * de las dos se leyó mal y ninguna es de fiar, así que la fila sale sin monto y
+ * marcada — que es lo que la deja fuera de todos los totales.
  *
- * El orden importa: `Cuenta\s*débito` va antes que `Cuenta` para que la
- * alternación no corte a la mitad de la etiqueta más larga.
+ * Cuando el correo trae el monto en un solo lugar, la otra lectura es null y no
+ * hay nada que comparar.
  */
-const FIELD_STOP_LABELS = [
-  "Banco Destino",
-  "Cuenta Destino",
-  "Cuenta\\s*d[eé]bito",
+interface AmountReading {
+  amount: number | null;
+  /** El motivo de revisión que corresponde, o `null` si no hay nada que marcar
+   * (el monto se leyó y las dos fuentes coinciden). */
+  reason: string | null;
+}
+
+function crossCheckAmount(fromSubject: number | null, fromBody: LabeledAmount): AmountReading {
+  // El cuerpo se contradice a sí mismo: la etiqueta aparece dos veces con
+  // montos distintos. No se compara con el asunto — no hay con qué comparar.
+  if (fromBody.ambiguous) return { amount: null, reason: "ambiguous_labeled_amount" };
+
+  if (fromSubject !== null && fromBody.amount !== null && !sameAmount(fromSubject, fromBody.amount)) {
+    return { amount: null, reason: "subject_body_amount_mismatch" };
+  }
+
+  return { amount: fromSubject ?? fromBody.amount, reason: null };
+}
+
+/** En centavos: los dos vienen de una regex de dos decimales, pero compararlos
+ * como float haría que 0.1 + 0.2 decidiera si una fila se marca. */
+function sameAmount(a: number, b: number): boolean {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+
+// Labels que el banco puede escribir en la MISMA línea a continuación de otro
+// campo. El envuelto del mailer normalmente deja un `<br>` entre campos (y ahí
+// corta el `\n`), pero los cuerpos reconstruidos desde un respaldo llegan en
+// una sola línea, y ahí el único límite es el label siguiente.
+const AFTER_CONTACTO = ["Banco Destino", "Cuenta Destino", "Cuenta", "Monto", "Descripción", "Canal", "Referencia"];
+const AFTER_CUENTA = [
+  "Cajero",
+  "Fecha y Hora",
   "Fecha",
   "Hora",
+  "Descripción",
   "Referencia",
-  "Establecimiento",
-  "Contacto",
-  "Beneficiario",
-  "Descripci[oó]n",
-  "Cajero",
   "Monto",
   "Valor",
-  "Cuenta",
-] as const;
+  "Establecimiento",
+];
+const AFTER_ESTABLECIMIENTO = ["Cuenta Débito", "Cuenta", "Fecha y Hora", "Fecha", "Referencia", "Valor", "Monto"];
 
-const DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[eé]bito";
-
-function extractField(body: string, label: string): string | null {
-  return extractLabeledField(body, label, FIELD_STOP_LABELS);
-}
-
-/** El token de cuenta enmascarada de "Cuenta débito: NOMBRE XXXXXX1234". */
-function extractDebitAccount(body: string): string | null {
-  return extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS);
-}
+const DEBIT_ACCOUNT_LABEL = "Cuenta Débito";
 
 /**
- * El NOMBRE del titular que precede a la cuenta enmascarada en el mismo campo
- * ("Cuenta débito: PEREZ GOMEZ ANA MARIA XXXXXX20924" -> "PEREZ GOMEZ ANA
- * MARIA"). Se guarda porque es la unica pista del titular que dejan los
- * correos, y el onboarding la necesita para proponerlo en vez de proponer el
- * numero de cuenta. Devuelve null cuando el campo solo trae la cuenta.
+ * El titular tal como lo escribe el encabezado ("Estimado/a\n<NOMBRE>"), que
+ * es la fuente más completa que existe: el nombre que acompaña a la cuenta en
+ * `Cuenta Débito` suele venir recortado a un solo nombre de pila, y en varios
+ * tipos de correo ese campo directamente no está.
+ *
+ * Se exige que el nombre esté en su propia línea y que no contenga `:` para no
+ * confundirlo con el primer campo del cuerpo cuando el saludo no trae nombre.
  */
-function extractDebitAccountHolder(body: string): string | null {
-  return extractAccountHolder(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS);
+const HEADER_HOLDER_RE = /Estimado\/a[:\s]*\n[^\S\n]*([^\n:]{2,60})\n/;
+
+function accountHolder(body: string): string | null {
+  const fromHeader = cleanFieldValue(body.match(HEADER_HOLDER_RE)?.[1]);
+  return fromHeader ?? extractAccountHolder(body, DEBIT_ACCOUNT_LABEL, AFTER_CUENTA);
 }
 
-/** El monto anclado al campo "Monto:" del cuerpo, con el guarda de ambigüedad. */
-function extractBodyAmount(body: string): ReturnType<typeof extractLabeledAmount> {
-  return extractLabeledAmount(body, "Monto");
+/** El primer grupo de una regex de prosa, ya limpio. Las contrapartes y las
+ * cuentas que sólo viven en una frase salen todas por acá. */
+function fromProse(body: string, re: RegExp): string | null {
+  return cleanFieldValue(body.match(re)?.[1]);
 }
 
 function transaction(params: {
@@ -137,6 +185,55 @@ function transaction(params: {
   };
 }
 
+/** Arma el par (monto, motivo de revisión) de un correo que trae el monto por
+ * duplicado, para no repetir el mismo `reviewReason` en cada rama. */
+function reviewed(reading: AmountReading, reasonWhenMissing: string) {
+  return { amount: reading.amount, reviewReason: reading.reason ?? reasonWhenMissing };
+}
+
+// ---------------------------------------------------------------------------
+// Prosa: los datos que no viven en ningún campo etiquetado (doc secciones 4.2,
+// 4.4, 4.7, 4.8)
+// ---------------------------------------------------------------------------
+
+/** "...con tu Tarjeta de Crédito Visa Produbanco XXX4321 ." — el consumo con
+ * crédito no trae campo `Cuenta`: la tarjeta está sólo acá. */
+const CREDIT_CARD_RE = new RegExp(`tarjeta de cr[eé]dito[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+
+/** "Te confirmamos que <NOMBRE> ha realizado una transferencia" — no existe
+ * ningún campo `De:` ni `Remitente:` en estos correos. */
+const REMITENTE_RE = /te confirmamos que\s+(.+?)\s+ha realizado una transferencia/i;
+
+/** "...en tu cuenta XXXXXX54321 de la transferencia..." (internacional). */
+const CUENTA_ACREDITADA_RE = new RegExp(`en tu cuenta\\s+(${MASKED_ACCOUNT_RE.source})`, "i");
+
+/** "...debitado de la cuenta ANA XXXXXX54321." (compra de minutos). El punto
+ * final va pegado a la cuenta, por eso el corte es en `.` y no en `\s`. */
+const CUENTA_DEBITADA_RE = new RegExp(`de la cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+
+/** "por un valor de USD 12.34" — minutos Claro. */
+const VALOR_PROSA_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+
+/** "por el valor de USD 1234.56." — transferencia internacional. */
+const VALOR_INTERNACIONAL_RE = /por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+
+/**
+ * La empresa de una transferencia internacional, anclada al ÚLTIMO "de" antes
+ * de "por el valor": la frase real ("...de la transferencia Internacional
+ * Recibida de EMPRESA S.A. por el valor...") trae un "de" anterior que una
+ * captura perezosa ingenua se llevaría por delante.
+ */
+const EMPRESA_INTERNACIONAL_RE = /\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i;
+
+/** El nombre del servicio va pegado al `Transacción:` ("Pago de Servicio
+ * Combos Ejemplo") y se repite en `Descripción:`. No hay campo "Empresa". */
+const SERVICIO_RE = /Pago de Servicio\s+(.+?)(?=\n|$)/i;
+
+function amountFromProse(body: string, re: RegExp): number | null {
+  const match = body.match(re);
+  return match ? Number(match[1]) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Classification (spec 5.1 catalog + 5.2 ignore list)
 // ---------------------------------------------------------------------------
@@ -145,7 +242,8 @@ function classify(email: InboundEmail): ParseResult {
   const subject = normalize(email.subject);
   const rawSubject = email.subject;
   // Una sola normalización para todo el correo: de acá en adelante ninguna
-  // rama tiene que acordarse de si el cuerpo venía en HTML o en texto plano.
+  // rama —ni las que leen campos ni las que leen prosa— tiene que acordarse de
+  // si el cuerpo venía en HTML o en texto plano.
   const body = normalizeBody(email.body);
 
   // --- 5.2 ignore / non-transaction markers (checked first: some of these
@@ -179,122 +277,127 @@ function classify(email: InboundEmail): ParseResult {
       direction: "out",
       amount: rawSubject.match(FOREIGN_AMOUNT_RE) ? Number(rawSubject.match(FOREIGN_AMOUNT_RE)![1]) : null,
       currency: foreign[2].toUpperCase(),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL, AFTER_CUENTA)),
       raw_subject: rawSubject,
       forceReview: true,
       reviewReason: `foreign_currency_${foreign[2]}`,
     });
   }
 
+  // 4.1: el monto viene en el asunto Y en `Valor:`; la cuenta en `Cuenta
+  // Débito`, con el titular delante.
   if (subject.includes("consumo tarjeta de debito por usd")) {
+    const reading = crossCheckAmount(extractAmount(rawSubject, "usd"), extractLabeledAmount(body, "Valor"));
     return transaction({
       type: "debito",
       direction: "out",
-      amount: extractAmount(rawSubject, "usd"),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL, AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject",
+      ...reviewed(reading, "amount_not_found_in_subject"),
     });
   }
 
+  // 4.2: igual que el débito, salvo que no hay ningún campo `Cuenta` — la
+  // tarjeta sale de la prosa.
   if (subject.includes("consumo tarjeta de credito por usd")) {
+    const reading = crossCheckAmount(extractAmount(rawSubject, "usd"), extractLabeledAmount(body, "Valor"));
     return transaction({
       type: "credito",
       direction: "out",
-      amount: extractAmount(rawSubject, "usd"),
-      counterparty: extractField(body, "Establecimiento"),
+      counterparty: extractField(body, "Establecimiento", AFTER_ESTABLECIMIENTO),
+      account: fromProse(body, CREDIT_CARD_RE),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject",
+      ...reviewed(reading, "amount_not_found_in_subject"),
     });
   }
 
+  // 4.3: `Cuenta Destino` acá es la cuenta del BENEFICIARIO. El correo no dice
+  // de qué cuenta salió la plata, así que `account` queda null: guardar la del
+  // beneficiario sería poner un dato correcto en el campo equivocado.
   if (subject.includes("transferencia enviada por")) {
+    const reading = crossCheckAmount(extractAmount(rawSubject, "dollar"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "transferencia",
       direction: "out",
-      amount: extractAmount(rawSubject, "dollar"),
-      counterparty: extractField(body, "Contacto") ?? extractField(body, "Beneficiario"),
+      counterparty:
+        extractField(body, "Contacto", AFTER_CONTACTO) ?? extractField(body, "Beneficiario", AFTER_CONTACTO),
+      account: null,
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject",
+      ...reviewed(reading, "amount_not_found_in_subject"),
     });
   }
 
+  // 4.5: el monto va con USD (no con $) y `Cuenta Débito` trae sólo la cuenta.
   if (subject.includes("pago de servicio por usd")) {
-    const serviceMatch = body.match(/Pago de Servicio Combos\s+(\S+)/i);
+    const reading = crossCheckAmount(extractAmount(rawSubject, "usd"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "servicio",
       direction: "out",
-      amount: extractAmount(rawSubject, "usd"),
-      counterparty: serviceMatch ? serviceMatch[1] : null,
+      counterparty: fromProse(body, SERVICIO_RE) ?? extractField(body, "Descripción", AFTER_CUENTA),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL, AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_subject",
+      ...reviewed(reading, "amount_not_found_in_subject"),
     });
   }
 
+  // 4.6: el asunto no trae monto; `Cuenta débito` va en minúscula y la sigue
+  // el campo `Cajero`.
   if (subject.includes("retiro sin tarjeta de debito") && subject.includes("cajero automatico")) {
-    // Anchored to the "Monto:" field, not the first "$X.XX" in the body —
-    // bodies can list other figures (saldo disponible, etc.) first.
-    const monto = extractBodyAmount(body);
+    const monto = extractLabeledAmount(body, "Monto");
     return transaction({
       type: "retiro",
       direction: "out",
       amount: monto.amount,
-      account: extractDebitAccount(body),
-      account_holder: extractDebitAccountHolder(body),
+      account: maskedAccount(extractField(body, DEBIT_ACCOUNT_LABEL, AFTER_CUENTA)),
       raw_subject: rawSubject,
       reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body",
     });
   }
 
+  // 4.8: sin bloque `Detalle`; monto y cuenta salen los dos de la prosa.
   if (subject.includes("compra minutos claro")) {
-    const bodyMatch = body.match(/por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i);
     return transaction({
       type: "recarga",
       direction: "out",
-      amount: bodyMatch ? Number(bodyMatch[1]) : null,
+      amount: amountFromProse(body, VALOR_PROSA_RE),
       counterparty: "Claro",
+      account: fromProse(body, CUENTA_DEBITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body",
     });
   }
 
+  // 4.7: tampoco hay `Detalle` — cuenta, empresa y monto están en una sola frase.
   if (subject.includes("transferencia internacional recibida")) {
-    // Anchored to the LAST "de" before "por el valor": bodies like "...
-    // transferencia de parte de Acme Corp S.A. por el valor..." have an
-    // earlier, irrelevant "de" that a naive lazy match would capture into.
-    const empresaMatch = body.match(/\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i);
-    const amountMatch = body.match(/por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i);
     return transaction({
       type: "sueldo",
       direction: "in",
-      amount: amountMatch ? Number(amountMatch[1]) : null,
-      counterparty: empresaMatch ? empresaMatch[1].trim() : null,
+      amount: amountFromProse(body, VALOR_INTERNACIONAL_RE),
+      counterparty: fromProse(body, EMPRESA_INTERNACIONAL_RE),
+      account: fromProse(body, CUENTA_ACREDITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body",
     });
   }
 
+  // 4.4: el asunto NO trae monto (sale de `Monto:`), no existe campo
+  // `De:`/`Remitente:` (la contraparte está en la prosa), y `Cuenta Destino`
+  // acá SÍ es la cuenta del usuario: el dinero entra ahí.
+  //
+  // El cross-check con el asunto se hace igual: los correos reales no traen el
+  // monto ahí, pero si alguno lo trajera serían dos afirmaciones independientes
+  // del mismo número y el desacuerdo tiene que marcar, no elegir.
   if (subject.includes("transferencia recibida desde produbanco")) {
-    // Asunto y cuerpo son DOS afirmaciones independientes del mismo monto
-    // dentro del mismo correo. El `??` que había acá las trataba como
-    // suplentes ("usá la que esté") y desperdiciaba la evidencia: si las dos
-    // están y no coinciden, elegir una es adivinar. Es el mismo patrón que
-    // usa `category/heal-counterparty.ts` — sólo se escribe si el correo,
-    // releído hoy, rinde el MISMO monto.
-    const fromSubject = extractAmount(rawSubject, "either");
-    const fromBody = extractBodyAmount(body);
-    const disagree = fromSubject !== null && fromBody.amount !== null && fromSubject !== fromBody.amount;
+    const reading = crossCheckAmount(extractAmount(rawSubject, "either"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "recibido",
       direction: "in",
-      amount: fromBody.ambiguous || disagree ? null : fromSubject ?? fromBody.amount,
-      counterparty: extractField(body, "De") ?? extractField(body, "Remitente"),
+      counterparty: fromProse(body, REMITENTE_RE),
+      account: maskedAccount(extractField(body, "Cuenta Destino", AFTER_CUENTA)),
       raw_subject: rawSubject,
-      reviewReason: fromBody.ambiguous
-        ? "ambiguous_labeled_amount"
-        : disagree
-          ? "subject_body_amount_mismatch"
-          : "amount_not_found",
+      ...reviewed(reading, "amount_not_found_in_body"),
     });
   }
 
@@ -307,25 +410,11 @@ export const produbancoParser: BankEmailParser = {
   canParse(email) {
     return /produbanco/i.test(email.subject) || /produbanco/i.test(email.body);
   },
-  /**
-   * La cuenta y el titular se completan aqui y no en cada rama de `classify`:
-   * el campo "Cuenta débito" aparece en cuerpos de varios tipos (consumo,
-   * retiro, ...) y siempre significa lo mismo.
-   *
-   * `account` se poblaba SOLO en la rama de retiro, asi que los consumos
-   * entraban sin cuenta — y `rules/reconcile.ts` considera iguales a dos
-   * cuentas desconocidas, con lo que el apareo de un reverso degeneraba a
-   * "mismo monto, mismo dia" y marcaba para siempre a los dos consumos que
-   * coincidieran. Poblarla acá es lo que le devuelve al apareo su segundo eje.
-   */
+  /** El nombre del titular se completa aquí y no en cada rama de `classify`:
+   * sale del encabezado, que es igual en todos los tipos de correo. */
   parse(email) {
     const result = classify(email);
-    if (result.kind !== "transaction") return result;
-    const body = normalizeBody(email.body);
-    return {
-      ...result,
-      account: result.account ?? extractDebitAccount(body),
-      account_holder: result.account_holder ?? extractDebitAccountHolder(body),
-    };
+    if (result.kind !== "transaction" || result.account_holder) return result;
+    return { ...result, account_holder: accountHolder(normalizeBody(email.body)) };
   },
 };

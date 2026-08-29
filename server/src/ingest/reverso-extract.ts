@@ -4,21 +4,20 @@
  * classifies the "Reverso Consumo Tarjeta" subject and stops there. F1-07
  * owns extracting amount/account from the same email body.
  *
- * La lectura de campos NO se implementa acá: se delega en
- * `parser/field-extract.ts`, la misma capa compartida que usan los parsers de
- * banco. Antes esto era "un lector chico y deliberadamente duplicado", y la
- * duplicación se cobró lo suyo: cuando un cuerpo llega con marcado, el
- * `</STRONG>` se mete entre la etiqueta y su valor y el ancla no matchea. En
- * el ledger real eso dejó `account` en NULL en los 136 reversos — y sin cuenta,
- * `rules/reconcile.ts` aparea sólo por monto y día.
+ * La mecánica de leer campos y cuentas enmascaradas NO se implementa acá: se
+ * delega en `parser/field-extract.ts`, la misma capa compartida que usan los
+ * parsers de banco. Antes esto era "un lector chico y deliberadamente
+ * duplicado", y la duplicación se cobró lo suyo: cuando un cuerpo llega con
+ * marcado, el `</STRONG>` se mete entre la etiqueta y su valor y el ancla no
+ * matchea. En el ledger real eso dejó `account` en NULL en los 136 reversos — y
+ * sin cuenta, `rules/reconcile.ts` aparea sólo por monto y día.
+ *
+ * Acá queda sólo lo propio del reverso: de dónde sale el monto (`Valor:`, no
+ * `Monto:`) y por qué la cuenta suele faltar. Ver
+ * docs/formato-correos-produbanco.md sección 4.9.
  */
 
-import {
-  extractLabeledAmount,
-  extractLabeledField,
-  extractMaskedAccount,
-  normalizeBody,
-} from "../parser/field-extract.js";
+import { extractField, extractLabeledAmount, extractMaskedAccount, normalizeBody } from "../parser/field-extract.js";
 
 // TASK-041: real "Reverso Consumo Tarjeta de Débito" emails carry the amount
 // as a "Valor:" field in the Detalle block (not "Monto:"), and repeat it in
@@ -29,7 +28,7 @@ import {
 const AMOUNT_LABELS = ["Valor", "Monto"] as const;
 const PROSE_AMOUNT_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
 
-const DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[eé]bito";
+const DEBIT_ACCOUNT_LABEL = "Cuenta débito";
 const ESTABLISHMENT_LABEL = "Establecimiento";
 
 // Etiquetas que pueden seguir a un campo en un cuerpo de Produbanco; la
@@ -37,6 +36,7 @@ const ESTABLISHMENT_LABEL = "Establecimiento";
 // siguiente. La lista incluye la etiqueta que se está leyendo: el corte se
 // busca DESPUÉS de ella, así que sólo frenaría en una segunda aparición.
 const FIELD_STOP_LABELS = [
+  "Fecha y Hora",
   "Fecha",
   "Hora",
   ESTABLISHMENT_LABEL,
@@ -63,8 +63,11 @@ export interface ExtractedReversoFields {
 export function extractReversoFields(body: string): ExtractedReversoFields {
   return {
     amount: extractAmount(body),
+    // Suele quedar null: el reverso real identifica la TARJETA, y sólo en
+    // prosa. `reconcile.ts` trata esa ausencia como "no sé", no como "otra
+    // cuenta".
     account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS),
-    counterparty: extractLabeledField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS),
+    counterparty: extractField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS),
   };
 }
 

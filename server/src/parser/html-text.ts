@@ -46,6 +46,16 @@ const LINE_BREAK_ELEMENTS = /<\s*(?:br|\/p|\/div|\/tr|\/li|\/h[1-6])\b[^>]*>/gi;
 
 const ANY_TAG = /<[^>]*>/g;
 
+/** Marca temporal de un salto SEMÁNTICO (el que declaró el marcado) mientras se
+ * colapsa el resto del espacio en blanco. Es U+0000: no aparece en un correo. */
+const BLOCK_BREAK = "\u0000";
+
+/** ¿La entrada trae marcado? Distingue las dos gramáticas de esta función: en
+ * HTML el salto de línea es espacio en blanco cualquiera, en texto plano es un
+ * separador de campos. Sin esta pregunta habría que elegir una y romper la
+ * otra. */
+const HAS_MARKUP = /<[a-z!/][^>]*>/i;
+
 function decodeEntities(text: string): string {
   let out = text;
   for (const [pattern, replacement] of ENTITIES) out = out.replace(pattern, replacement);
@@ -62,17 +72,36 @@ function decodeEntities(text: string): string {
  * separan campos. Un texto que ya es plano pasa prácticamente intacto (sólo se
  * normalizan entidades y espacios), así que es seguro llamarla sin saber si la
  * entrada trae marcado.
+ *
+ * En la rama HTML el `\n` del código fuente **no** es un separador: el mailer
+ * envuelve el marcado a ~72 columnas y ese salto cae en cualquier parte —
+ * dentro de un label, entre el label y su valor, en medio del valor. Es
+ * espacio en blanco como cualquier otro, así que se colapsa; los únicos saltos
+ * que sobreviven son los que declaró el marcado (`<br>`, `</p>`, ...), que se
+ * marcan con `BLOCK_BREAK` antes de colapsar. Ver
+ * docs/formato-correos-produbanco.md sección 2.
  */
 export function htmlToText(html: string): string {
-  const withBreaks = html.replace(NON_TEXT_ELEMENTS, " ").replace(LINE_BREAK_ELEMENTS, "\n");
+  if (!HAS_MARKUP.test(html)) return collapsePlainText(decodeEntities(html));
+
+  const withBreaks = html.replace(NON_TEXT_ELEMENTS, " ").replace(LINE_BREAK_ELEMENTS, BLOCK_BREAK);
   const text = decodeEntities(withBreaks.replace(ANY_TAG, " "));
   return text
-    // El espacio duro de `&nbsp;` no lo toca `\s` en todos los motores; se
-    // normaliza explícitamente para que el trim de `extractField` funcione.
-    .replace(/ /g, " ")
-    .replace(/[^\S\n]+/g, " ")
-    .replace(/ *\n[ \n]*/g, "\n")
+    .replace(/\s+/g, " ")
+    .replace(new RegExp(` ?${BLOCK_BREAK}[${BLOCK_BREAK} ]*`, "g"), "\n")
     .trim();
+}
+
+function collapsePlainText(text: string): string {
+  return (
+    text
+      // El espacio duro de `&nbsp;` no lo toca `\s` en todos los motores; se
+      // normaliza explícitamente para que el trim de `extractField` funcione.
+      .replace(/\u00a0/g, " ")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n[ \n]*/g, "\n")
+      .trim()
+  );
 }
 
 /**

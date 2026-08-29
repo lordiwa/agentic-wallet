@@ -120,6 +120,79 @@ describe("reconcile() with a real-shaped reverso body (TASK-041)", () => {
     expect(result.transactions[0].is_reversed).toBe(true);
     expect(result.reversalsApplied.length).toBe(1);
   });
+
+  // El consumo real identifica la CUENTA ("Cuenta Débito: ... XXXXXX54321") y
+  // el reverso real identifica la TARJETA, y sólo en prosa. Son dos
+  // identificadores distintos que nunca van a ser iguales, así que una cuenta
+  // ausente tiene que significar "no sé", no "es otra cuenta": si no, ningún
+  // reverso volvería a matchear en cuanto el parser empiece a leer la cuenta
+  // del consumo. Ver docs/formato-correos-produbanco.md sección 4.9.
+  it("matchea un consumo CON cuenta contra un reverso sin cuenta", () => {
+    const consumo: ReconcilableTransaction = {
+      kind: "transaction",
+      type: "debito",
+      direction: "out",
+      amount: 2.61,
+      currency: "USD",
+      account: "XXXXXX54321",
+      raw_subject: "Consumo tarjeta de débito por USD 2.61",
+      needs_review: false,
+      gmail_msg_id: "consumo-2",
+      ts: "2026-07-15T14:00:00.000Z",
+    };
+
+    const { amount, account } = extractReversoFields(REAL_REVERSO_BODY);
+    expect(account).toBeNull();
+
+    const result = reconcile(
+      [consumo],
+      [
+        {
+          raw_subject: "Reverso Consumo Tarjeta de Débito Produbanco",
+          amount: amount as number,
+          account,
+          ts: "2026-07-15T15:00:00.000Z",
+          gmail_msg_id: "reverso-2",
+        },
+      ],
+      { titular: "Ana Perez" }
+    );
+
+    expect(result.transactions[0].is_reversed).toBe(true);
+    expect(result.reversalsApplied.length).toBe(1);
+  });
+
+  it("no matchea dos cuentas distintas cuando las DOS son conocidas", () => {
+    const consumo: ReconcilableTransaction = {
+      kind: "transaction",
+      type: "debito",
+      direction: "out",
+      amount: 2.61,
+      currency: "USD",
+      account: "XXXXXX54321",
+      raw_subject: "Consumo tarjeta de débito por USD 2.61",
+      needs_review: false,
+      gmail_msg_id: "consumo-3",
+      ts: "2026-07-15T14:00:00.000Z",
+    };
+
+    const result = reconcile(
+      [consumo],
+      [
+        {
+          raw_subject: "Reverso Consumo Tarjeta de Débito Produbanco",
+          amount: 2.61,
+          account: "XXXXXX99999",
+          ts: "2026-07-15T15:00:00.000Z",
+          gmail_msg_id: "reverso-3",
+        },
+      ],
+      { titular: "Ana Perez" }
+    );
+
+    expect(result.transactions[0].is_reversed).toBeFalsy();
+    expect(result.unmatched.length).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

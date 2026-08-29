@@ -262,7 +262,9 @@ describe("--heal-counterparties", () => {
     gmail_msg_id: "sin-comercio",
     gmail_thread_id: null,
     subject: "Consumo Tarjeta de Crédito por USD 11.99",
-    body: "Detalle\nValor: USD\n11.99\nEstablecimiento:\nNETFLIX.COM\nAtentamente Produbanco",
+    // Un campo por linea con su valor, que es como sale de `htmlToText`: el
+    // salto del codigo fuente del HTML ya no parte el label de su valor.
+    body: "Detalle\nValor: USD 11.99\nEstablecimiento: NETFLIX.COM\nAtentamente Produbanco",
     ts: "2026-06-01T12:00:00Z",
   };
 

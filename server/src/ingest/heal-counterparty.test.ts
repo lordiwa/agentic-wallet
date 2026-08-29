@@ -4,21 +4,19 @@ import { migrate } from "../db/schema.js";
 import { healCounterparties } from "./heal-counterparty.js";
 import type { GmailClient, GmailMessage } from "./types.js";
 
-/** Cuerpo real de un consumo con tarjeta de Produbanco: el comercio va en la
- * LINEA SIGUIENTE a "Establecimiento:", que es como llegan de verdad. */
+/** Cuerpo de un consumo con tarjeta de Produbanco tal como sale hoy de
+ * `htmlToText`: un campo por linea, con su valor. El salto de linea del codigo
+ * fuente del HTML (que partia "Establecimiento:" de su valor) ya no llega
+ * hasta aca. Ver docs/formato-correos-produbanco.md seccion 2. */
 function consumoBody(merchant: string, amount: string): string {
   return [
     "Estimado/a",
     "PEREZ GOMEZ ANA MARIA",
-    "Fecha y Hora:",
-    "05/04/2026 13:11",
-    "Transaccion: Consumo Tarjeta de",
-    "Credito Produbanco",
+    "Fecha y Hora: 05/04/2026 13:11",
+    "Transaccion: Consumo Tarjeta de Credito Produbanco",
     "Detalle",
-    "Valor: USD",
-    amount,
-    "Establecimiento:",
-    merchant,
+    `Valor: USD ${amount}`,
+    `Establecimiento: ${merchant}`,
     "Si no realizaste esta transaccion comunicate con nosotros.",
   ].join("\n");
 }
@@ -40,7 +38,7 @@ function unnamedMessage(id: string, amount: string): GmailMessage {
     gmail_msg_id: id,
     gmail_thread_id: null,
     subject: `Consumo Tarjeta de Crédito por USD ${amount}`,
-    body: ["Detalle", "Valor: USD", amount, "Atentamente Produbanco"].join("\n"),
+    body: ["Detalle", `Valor: USD ${amount}`, "Atentamente Produbanco"].join("\n"),
     ts: "2026-05-04T18:11:00.000Z",
   };
 }

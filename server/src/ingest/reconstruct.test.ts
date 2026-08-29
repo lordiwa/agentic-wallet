@@ -56,8 +56,12 @@ describe("reconstructFromMessages: deterministic reconstruction (no EmailExtract
     });
     const transferenciaAcreditada = message({
       gmail_msg_id: "msg-transferencia-acreditada",
-      subject: "Transferencia recibida desde Produbanco por $50.00",
-      body: "De: Juan Perez",
+      // El asunto real no trae monto y no existe campo `De:`: el monto sale de
+      // `Monto:` y el remitente de la prosa. Ver docs/formato-correos-produbanco.md 4.4.
+      subject: "Transferencia recibida desde Produbanco",
+      body:
+        "Te confirmamos que Juan Perez ha realizado una transferencia a tu cuenta en BANCO EJEMPLO.\n" +
+        "Monto: $50.00\nCuenta Destino: XXXXX11111",
       ts: "2026-07-01T17:00:00Z",
     });
     const reverso = message({
