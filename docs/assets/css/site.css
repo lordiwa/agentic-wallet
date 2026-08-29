@@ -437,6 +437,12 @@ pre.cmd .c { color: var(--ink-faint); }
 .content table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .94rem; display: block; overflow-x: auto; }
 .content th, .content td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--line); }
 .content th { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
+/* La tabla sí necesita scroll horizontal (envolverla arruina la grilla), así que
+   el remedio de `pre.cmd` no aplica: acá se reserva el alto de la barra con
+   padding para que no se dibuje encima del último renglón. */
+@media (max-width: 860px) {
+  .content table { padding-bottom: .9rem; }
+}
 /* Mismo motivo que `pre.cmd`: en móvil la barra de scroll horizontal se dibuja
    dentro de la caja y tapa el último renglón. Los bloques de las guías se
    envuelven en vez de scrollear. */
