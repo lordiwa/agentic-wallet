@@ -204,3 +204,36 @@ describe("insertStatement", () => {
     expect(count.c).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// La regla 4 del CLAUDE.md, en el único punto por el que pasan TODOS los
+// escritores de `amount` (pipeline.ts y reconstruct.ts, que hasta acá tenían
+// cada uno su propia copia de la coerción).
+//
+// `transactions.amount` es NOT NULL, así que un monto que no se pudo leer
+// necesita un número igual. Ese número es 0, y es aceptable SÓLO mientras
+// venga pegado a `needs_review = 1`: si las dos cosas se desacoplan, la fila
+// entra a los totales como una transacción de cero dólares y el saldo no da
+// error — da un número silenciosamente equivocado
+// (docs/investigacion-riesgos.md §4). Acá van juntas por construcción.
+// ---------------------------------------------------------------------------
+
+describe("insertTransaction: monto desconocido", () => {
+  it("persiste el placeholder cuando el monto es null", () => {
+    insertTransaction(db, baseTx({ gmail_msg_id: "sin-monto", amount: null }));
+    const row = getTransactionByGmailMsgId(db, "sin-monto");
+    expect(row?.amount).toBe(0);
+  });
+
+  it("marca needs_review aunque el llamador no lo haya pedido", () => {
+    insertTransaction(db, baseTx({ gmail_msg_id: "sin-monto", amount: null, needs_review: false }));
+    expect(getTransactionByGmailMsgId(db, "sin-monto")?.needs_review).toBe(1);
+  });
+
+  it("no marca nada cuando el monto SÍ es cero: cero es un monto válido", () => {
+    insertTransaction(db, baseTx({ gmail_msg_id: "cero", amount: 0, needs_review: false }));
+    const row = getTransactionByGmailMsgId(db, "cero");
+    expect(row?.amount).toBe(0);
+    expect(row?.needs_review).toBe(0);
+  });
+});

@@ -22,13 +22,29 @@ export interface TransactionRow {
   created_at: string;
 }
 
+/**
+ * El número que se escribe cuando el monto no se pudo leer.
+ *
+ * `transactions.amount` es NOT NULL, así que una fila sin monto necesita algo.
+ * Cero es aceptable, pero **sólo** porque `insertTransaction` lo escribe
+ * SIEMPRE junto con `needs_review = 1`, y esa bandera la excluye de todos los
+ * agregados (`strategy/totals.ts`). Cero por sí solo es un monto válido: lo
+ * que significa "no pude leerlo" no es el 0, es el par (0, needs_review).
+ */
+export const UNKNOWN_AMOUNT_PLACEHOLDER = 0;
+
 export interface NewTransaction {
   gmail_msg_id: string;
   gmail_thread_id?: string | null;
   ts: string;
   direction: string;
   type: string;
-  amount: number;
+  /**
+   * `null` = el parser no pudo leer el monto. NO es 0: cero es un monto
+   * válido (regla 4 del CLAUDE.md). Se persiste como el placeholder y arrastra
+   * `needs_review = 1` con él — ver `insertTransaction`.
+   */
+  amount: number | null;
   currency?: string;
   counterparty?: string | null;
   account?: string | null;
@@ -86,8 +102,18 @@ export interface ListTransactionsFilter {
   offset?: number;
 }
 
-/** Idempotent insert keyed on gmail_msg_id: reinserting the same message is a no-op. */
+/**
+ * Idempotent insert keyed on gmail_msg_id: reinserting the same message is a no-op.
+ *
+ * Acá vive la invariante del monto desconocido, y vive acá y no en cada
+ * llamador a propósito: `pipeline.ts` y `reconstruct.ts` tenían cada uno su
+ * copia de la coerción, y una invariante duplicada es una invariante que en
+ * algún momento se rompe en una de las copias. **Monto null ⇒ placeholder y
+ * `needs_review = 1`, siempre, diga lo que diga el llamador.** Es lo único que
+ * mantiene una fila sin monto fuera de los totales.
+ */
 export function insertTransaction(db: Database.Database, tx: NewTransaction): InsertResult<TransactionRow> {
+  const amountUnknown = tx.amount === null || tx.amount === undefined;
   const result = db
     .prepare(
       `INSERT INTO transactions (
@@ -105,7 +131,7 @@ export function insertTransaction(db: Database.Database, tx: NewTransaction): In
       ts: tx.ts,
       direction: tx.direction,
       type: tx.type,
-      amount: tx.amount,
+      amount: amountUnknown ? UNKNOWN_AMOUNT_PLACEHOLDER : tx.amount,
       currency: tx.currency ?? "USD",
       counterparty: tx.counterparty ?? null,
       account: tx.account ?? null,
@@ -114,7 +140,7 @@ export function insertTransaction(db: Database.Database, tx: NewTransaction): In
       raw_subject: tx.raw_subject ?? null,
       is_reversed: tx.is_reversed ? 1 : 0,
       is_internal: tx.is_internal ? 1 : 0,
-      needs_review: tx.needs_review ? 1 : 0,
+      needs_review: tx.needs_review || amountUnknown ? 1 : 0,
       source: tx.source ?? "claude",
     });
 

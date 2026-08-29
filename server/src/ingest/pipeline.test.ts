@@ -1,9 +1,11 @@
 import Database from "better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
 import { buildSearchQuery, ingestBatch, ingestOnce } from "./pipeline.js";
-import { listParsers } from "../parser/index.js";
+import { listParsers, registerParser } from "../parser/index.js";
+import type { BankEmailParser } from "../parser/types.js";
+import { EXCLUDE_FROM_TOTALS_SQL } from "../strategy/totals.js";
 import type { IngestDeps } from "./pipeline.js";
 import type { EmailExtractor, ExtractedEmail, GmailClient, GmailMessage } from "./types.js";
 
@@ -812,5 +814,105 @@ describe("ingestBatch", () => {
 
     expect(result.seen).toBe(0);
     expect(countTransactions()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La regla 4 del CLAUDE.md en el punto donde se puede romper.
+//
+// `transactions.amount` es NOT NULL, así que una fila cuyo monto no se pudo
+// leer necesita igual un número para persistir: el placeholder. Cero es
+// aceptable SÓLO mientras `needs_review = 1` la mantenga fuera de todos los
+// agregados. Si esas dos cosas se desacoplan — un parser que devuelve
+// `amount: null` sin marcar, alguien que "simplifica" el ternario del
+// cross-check — el placeholder entra a los totales como una transacción de
+// cero dólares y el saldo no da error: da un número silenciosamente
+// equivocado. Es el único riesgo de corrección de todo el paquete
+// (docs/investigacion-riesgos.md §4), y esto es el test que lo cubre.
+//
+// Es GLOBAL, no de Produbanco: el fixture es un banco ficticio.
+// ---------------------------------------------------------------------------
+
+describe("placeholder de monto desconocido", () => {
+  const initialParserCount = listParsers().length;
+  afterEach(() => {
+    (listParsers() as BankEmailParser[]).length = initialParserCount;
+  });
+
+  /** Un parser que devuelve `amount: null` SIN marcar needs_review — el bug
+   * que este guarda ataja, venga de donde venga. */
+  function registerSloppyBank(): void {
+    registerParser({
+      bankId: "banco-ejemplo",
+      gmailSenders: ["notificaciones@bancoejemplo.test"],
+      canParse: (e) => e.subject.includes("Banco Ejemplo"),
+      parse: (e) => ({
+        kind: "transaction",
+        type: "debito",
+        direction: "out",
+        amount: null,
+        currency: "USD",
+        raw_subject: e.subject,
+        needs_review: false,
+      }),
+    });
+  }
+
+  it("marca needs_review una fila sin monto aunque el parser dijo que no hacía falta", async () => {
+    registerSloppyBank();
+    const gmail = new FakeGmailClient([message({ subject: "Banco Ejemplo consumo", body: "sin monto" })]);
+    const extractor = new FakeEmailExtractor(new Map([["Banco Ejemplo consumo", { amount_text_raw: "9.42", counterparty: null }]]));
+
+    await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-07-01T00:00:00Z" });
+
+    const row = db.prepare("SELECT amount, needs_review FROM transactions").get() as {
+      amount: number;
+      needs_review: number;
+    };
+    expect(row.amount).toBe(0);
+    expect(row.needs_review).toBe(1);
+  });
+
+  it("deja esa fila fuera de los totales", async () => {
+    registerSloppyBank();
+    const gmail = new FakeGmailClient([message({ subject: "Banco Ejemplo consumo", body: "sin monto" })]);
+    const extractor = new FakeEmailExtractor(new Map());
+
+    await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-07-01T00:00:00Z" });
+
+    const { total } = db
+      .prepare(`SELECT COUNT(*) AS total FROM transactions WHERE ${EXCLUDE_FROM_TOTALS_SQL}`)
+      .get() as { total: number };
+    expect(total).toBe(0);
+  });
+
+  it("no toca una fila cuyo monto SÍ es cero: cero es un monto válido", async () => {
+    registerParser({
+      bankId: "banco-ejemplo",
+      gmailSenders: ["notificaciones@bancoejemplo.test"],
+      canParse: (e) => e.subject.includes("Banco Ejemplo"),
+      parse: (e) => ({
+        kind: "transaction",
+        type: "debito",
+        direction: "out",
+        amount: 0,
+        currency: "USD",
+        raw_subject: e.subject,
+        needs_review: false,
+      }),
+    });
+    const gmail = new FakeGmailClient([message({ subject: "Banco Ejemplo consumo", body: "por $0.00" })]);
+    const extractor = new FakeEmailExtractor(
+      new Map([["Banco Ejemplo consumo", { amount_text_raw: "$0.00", counterparty: null }]])
+    );
+
+    await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-07-01T00:00:00Z" });
+
+    const row = db.prepare("SELECT amount, needs_review FROM transactions").get() as {
+      amount: number;
+      needs_review: number;
+    };
+    expect(row.amount).toBe(0);
+    expect(row.needs_review).toBe(0);
   });
 });

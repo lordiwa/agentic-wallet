@@ -105,3 +105,40 @@ describe("reconcile() with a real-shaped reverso body (TASK-041)", () => {
     expect(result.reversalsApplied.length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// El mismo agujero que perdía los montos del parser: cuerpos con marcado.
+//
+// Sobre el ledger real, `account` quedó en NULL en los 136 reversos — el
+// `</STRONG>` se comía el valor del campo "Cuenta débito" entero. Los montos
+// se salvaron de casualidad, por el fallback en prosa; los que no traían prosa
+// quedaron sin monto. El arreglo es el mismo helper compartido que usa el
+// parser (`parser/field-extract.ts`), no una copia más de la regex.
+// ---------------------------------------------------------------------------
+
+describe("extractReversoFields sobre cuerpos con marcado (HTML)", () => {
+  const REVERSO_HTML =
+    '<P><FONT face="Nunito Sans Normal">Detalle</FONT></P>\r\n' +
+    "<P><STRONG>Valor:</STRONG> \r\n" +
+    "            USD 2.61<BR><STRONG>Cuenta débito:</STRONG> \r\n" +
+    "            PEREZ GOMEZ ANA XXXXXX4321<BR><STRONG>Establecimiento:</STRONG> \r\n" +
+    "            TIENDA EJEMPLO</FONT></P>";
+
+  it("lee el monto anclado a Valor: aunque el marcado se interponga", () => {
+    expect(extractReversoFields(REVERSO_HTML).amount).toBe(2.61);
+  });
+
+  it("lee la cuenta enmascarada, que es con lo que se aparea el consumo", () => {
+    expect(extractReversoFields(REVERSO_HTML).account).toBe("XXXXXX4321");
+  });
+
+  it("lee la cuenta aunque el valor del campo esté partido en dos líneas", () => {
+    const cuerpo = "<STRONG>Cuenta débito:</STRONG> PEREZ GOMEZ ANA \r\nXXXXXX4321<BR><STRONG>Fecha:</STRONG> 01/07/2026";
+    expect(extractReversoFields(cuerpo).account).toBe("XXXXXX4321");
+  });
+
+  it("marca el monto como no leído cuando la etiqueta trae dos valores distintos", () => {
+    const cuerpo = "Valor: USD 2.61\nCorrección Valor: USD 9.99";
+    expect(extractReversoFields(cuerpo).amount).toBeNull();
+  });
+});

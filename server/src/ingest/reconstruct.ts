@@ -46,12 +46,6 @@ import { extractReversoFields } from "./reverso-extract.js";
 import { emitMetric } from "./telemetry.js";
 import type { GmailMessage } from "./types.js";
 
-/** Same placeholder pipeline.ts uses for a needs_review row whose amount
- * could never be determined -- the NOT NULL constraint on
- * transactions.amount needs a numeric stand-in, and needs_review=1 already
- * excludes the row from any trusted total. */
-const UNKNOWN_AMOUNT_PLACEHOLDER = 0;
-
 function toInboundEmail(msg: GmailMessage): InboundEmail {
   return {
     subject: msg.subject,
@@ -78,7 +72,9 @@ function toNewTransaction(
     ts: tx.ts,
     direction: tx.direction,
     type: tx.type,
-    amount: tx.amount ?? UNKNOWN_AMOUNT_PLACEHOLDER,
+    // Sin coerción: `null` viaja hasta `insertTransaction`, que es donde vive
+    // la invariante "monto desconocido ⇒ placeholder + needs_review".
+    amount: tx.amount,
     currency: tx.currency,
     counterparty: tx.counterparty ?? null,
     account: tx.account ?? null,
@@ -167,7 +163,7 @@ export function reconstructFromMessages(
           ts: email.ts,
           direction: "in",
           type: "reverso",
-          amount: UNKNOWN_AMOUNT_PLACEHOLDER,
+          amount: null,
           account: fields.account,
           raw_subject: parseResult.raw_subject,
           needs_review: true,

@@ -518,3 +518,162 @@ describe("consumo en moneda extranjera", () => {
     expect(tx.needs_review).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// El agujero de los montos perdidos: cuerpos con marcado.
+//
+// Produbanco alterna entre un `multipart/alternative` plano y uno anidado, así
+// que el MISMO correo llega a veces como texto plano y a veces como HTML. Los
+// cuerpos de acá tienen la forma exacta del HTML real (con datos ficticios):
+// el `</STRONG>` se mete entre la etiqueta y su valor, y el salto de línea del
+// correo cae en cualquier lado, incluso en la mitad de un campo.
+//
+// Sobre el ledger real, esto se comió el 100 % de las transferencias recibidas
+// (63), el 100 % de los retiros (10) y 3 de 4 recargas: monto null → placeholder
+// → fila fuera de todos los totales. Y dejó `account` en NULL en las 1069 filas.
+//
+// El arreglo NO es de Produbanco: vive en `parser/field-extract.ts`, que es la
+// capa que usa cualquier banco. Ver también `field-extract.test.ts`, que lo
+// testea sobre un banco ficticio.
+// ---------------------------------------------------------------------------
+
+describe("cuerpos con marcado (HTML)", () => {
+  const RECIBIDO_HTML =
+    '<P><FONT face="Nunito Sans Normal">Transacción:</FONT></P>\r\n' +
+    "<P><STRONG>Detalle</STRONG></P>\r\n" +
+    "<P><BR><STRONG>Banco Destino:</STRONG> Banco Ejemplo<BR><STRONG>Cuenta \r\n" +
+    "Destino:</STRONG> XXXXXX4321<BR><STRONG>Monto:</STRONG> \r\n" +
+    "$45.00<BR><STRONG>Descripción:</STRONG> \r\n" +
+    "Pago<BR><STRONG>Referencia:</STRONG> XXXXXXXX0001</P>";
+
+  const RETIRO_HTML =
+    '<P><FONT face="Nunito Sans Normal">Detalle</FONT></P>\r\n' +
+    '<P><FONT face="Nunito Sans Normal"><STRONG>Monto:</STRONG> \r\n' +
+    "            $20.00<BR><STRONG>Cuenta débito:</STRONG> \r\n" +
+    "            PEREZ GOMEZ ANA XXXXXX4321<BR><STRONG>Cajero:</STRONG> \r\n" +
+    "            Produbanco - Sucursal Centro</FONT></P>";
+
+  const CONSUMO_HTML =
+    '<P><FONT face="Nunito Sans Normal"><STRONG>Establecimiento:</STRONG> \r\n' +
+    "TIENDA EJEMPLO           QUITO        EC<BR><STRONG>Cuenta Débito:</STRONG> PEREZ GOMEZ ANA \r\n" +
+    "XXXXXX4321</FONT></P>";
+
+  it("lee el monto de una transferencia recibida (63 ingresos perdidos en el ledger real)", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(email({ subject: "Transferencia recibida desde Produbanco", body: RECIBIDO_HTML }))
+    );
+    expect(tx.type).toBe("recibido");
+    expect(tx.direction).toBe("in");
+    expect(tx.amount).toBe(45.0);
+    expect(tx.needs_review).toBe(false);
+  });
+
+  it("lee monto, cuenta y titular de un retiro", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({ subject: "Retiro sin tarjeta de débito Produbanco en cajero automático", body: RETIRO_HTML })
+      )
+    );
+    expect(tx.amount).toBe(20.0);
+    expect(tx.account).toBe("XXXXXX4321");
+    expect(tx.account_holder).toBe("PEREZ GOMEZ ANA");
+    expect(tx.needs_review).toBe(false);
+  });
+
+  it("lee el establecimiento de un consumo aunque el valor esté envuelto en marcado", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(email({ subject: "Consumo tarjeta de débito por USD 9.42", body: CONSUMO_HTML }))
+    );
+    expect(tx.amount).toBe(9.42);
+    expect(tx.counterparty).toBe("TIENDA EJEMPLO QUITO EC");
+  });
+
+  // Los 497 débitos del ledger real tienen `account = NULL` aunque el correo
+  // trae "Cuenta Débito:". Sin cuenta, `accountsEqual(null, null)` da true y el
+  // apareo de reversos degenera a "mismo monto, mismo día".
+  it("puebla la cuenta de un consumo, no sólo la de un retiro", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(email({ subject: "Consumo tarjeta de débito por USD 9.42", body: CONSUMO_HTML }))
+    );
+    expect(tx.account).toBe("XXXXXX4321");
+    expect(tx.account_holder).toBe("PEREZ GOMEZ ANA");
+  });
+
+  it("lee la prosa de una recarga aunque el marcado la parta", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "COMPRA MINUTOS CLARO",
+          body: "<P>Tu compra de minutos Claro <STRONG>por un valor de \r\nUSD 3.00</STRONG> fue exitosa. Produbanco</P>",
+        })
+      )
+    );
+    expect(tx.amount).toBe(3.0);
+    expect(tx.needs_review).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Guardas deterministas (investigacion-riesgos.md §1.4 y §6).
+// ---------------------------------------------------------------------------
+
+describe("guarda: la etiqueta anclada aparece más de una vez", () => {
+  it("marca needs_review cuando el cuerpo declara dos montos distintos bajo la misma etiqueta", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Transferencia recibida desde Produbanco",
+          body: "Detalle Monto: $45.00\nCorrección Monto: $12.00",
+        })
+      )
+    );
+    expect(tx.amount).toBeNull();
+    expect(tx.needs_review).toBe(true);
+    expect(tx.review_reason).toBe("ambiguous_labeled_amount");
+  });
+
+  // El falso positivo que había que evitar: un cuerpo normal SIEMPRE trae otras
+  // cifras (saldo, comisión) antes del monto que importa. El guarda mira la
+  // ETIQUETA repetida, no "hay más de una cifra".
+  it("NO se dispara en un retiro normal con saldo y comisión en el cuerpo", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Retiro sin tarjeta de débito Produbanco en cajero automático",
+          body: "Saldo disponible: $154.30 Comisión: $0.50 Monto: $20.00 Cuenta débito: ANA XXXXXX20924",
+        })
+      )
+    );
+    expect(tx.amount).toBe(20.0);
+    expect(tx.needs_review).toBe(false);
+  });
+});
+
+describe("guarda: asunto y cuerpo son dos afirmaciones del mismo monto", () => {
+  it("usa el monto cuando asunto y cuerpo coinciden", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Transferencia recibida desde Produbanco por $45.00",
+          body: "De: Juan Perez Monto: $45.00",
+        })
+      )
+    );
+    expect(tx.amount).toBe(45.0);
+    expect(tx.needs_review).toBe(false);
+  });
+
+  it("marca needs_review cuando discrepan, en vez de elegir uno", () => {
+    const tx = asTransaction(
+      produbancoParser.parse(
+        email({
+          subject: "Transferencia recibida desde Produbanco por $45.00",
+          body: "De: Juan Perez Monto: $12.00",
+        })
+      )
+    );
+    expect(tx.amount).toBeNull();
+    expect(tx.needs_review).toBe(true);
+    expect(tx.review_reason).toBe("subject_body_amount_mismatch");
+  });
+});

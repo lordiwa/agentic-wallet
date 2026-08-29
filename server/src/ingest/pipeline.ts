@@ -150,13 +150,6 @@ function toInboundEmail(msg: GmailMessage): InboundEmail {
   };
 }
 
-/** Schema NOT NULL constraint on `transactions.amount` means a needs_review
- * row whose amount could never be determined (unparseable by F1-03, or a
- * reverso whose body had no "Monto:" field) still needs a numeric
- * placeholder to persist. 0 is safe: needs_review=1 already excludes the
- * row from any trusted total, and a human fixes/discards it at /api/review. */
-const UNKNOWN_AMOUNT_PLACEHOLDER = 0;
-
 function toNewTransaction(
   tx: ReconcilableTransaction,
   threadId: string | null,
@@ -169,7 +162,9 @@ function toNewTransaction(
     ts: tx.ts,
     direction: tx.direction,
     type: tx.type,
-    amount: tx.amount ?? UNKNOWN_AMOUNT_PLACEHOLDER,
+    // Sin coerción: `null` viaja hasta `insertTransaction`, que es donde vive
+    // la invariante "monto desconocido ⇒ placeholder + needs_review".
+    amount: tx.amount,
     currency: tx.currency,
     counterparty: tx.counterparty ?? null,
     account: tx.account ?? null,
@@ -312,7 +307,7 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
           ts: email.ts,
           direction: "in",
           type: "reverso",
-          amount: UNKNOWN_AMOUNT_PLACEHOLDER,
+          amount: null,
           account: fields.account,
           raw_subject: parseResult.raw_subject,
           needs_review: true,

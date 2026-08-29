@@ -75,6 +75,72 @@ Para `transaction`, los campos que importan:
 }
 ```
 
+## La capa compartida: leer campos del cuerpo
+
+`server/src/parser/field-extract.ts` no sabe de ningún banco. Es lo que todos
+los parsers usan para leer el cuerpo, y **existe para que no repitas un bug que
+ya nos costó caro**.
+
+```ts
+import {
+  normalizeBody,        // el cuerpo como texto plano, venga como venga
+  extractLabeledAmount, // el monto anclado a "Monto:" / "Valor:" / la etiqueta que use tu banco
+  extractLabeledField,  // el valor de un campo "Etiqueta: valor"
+  extractMaskedAccount, // el token "XXXXXX1234" de un campo de cuenta
+  extractAccountHolder, // el nombre que lo precede
+} from "./field-extract.js";
+```
+
+### El bug que evita
+
+Un correo bancario no siempre llega en texto plano. El mismo mensaje puede
+llegar de las dos formas:
+
+```
+Monto:\n$45.00                              (text/plain)
+<STRONG>Monto:</STRONG> \r\n  $45.00<BR>    (text/html)
+```
+
+Un regex anclado a la etiqueta matchea la primera y **no** la segunda: el
+`</STRONG>` se mete entre la etiqueta y su valor. Y no falla ruidosamente —
+devuelve `null`, que se persiste como una fila en revisión, fuera de todos los
+totales. En el ledger de referencia eso se comió **el 100 % de las
+transferencias recibidas, el 100 % de los retiros y la cuenta de las 1069
+filas**, en silencio, durante ocho meses.
+
+Los helpers normalizan el cuerpo antes de mirarlo, así que ese modo de fallo no
+existe para vos. Lo mismo con el salto de línea: el HTML del banco corta las
+líneas a lo ancho, no por campo, y el titular puede quedar en una línea y la
+cuenta en la siguiente **dentro del mismo campo** — por eso
+`extractMaskedAccount` busca el token por su forma (`XXXXXX1234`, `****1234`) y
+no "el último token antes del salto".
+
+### Lo único que pone tu banco
+
+El vocabulario de etiquetas. Mirá `FIELD_STOP_LABELS` en `produbanco.ts`:
+
+```ts
+const FIELD_STOP_LABELS = ["Banco Destino", "Cuenta\\s*d[eé]bito", "Fecha", "Monto", "Cuenta"];
+
+extractLabeledField(body, "Establecimiento", FIELD_STOP_LABELS);
+```
+
+Sin esa lista, un campo se lleva por delante al que le sigue cuando comparten
+línea (`"Contacto: X Banco Destino: Y"` → `"X Banco Destino: Y"`). Poné las
+etiquetas más largas antes que las más cortas.
+
+### El guarda de ambigüedad
+
+`extractLabeledAmount` devuelve `{ amount, ambiguous }`. `ambiguous: true`
+significa que **la etiqueta aparece más de una vez en el cuerpo con montos
+distintos**: el correo se contradice y elegir uno sería adivinar. Mandalo a
+revisión.
+
+Ojo con la formulación: el guarda es sobre **la etiqueta repetida**, no sobre
+"hay más de una cifra en el cuerpo". Los cuerpos traen saldo y comisión antes
+del monto que importa, siempre — la segunda versión marcaría el 100 % de los
+correos, y una fila marcada no se desmarca nunca.
+
 ## La regla que no se negocia
 
 **El monto sale de tu parser, nunca de Claude.**
@@ -146,12 +212,17 @@ describe("miBancoParser", () => {
 `server/src/parser/mibanco.ts`:
 
 ```ts
+import { extractLabeledField, extractMaskedAccount } from "./field-extract.js";
 import type { BankEmailParser, InboundEmail, ParseResult } from "./types.js";
 
 const AMOUNT_RE = /\$\s*([0-9]+\.[0-9]{2})\b/;
 
+// Las etiquetas que usa tu banco. Las más largas primero.
+const STOP_LABELS = ["Cuenta\\s*d[eé]bito", "Comercio", "Fecha", "Cuenta"];
+
 function classify(email: InboundEmail): ParseResult {
   const subject = email.subject.toLowerCase();
+  const body = email.body;
 
   if (subject.includes("compra con tu tarjeta")) {
     const amount = AMOUNT_RE.exec(email.subject)?.[1];
@@ -161,8 +232,9 @@ function classify(email: InboundEmail): ParseResult {
       direction: "out",
       amount: amount ? Number(amount) : null,
       currency: "USD",
-      counterparty: /Comercio:\s*(.+)/.exec(email.body)?.[1]?.trim() ?? null,
-      account: null,
+      // Nunca `body.match(...)` a mano: los helpers normalizan el marcado.
+      counterparty: extractLabeledField(body, "Comercio", STOP_LABELS),
+      account: extractMaskedAccount(body, "Cuenta\\s*d[eé]bito", STOP_LABELS),
       raw_subject: email.subject,
       needs_review: amount === undefined,
       review_reason: amount === undefined ? "monto_no_parseable" : undefined,
@@ -232,6 +304,8 @@ parser y sus tests es bienvenido.
 - [ ] `canParse` reconoce los correos de tu banco y **sólo** esos
 - [ ] Cada tipo de movimiento tiene un test con un correo real anonimizado
 - [ ] Los montos salen de una regex estricta, con dos decimales
+- [ ] Los campos del cuerpo se leen con `field-extract.ts`, no con regex propias
+- [ ] Hay un test con el cuerpo en **HTML**, no sólo en texto plano
 - [ ] Lo que no podés parsear devuelve `needs_review: true`, nunca `amount: 0`
 - [ ] Publicidad y avisos devuelven `kind: "ignored"`
 - [ ] Estados de cuenta devuelven `kind: "statement"`

@@ -1,4 +1,10 @@
-import { cleanFieldValue } from "./html-text.js";
+import {
+  extractAccountHolder,
+  extractLabeledAmount,
+  extractLabeledField,
+  extractMaskedAccount,
+  normalizeBody,
+} from "./field-extract.js";
 import type { BankEmailParser, Direction, InboundEmail, ParseResult, TransactionType } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -48,43 +54,40 @@ function extractAmount(text: string, format: AmountFormat): number | null {
 }
 
 /**
- * Extracts an amount anchored to a specific "Label: USD X.XX" / "Label: $X.XX"
- * field, rather than scanning the whole text for the first amount-shaped
- * substring. Bodies routinely contain other dollar figures (saldo, comisión,
- * etc.) before the field that actually matters — matching unanchored risks
- * silently returning the wrong number instead of the intended one.
- */
-function extractLabeledAmount(text: string, label: string): number | null {
-  const re = new RegExp(`${label}\\s*:\\s*(?:USD\\s*|\\$\\s*)([0-9]+\\.[0-9]{2})\\b`, "i");
-  const match = text.match(re);
-  return match ? Number(match[1]) : null;
-}
-
-// Labels that can immediately follow a counterparty field in Produbanco
-// bodies; extraction stops at the first one so trailing fields never leak
-// into the captured name (e.g. "Contacto: X Banco Destino: Y" -> "X").
-const FIELD_STOP_WORDS =
-  "(?:Banco Destino|Cuenta Destino|Cuenta\\s*d[eé]bito|Fecha|Hora|Referencia|Establecimiento|Contacto|Beneficiario|Monto|Cuenta)\\s*:";
-
-/** Extracts the value of a "Label: value" field from a body, stopping before
- * the next known field label, a newline, or the end of the string.
+ * El vocabulario de etiquetas de Produbanco. Es lo ÚNICO específico del banco
+ * en la lectura de campos: el cómo (normalizar el marcado, anclar a la
+ * etiqueta, cortar antes de la siguiente) vive en `field-extract.ts` y lo
+ * comparten todos los bancos. Un banco nuevo declara su propia lista.
  *
- * El valor pasa por `cleanFieldValue` porque no todo cuerpo llega ya en texto
- * plano: los que se reconstruyen desde un respaldo, o los que el cliente de
- * Gmail no pudo desarmar, traen HTML y el marcado terminaba guardado dentro de
- * `counterparty` (ver `html-text.ts`). */
+ * El orden importa: `Cuenta\s*débito` va antes que `Cuenta` para que la
+ * alternación no corte a la mitad de la etiqueta más larga.
+ */
+const FIELD_STOP_LABELS = [
+  "Banco Destino",
+  "Cuenta Destino",
+  "Cuenta\\s*d[eé]bito",
+  "Fecha",
+  "Hora",
+  "Referencia",
+  "Establecimiento",
+  "Contacto",
+  "Beneficiario",
+  "Descripci[oó]n",
+  "Cajero",
+  "Monto",
+  "Valor",
+  "Cuenta",
+] as const;
+
+const DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[eé]bito";
+
 function extractField(body: string, label: string): string | null {
-  const re = new RegExp(`${label}\\s*:\\s*(.+?)(?=\\s+${FIELD_STOP_WORDS}|\\n|$)`, "i");
-  const match = body.match(re);
-  return match ? cleanFieldValue(match[1]) : null;
+  return extractLabeledField(body, label, FIELD_STOP_LABELS);
 }
 
-/** Extracts the trailing masked-account token from a "Cuenta débito: NAME XXXXXX1234" field. */
+/** El token de cuenta enmascarada de "Cuenta débito: NOMBRE XXXXXX1234". */
 function extractDebitAccount(body: string): string | null {
-  const field = extractField(body, "Cuenta\\s*d[eé]bito");
-  if (!field) return null;
-  const tokens = field.split(/\s+/);
-  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
+  return extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS);
 }
 
 /**
@@ -95,10 +98,12 @@ function extractDebitAccount(body: string): string | null {
  * numero de cuenta. Devuelve null cuando el campo solo trae la cuenta.
  */
 function extractDebitAccountHolder(body: string): string | null {
-  const field = extractField(body, "Cuenta\\s*d[eé]bito");
-  if (!field) return null;
-  const name = field.split(/\s+/).slice(0, -1).join(" ").trim();
-  return name === "" ? null : name;
+  return extractAccountHolder(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS);
+}
+
+/** El monto anclado al campo "Monto:" del cuerpo, con el guarda de ambigüedad. */
+function extractBodyAmount(body: string): ReturnType<typeof extractLabeledAmount> {
+  return extractLabeledAmount(body, "Monto");
 }
 
 function transaction(params: {
@@ -139,7 +144,9 @@ function transaction(params: {
 function classify(email: InboundEmail): ParseResult {
   const subject = normalize(email.subject);
   const rawSubject = email.subject;
-  const body = email.body;
+  // Una sola normalización para todo el correo: de acá en adelante ninguna
+  // rama tiene que acordarse de si el cuerpo venía en HTML o en texto plano.
+  const body = normalizeBody(email.body);
 
   // --- 5.2 ignore / non-transaction markers (checked first: some of these
   // share words with catalog subjects, e.g. "retiro", "recibida") ---
@@ -225,16 +232,17 @@ function classify(email: InboundEmail): ParseResult {
   }
 
   if (subject.includes("retiro sin tarjeta de debito") && subject.includes("cajero automatico")) {
+    // Anchored to the "Monto:" field, not the first "$X.XX" in the body —
+    // bodies can list other figures (saldo disponible, etc.) first.
+    const monto = extractBodyAmount(body);
     return transaction({
       type: "retiro",
       direction: "out",
-      // Anchored to the "Monto:" field, not the first "$X.XX" in the body —
-      // bodies can list other figures (saldo disponible, etc.) first.
-      amount: extractLabeledAmount(body, "Monto"),
+      amount: monto.amount,
       account: extractDebitAccount(body),
       account_holder: extractDebitAccountHolder(body),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found_in_body",
+      reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body",
     });
   }
 
@@ -267,18 +275,26 @@ function classify(email: InboundEmail): ParseResult {
   }
 
   if (subject.includes("transferencia recibida desde produbanco")) {
-    // The subject's own amount (when present) is a single, unambiguous
-    // value. Otherwise fall back to the body's anchored "Monto:" field —
-    // never an unanchored scan, which could pick up an unrelated figure
-    // (saldo, comisión, etc.) that happens to appear earlier in the body.
-    const amount = extractAmount(rawSubject, "either") ?? extractLabeledAmount(body, "Monto");
+    // Asunto y cuerpo son DOS afirmaciones independientes del mismo monto
+    // dentro del mismo correo. El `??` que había acá las trataba como
+    // suplentes ("usá la que esté") y desperdiciaba la evidencia: si las dos
+    // están y no coinciden, elegir una es adivinar. Es el mismo patrón que
+    // usa `category/heal-counterparty.ts` — sólo se escribe si el correo,
+    // releído hoy, rinde el MISMO monto.
+    const fromSubject = extractAmount(rawSubject, "either");
+    const fromBody = extractBodyAmount(body);
+    const disagree = fromSubject !== null && fromBody.amount !== null && fromSubject !== fromBody.amount;
     return transaction({
       type: "recibido",
       direction: "in",
-      amount,
+      amount: fromBody.ambiguous || disagree ? null : fromSubject ?? fromBody.amount,
       counterparty: extractField(body, "De") ?? extractField(body, "Remitente"),
       raw_subject: rawSubject,
-      reviewReason: "amount_not_found",
+      reviewReason: fromBody.ambiguous
+        ? "ambiguous_labeled_amount"
+        : disagree
+          ? "subject_body_amount_mismatch"
+          : "amount_not_found",
     });
   }
 
@@ -291,12 +307,25 @@ export const produbancoParser: BankEmailParser = {
   canParse(email) {
     return /produbanco/i.test(email.subject) || /produbanco/i.test(email.body);
   },
-  /** El nombre del titular se completa aqui y no en cada rama de `classify`:
+  /**
+   * La cuenta y el titular se completan aqui y no en cada rama de `classify`:
    * el campo "Cuenta débito" aparece en cuerpos de varios tipos (consumo,
-   * retiro, ...) y siempre significa lo mismo. */
+   * retiro, ...) y siempre significa lo mismo.
+   *
+   * `account` se poblaba SOLO en la rama de retiro, asi que los consumos
+   * entraban sin cuenta — y `rules/reconcile.ts` considera iguales a dos
+   * cuentas desconocidas, con lo que el apareo de un reverso degeneraba a
+   * "mismo monto, mismo dia" y marcaba para siempre a los dos consumos que
+   * coincidieran. Poblarla acá es lo que le devuelve al apareo su segundo eje.
+   */
   parse(email) {
     const result = classify(email);
-    if (result.kind !== "transaction" || result.account_holder) return result;
-    return { ...result, account_holder: extractDebitAccountHolder(email.body) };
+    if (result.kind !== "transaction") return result;
+    const body = normalizeBody(email.body);
+    return {
+      ...result,
+      account: result.account ?? extractDebitAccount(body),
+      account_holder: result.account_holder ?? extractDebitAccountHolder(body),
+    };
   },
 };
