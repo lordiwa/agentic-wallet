@@ -1,11 +1,14 @@
 # Ledger de confiabilidad
 
-> **Score: 4 / 10** — 4 VERIFICADOS, 4 ASUMIDOS, 2 INCONSISTENTES sobre los 10
+> **Score: 6 / 10** — 6 VERIFICADOS, 4 ASUMIDOS, 0 INCONSISTENTES sobre los 10
 > ítems del onboarding.
 >
-> **Meta: ≥ 9/10.** No se cumple. Los ítems que bajan el score y qué haría
-> falta para subirlos están al final, en
+> **Meta: ≥ 9/10.** Todavía no se cumple: los cuatro que faltan necesitan
+> credenciales reales. Qué haría falta para subirlos está al final, en
 > [Qué falta para llegar a 9/10](#qué-falta-para-llegar-a-910).
+>
+> Las dos ❌ de la auditoría original (ítems 6 y 9) se corrigieron editando la
+> documentación — no el motor. El score subió de 4/10 a 6/10.
 
 Auditoría del commit `91520df`, corrida el **2026-08-29** sobre esta misma
 instalación (Linux, Node 22, `.env` sin credenciales, ledger con **0
@@ -51,8 +54,8 @@ Todo lo que sigue se corrió con:
 
 Consecuencia directa: **ningún ítem se ejercitó contra un buzón de Gmail real
 ni contra un ledger con datos.** Eso es exactamente lo que separa los cuatro
-ASUMIDOS de los cuatro VERIFICADOS, y es la razón principal por la que el score
-es 4 y no 9.
+ASUMIDOS de los VERIFICADOS, y —ahora que las dos ❌ están corregidas— es la
+única razón por la que el score es 6 y no 9.
 
 ---
 
@@ -107,10 +110,10 @@ es 4 y no 9.
 
 | | |
 |---|---|
-| **Qué dice la doc** | Escribe los campos confirmados; un campo desconocido es error duro que lista los válidos; `balanceSnapshot` ancla el saldo; el paso `profile` se cierra con `titular` + al menos un día de pago. Y en mcp.md: *"Un `\"15\"` pelado no parsea y deja el calendario de pagos en null."* |
-| **Qué hace la realidad** | La parte gruesa anda: los seis campos documentados se escriben (`titular`, `sueldo`, `colchonObjetivo`, `topeTransferenciasMensual`, `moneda`, `balanceSnapshot`), el campo desconocido devuelve el error con la lista de válidos, `balanceSnapshot:{amount:1234.56}` → `get_balance.balance_actual = 1234.56`, y el paso `profile` pasa a `done:true`. **Pero la advertencia del `"15"` pelado describe mal las dos superficies**: por MCP `set_profile` **rechaza** el valor antes de escribirlo (`MCP error -32602: Invalid at sueldo.diasPago[0]`) — o sea que por el camino que documenta mcp.md el calendario nunca queda en null, porque el valor no entra. El que **sí** lo acepta en silencio es el CLI: `--set` con `diasPago:["15"]` responde `{"ok":true,"written":["sueldo"]}`, y a partir de ahí `next_payday` queda en `null` **y `safe_to_spend_hoy` se cae a 0** — mientras `--status` sigue informando `profile: done:true`. La advertencia está escrita en el documento equivocado, sobre la superficie equivocada, y ninguna doc avisa que el checklist puede decir "perfil configurado" con el calendario de pagos roto. |
-| **Estado** | ❌ **INCONSISTENTE** |
-| **Evidencia** | Probe MCP: `set_profile {sueldo:{...diasPago:["15"]}}` → `-32602`. CLI: `--set '{"sueldo":{...,"diasPago":["15"]}}'` → `ok:true`; después `get_balance` → `"next_payday": null, "safe_to_spend_hoy": 0`; `--status` → `('profile', True)`. |
+| **Qué dice la doc** | Escribe los campos confirmados; un campo desconocido es error duro que lista los válidos; `balanceSnapshot` ancla el saldo; el paso `profile` se cierra con `titular` + al menos un día de pago. Sobre el `"15"` pelado: mcp.md dice que `set_profile` **lo rechaza** con `-32602` sin escribir nada, y onboarding.md §5a avisa que el CLI `--set` **sí lo acepta** pero deja `next_payday` en `null` y `safe_to_spend_hoy` en 0, con `--status` informando igual `profile: done`. |
+| **Qué hace la realidad** | La parte gruesa anda: los seis campos documentados se escriben (`titular`, `sueldo`, `colchonObjetivo`, `topeTransferenciasMensual`, `moneda`, `balanceSnapshot`), el campo desconocido devuelve el error con la lista de válidos, `balanceSnapshot:{amount:1234.56}` → `get_balance.balance_actual = 1234.56`, y el paso `profile` pasa a `done:true`. Y ahora cada doc describe **su** superficie: por MCP el valor se rechaza antes de escribirse (`MCP error -32602: Invalid at sueldo.diasPago[0]`), por CLI entra en silencio (`{"ok":true,"written":["sueldo"]}`) y rompe el calendario. La advertencia del `"15"` pelado quedó en el documento correcto, y onboarding.md avisa explícitamente que el checklist puede decir "perfil configurado" con el calendario de pagos mudo. |
+| **Estado** | ✅ **VERIFICADO** (era ❌ INCONSISTENTE; corregido en docs el 2026-08-29) |
+| **Evidencia** | Probe MCP: `set_profile {sueldo:{...diasPago:["15"]}}` → `-32602`. CLI: `--set '{"sueldo":{...,"diasPago":["15"]}}'` → `ok:true`; después `get_balance` → `"next_payday": null, "safe_to_spend_hoy": 0`; `--status` → `('profile', True)`. Las dos conductas están hoy documentadas donde corresponde: mcp.md §`set_profile` y onboarding.md §5a. |
 
 ### 7. `set_rule` / `--rule`
 
@@ -134,10 +137,10 @@ es 4 y no 9.
 
 | | |
 |---|---|
-| **Qué dice la doc** | onboarding-para-humanos.md: *"Cuando el proceso termina… `npm run dev` … y abrís **http://localhost:3000** en tu navegador: vas a ver tu dashboard"*. onboarding.md §Terminado: `npm run onboard` → `npm run dev` → `http://localhost:3000`. README:86: *"`npm run dev` — API + web en http://localhost:3000"*. El propio `--status` dice *"Levanta el server (`npm run dev`) y pulsa 'Sincronizar'"*. Sólo el Paso 4 de onboarding.md menciona `npm run build # la primera vez`. |
-| **Qué hace la realidad** | **En una instalación de primera vez, `localhost:3000` no muestra el dashboard: tira un 404 con un stack de Node.** El server sirve la SPA desde `web/dist` (`index.ts:93-98`), `web/dist` es artefacto de build y **`dist/` está en `.gitignore`**, así que un clon fresco no lo tiene y `npm install` no lo genera. Comprobado moviendo `web/dist` fuera del árbol: `GET /` → `HTTP 404` con `Error: ENOENT: no such file or directory, stat '.../web/dist/index.html'` — mientras `/api/overview` responde 200. Con `web/dist` presente, `GET /` → 200 con el `<title>Agentic Wallet</title>` esperado. Segundo desajuste: `npm run dev` en la raíz levanta **también** Vite (con proxy `/api` → 3000), un segundo puerto que ninguna doc menciona. |
-| **Estado** | ❌ **INCONSISTENTE** |
-| **Evidencia** | `mv web/dist /tmp/…` + server efímero en 3999: `curl localhost:3999/` → 404 + ENOENT; `curl localhost:3999/api/overview` → 200. Con `web/dist`: `curl localhost:3999/` → 200, `<title>Agentic Wallet</title>`. `git clone` fresco: `ls web/dist` → *No such file or directory*. `web/vite.config.ts` (proxy). |
+| **Qué dice la doc** | Las cuatro superficies mandan a buildear **antes** de levantar el server: onboarding-para-humanos.md §"Después de configurarlo" (`npm run build` → `npm run dev`), onboarding.md §Terminado (idem, más el porqué: `web/dist` es artefacto de build y está en `.gitignore`, y `npm run dev` levanta también Vite en otro puerto), README:86 (`npm run build` antes de `npm run dev`), y el `action` del paso `sync` en `--status`, que ahora dice `npm run build && npm run dev`. |
+| **Qué hace la realidad** | Eso es exactamente lo que hace falta. El server sirve la SPA desde `web/dist` (`index.ts:93-98`), `web/dist` es artefacto de build y **`dist/` está en `.gitignore`**, así que un clon fresco no lo tiene y `npm install` no lo genera: sin `npm run build`, `GET /` → `HTTP 404` con `Error: ENOENT: no such file or directory, stat '.../web/dist/index.html'` mientras `/api/overview` responde 200. Con `web/dist` presente, `GET /` → 200 con el `<title>Agentic Wallet</title>` esperado. La doc ya no promete un dashboard que no está buildeado, y el segundo puerto de Vite (proxy `/api` → 3000) está mencionado. |
+| **Estado** | ✅ **VERIFICADO** (era ❌ INCONSISTENTE; corregido en docs el 2026-08-29) |
+| **Evidencia** | `mv web/dist /tmp/…` + server efímero en 3999: `curl localhost:3999/` → 404 + ENOENT; `curl localhost:3999/api/overview` → 200. Con `web/dist`: `curl localhost:3999/` → 200, `<title>Agentic Wallet</title>`. `git clone` fresco: `ls web/dist` → *No such file or directory*. `web/vite.config.ts` (proxy). El paso `build` está hoy en onboarding-para-humanos.md, onboarding.md §Terminado, README:86 y `status.ts:105`. |
 
 ### 10. El chat
 
@@ -154,10 +157,15 @@ es 4 y no 9.
 
 | Estado | Cantidad |
 |---|---|
-| ✅ VERIFICADO | **4** (ítems 1, 5, 7, 8) |
+| ✅ VERIFICADO | **6** (ítems 1, 5, 6, 7, 8, 9) |
 | ⚠️ ASUMIDO | **4** (ítems 2, 3, 4, 10) |
-| ❌ INCONSISTENTE | **2** (ítems 6, 9) |
-| **Confiabilidad** | **4 / 10** |
+| ❌ INCONSISTENTE | **0** |
+| **Confiabilidad** | **6 / 10** |
+
+Los ítems 6 y 9 eran ❌ en la auditoría original del 2026-08-29 y pasaron a ✅
+el mismo día corrigiendo la documentación: el paso `npm run build` antes de
+`npm run dev`, y la advertencia del `"15"` pelado reubicada a la superficie que
+de verdad lo acepta. Ningún cambio de motor.
 
 ---
 
@@ -185,39 +193,38 @@ cada ✅ es una afirmación de la doc que **sí** quedó probada.
 | S14 | Todos los links internos entre docs resuelven | Ninguno roto en `docs/*.md` ni en `README.md` | ✅ |
 | S15 | El motor está verde | `npm test` → **65 archivos, 655 tests, 655 passed**. `npm run build` → sin errores | ✅ |
 
-**Score ampliado** (los 10 ítems + los 15 secundarios): 13 VERIFICADOS
-(4 + 9), 4 ASUMIDOS, 8 INCONSISTENTES (2 + 6) → **13/25 = 5.2/10**.
+**Score ampliado** (los 10 ítems + los 15 secundarios): 15 VERIFICADOS
+(6 + 9), 4 ASUMIDOS, 6 INCONSISTENTES (0 + 6) → **15/25 = 6.0/10**. Los seis ❌
+que quedan son todos secundarios (S1–S6), ninguno del checklist principal.
 
 ---
 
 ## Qué falta para llegar a 9/10
 
-Los seis ítems que hoy no son VERIFICADO, ordenados por lo que cuesta arreglarlos.
+Los cuatro ítems que hoy no son VERIFICADO, ordenados por lo que cuesta
+arreglarlos.
 
-### Se arreglan editando docs (ítems 6 y 9 — los dos ❌)
+### Hecho — se arreglaron editando docs (ítems 6 y 9, los dos ❌)
 
-**Ítem 9 — `npm run dev` → 404.** Es el peor de los dos: es lo último que hace
-el usuario en el onboarding, y falla con un stack de Node. Para subirlo a ✅:
+**Ítem 9 — `npm run dev` → 404.** Era el peor de los dos: es lo último que hace
+el usuario en el onboarding, y fallaba con un stack de Node. Se agregó
+`npm run build` **antes** de `npm run dev` en los tres docs que lo omitían
+(onboarding.md §Terminado, onboarding-para-humanos.md §"Después de
+configurarlo", README:86), se cambió el `action` del paso `sync` en
+`server/src/onboard/status.ts:105` a `npm run build && npm run dev`, y
+onboarding.md §Terminado ahora menciona el segundo puerto de Vite.
 
-1. Agregar `npm run build` **antes** de `npm run dev` en los tres lugares que
-   hoy lo omiten: onboarding.md §Terminado, onboarding-para-humanos.md
-   §"Después de configurarlo", y README:86.
-2. Cambiar el `action` del paso `sync` en `server/src/onboard/status.ts:105`,
-   que también manda a `npm run dev` a secas.
-3. Alternativa más robusta que documentar el orden: que el server, si no
-   encuentra `web/dist/index.html`, responda "corré `npm run build`" en vez de
-   un ENOENT. (Esto sí toca código del motor — queda como propuesta, no se hizo
-   en esta tarea.)
-4. Mencionar que `npm run dev` levanta también Vite en otro puerto.
+> Queda pendiente, como propuesta y no como fix de doc: que el server, si no
+> encuentra `web/dist/index.html`, responda "corré `npm run build`" en vez de un
+> ENOENT. Eso toca código del motor y no se hizo acá.
 
-**Ítem 6 — la advertencia del `"15"` pelado.** Para subirlo a ✅: mover la
-advertencia de mcp.md a onboarding.md (que es donde vive `--set`, la superficie
-que realmente acepta el valor malo), corregir que por MCP el valor se **rechaza**
-con `-32602`, y avisar que `--status` puede decir `profile: done` con el
-calendario de pagos en null. Verificación: repetir la prueba por las dos
-superficies y confirmar que el texto describe lo que pasa en cada una.
+**Ítem 6 — la advertencia del `"15"` pelado.** Se corrigió mcp.md para decir lo
+que de verdad pasa por MCP (`set_profile` **rechaza** el valor con `-32602` y no
+escribe nada) y se agregó la advertencia en onboarding.md §5a, que es donde vive
+`--set`, la superficie que sí acepta el día pelado y deja `next_payday` en
+`null` y `safe_to_spend_hoy` en 0 mientras `--status` informa `profile: done`.
 
-Con esos dos: **6/10**.
+Con esos dos: **6/10** — el score actual.
 
 ### Necesitan credenciales reales (ítems 2, 4, 10)
 

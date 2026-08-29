@@ -237,6 +237,12 @@ npm run onboard -- --set '{
 }'
 ```
 
+> **`diasPago` son ventanas, no días sueltos.** `--set` acepta un día pelado
+> (ej. `"15"`) pero deja el calendario de pagos mudo: `next_payday` queda en
+> `null` y `safe_to_spend_hoy` se cae a 0 — y `--status` igual informa
+> `profile: done`. Usá ventanas: `"15-15"`, `"30-30"`, `"18-20"`, `"<=5"`.
+> (Por MCP, `set_profile` rechaza el día pelado con `-32602`.)
+
 `titular` importa más de lo que parece: es cómo el motor reconoce las
 transferencias entre cuentas propias del usuario como **internas**, para no
 contarlas como gasto. Si está mal, los totales quedan inflados.
@@ -391,8 +397,14 @@ neutro correcto.
 
 ```bash
 npm run onboard        # debe decir "Todo listo"
+npm run build          # la primera vez: sin `web/dist` el dashboard da 404
 npm run dev            # http://localhost:3000
 ```
+
+`npm run build` no es opcional en una instalación nueva: el server sirve la SPA
+desde `web/dist`, que es artefacto de build y está en `.gitignore`, así que un
+clon fresco no lo trae. `npm run dev` levanta además Vite en su propio puerto,
+con proxy `/api` → 3000.
 
 El paso `profile` se considera completo cuando hay `titular` **y** al menos un
 día de pago configurado — los dos campos que nada más puede inferir con

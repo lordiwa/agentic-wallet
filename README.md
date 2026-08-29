@@ -83,6 +83,7 @@ Resumen de los cinco pasos:
 Cuando el checklist esté completo:
 
 ```bash
+npm run build    # la primera vez: sin `web/dist` el dashboard da 404
 npm run dev      # API + web en http://localhost:3000
 ```
 

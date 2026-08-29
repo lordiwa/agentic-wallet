@@ -116,9 +116,12 @@ Acá el agente **lee tu historial real** y te propone cosas. Es un diálogo:
 
 ## Después de configurarlo
 
-Cuando el proceso termina, el wallet está listo:
+Cuando el proceso termina, el wallet está listo. Para instalar y preparar el
+dashboard, corré `npm run build` primero — sin eso `http://localhost:3000`
+responde un error en vez de la pantalla:
 
 ```bash
+npm run build    # la primera vez: prepara el dashboard
 npm run dev
 ```
 

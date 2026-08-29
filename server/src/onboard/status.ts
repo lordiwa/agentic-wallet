@@ -102,7 +102,7 @@ function syncStep(db: Database.Database | null): OnboardStep {
     id: "sync",
     title: "Primer sync (historial en el ledger)",
     done: ledgerSize(db) > 0,
-    action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`.",
+    action: "Levanta el server (`npm run build && npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`.",
   };
 }
 

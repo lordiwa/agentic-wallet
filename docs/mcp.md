@@ -48,8 +48,11 @@ asignada, así que se puede llamar después de cada regla sin miedo.
 
 Ojo con `sueldo.diasPago`: el motor lee **ventanas**, no días sueltos.
 `["15-15", "30-30"]` es "el 15 y el 30", `["18-20"]` es "entre el 18 y el 20",
-`["<=5"]` es "los primeros 5 días". Un `"15"` pelado no parsea y deja el
-calendario de pagos en null.
+`["<=5"]` es "los primeros 5 días". Un `"15"` pelado **`set_profile` lo
+rechaza**: devuelve `MCP error -32602: Invalid at sueldo.diasPago[0]` y no
+escribe nada, así que por esta superficie el valor malo nunca entra. (El que sí
+lo acepta en silencio —y deja el calendario mudo— es el CLI `--set`; ver
+[onboarding.md](onboarding.md), paso 5a.)
 
 ## Registro
 
