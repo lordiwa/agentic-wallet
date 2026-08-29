@@ -293,13 +293,76 @@ describe("MCP server del wallet", () => {
       statementsNeedReview: 0,
       reversalsApplied: 0,
     };
-    syncRunner = () => async () => summary;
+    syncRunner = () => async () => ({
+      ...summary,
+      cumulative: summary,
+      progress: { processed: 3, total: 3, remaining: 0, complete: true },
+    });
 
     const result = parse(await client.callTool({ name: "sync", arguments: {} }));
 
     expect(result.ok).toBe(true);
     // Intacto: la tool no reformatea ni renombra nada del resumen del motor.
     expect(result.summary).toEqual(summary);
+    expect(result.progress).toEqual({ processed: 3, total: 3, remaining: 0, complete: true });
+  });
+
+  it("sync avisa que falta backlog y hay que volver a llamarlo", async () => {
+    const summary = {
+      seen: 50,
+      inserted: 50,
+      duplicates: 0,
+      needsReview: 0,
+      skipped: 0,
+      statementsPersisted: 0,
+      statementsNeedReview: 0,
+      reversalsApplied: 0,
+    };
+    syncRunner = () => async () => ({
+      ...summary,
+      cumulative: { ...summary, seen: 100, inserted: 100 },
+      progress: { processed: 100, total: 1717, remaining: 1617, complete: false },
+    });
+
+    const result = parse(await client.callTool({ name: "sync", arguments: {} }));
+
+    expect(result.progress).toMatchObject({ processed: 100, total: 1717, remaining: 1617, complete: false });
+    // El agente tiene que poder decidir sin interpretar prosa: `complete`
+    // manda, y el texto solo lo explica.
+    expect(result.next_action).toContain("1617");
+    expect(result.cumulative).toMatchObject({ seen: 100 });
+  });
+
+  it("sync le pasa batch_size al runner del motor", async () => {
+    let recibido: unknown;
+    syncRunner = () => async (options) => {
+      recibido = options;
+      return {
+        seen: 5,
+        inserted: 5,
+        duplicates: 0,
+        needsReview: 0,
+        skipped: 0,
+        statementsPersisted: 0,
+        statementsNeedReview: 0,
+        reversalsApplied: 0,
+        cumulative: {
+          seen: 5,
+          inserted: 5,
+          duplicates: 0,
+          needsReview: 0,
+          skipped: 0,
+          statementsPersisted: 0,
+          statementsNeedReview: 0,
+          reversalsApplied: 0,
+        },
+        progress: { processed: 5, total: 5, remaining: 0, complete: true },
+      };
+    };
+
+    await client.callTool({ name: "sync", arguments: { batch_size: 5 } });
+
+    expect(recibido).toEqual({ batchSize: 5 });
   });
 
   it("get_review_queue devuelve solo las filas en needs_review", async () => {

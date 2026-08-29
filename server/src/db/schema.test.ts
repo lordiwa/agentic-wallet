@@ -9,7 +9,7 @@ function openMemoryDb() {
 }
 
 describe("migrate", () => {
-  it("creates all 14 tables", () => {
+  it("creates all 15 tables", () => {
     const db = openMemoryDb();
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -28,6 +28,7 @@ describe("migrate", () => {
       "statements",
       "strategy_config",
       "sueldos",
+      "sync_progress",
       "sync_state",
       "transactions",
     ]);

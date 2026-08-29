@@ -10,8 +10,15 @@
 import { existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getStrategyConfig } from "../db/strategy-config.js";
+import { getSyncProgress } from "../db/sync-progress.js";
 
 export type StepId = "env" | "claude" | "gmail" | "sync" | "huso" | "profile";
+
+export interface StepProgress {
+  processed: number;
+  total: number;
+  remaining: number;
+}
 
 export interface OnboardStep {
   id: StepId;
@@ -20,6 +27,9 @@ export interface OnboardStep {
   done: boolean;
   /** What the user (or the agent guiding them) must do when `done` is false. */
   action: string;
+  /** Solo el paso `sync` puede quedar a medias, y solo mientras haya backlog
+   * sin drenar: es lo que deja mostrar "procesando 340/1717". */
+  progress?: StepProgress;
 }
 
 export interface OnboardStatus {
@@ -65,6 +75,37 @@ export function profileConfigured(db: Database.Database | null): boolean {
   return config.titular.trim() !== "" && config.sueldo.diasPago.length > 0;
 }
 
+/**
+ * El primer sync de un buzon real no entra en una sola llamada: se drena por
+ * lotes con checkpoint (ver sync/run-sync.ts). Mientras quede backlog, el
+ * paso NO esta cerrado aunque ya haya filas en el ledger — darlo por hecho
+ * ahi mandaria al usuario a configurar su perfil con medio historial leido.
+ */
+function syncStep(db: Database.Database | null): OnboardStep {
+  const pending = db ? getSyncProgress(db) : undefined;
+  const remaining = pending?.pendingIds.length ?? 0;
+
+  if (pending && remaining > 0) {
+    return {
+      id: "sync",
+      title: "Primer sync (historial en el ledger)",
+      done: false,
+      action:
+        `Sync en curso: ${pending.processed} de ${pending.total} correos. Faltan ${remaining}: ` +
+        "volve a llamar la tool `sync` (o `curl -X POST localhost:3000/api/sync`) hasta que " +
+        "`progress.complete` sea true. Lo ya procesado esta guardado; nada se repite.",
+      progress: { processed: pending.processed, total: pending.total, remaining },
+    };
+  }
+
+  return {
+    id: "sync",
+    title: "Primer sync (historial en el ledger)",
+    done: ledgerSize(db) > 0,
+    action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`.",
+  };
+}
+
 export function onboardStatus({ envPath, env, db }: OnboardInputs): OnboardStatus {
   const steps: OnboardStep[] = [
     {
@@ -92,12 +133,7 @@ export function onboardStatus({ envPath, env, db }: OnboardInputs): OnboardStatu
         "Crea un cliente OAuth2 tipo 'Desktop app' en Google Cloud, pon client id/secret " +
         "en .env y corre `npm run gmail-auth` para obtener el refresh token. Ver docs/conectar-gmail.md.",
     },
-    {
-      id: "sync",
-      title: "Primer sync (historial en el ledger)",
-      done: ledgerSize(db) > 0,
-      action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`.",
-    },
+    syncStep(db),
     {
       // El motor asume -5 cuando la variable no esta (ver strategy/dates.ts).
       // Es un default razonable, pero decide que cae en "hoy" y en "este mes"

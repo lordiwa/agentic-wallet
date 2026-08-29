@@ -240,12 +240,22 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
     {
       title: "Sincronizar con Gmail",
       description:
-        "Lee los correos de notificacion bancaria nuevos y los incorpora al ledger. Requiere credenciales de " +
-        "Gmail y de Claude en .env; sin ellas responde gmail_not_configured sin tocar nada. Es la unica tool " +
-        "que sale a la red y puede tardar.",
-      inputSchema: {},
+        "Lee los correos de notificacion bancaria nuevos y los incorpora al ledger. Cada llamada procesa UN " +
+        "LOTE y devuelve `progress` {processed, total, remaining, complete}: si `complete` es false, volve a " +
+        "llamarla — el avance queda guardado y no se reprocesa nada. El primer sync de un buzon con anios de " +
+        "historial necesita varias llamadas. Requiere credenciales de Gmail y de Claude en .env; sin ellas " +
+        "responde gmail_not_configured sin tocar nada. Es la unica tool que sale a la red y puede tardar.",
+      inputSchema: {
+        batch_size: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Correos como maximo en esta llamada. Sin valor usa el default del motor."),
+      },
     },
-    async () => {
+    async ({ batch_size }) => {
       const db = deps.getDb();
       const runner = deps.buildSyncRunner(db);
       if (!runner) {
@@ -259,7 +269,19 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
 
       syncing = true;
       try {
-        return json({ ok: true, summary: await runner() });
+        // `progress` y `cumulative` salen del resumen del lote para que el
+        // agente no tenga que conocer la forma interna del motor; `summary`
+        // queda con los contadores de ESTA llamada, tal cual los emite.
+        const { progress, cumulative, ...summary } = await runner({ batchSize: batch_size });
+        return json({
+          ok: true,
+          summary,
+          cumulative,
+          progress,
+          next_action: progress.complete
+            ? "Sync al dia: no queda backlog."
+            : `Faltan ${progress.remaining} correos: volve a llamar \`sync\`.`,
+        });
       } finally {
         syncing = false;
       }
@@ -272,7 +294,9 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       title: "Estado del onboarding",
       description:
         "En que punto de la configuracion esta el usuario: .env, credencial de Claude, Gmail conectado, primer " +
-        "sync y perfil financiero. Devuelve el siguiente paso pendiente y que hay que hacer para cerrarlo.",
+        "sync y perfil financiero. Devuelve el siguiente paso pendiente y que hay que hacer para cerrarlo. " +
+        "Si el primer sync quedo a medias, el paso `sync` trae `progress` {processed, total, remaining} para " +
+        "poder decir 'procesando 340/1717'.",
       inputSchema: {},
     },
     async () => {

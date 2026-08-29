@@ -42,6 +42,9 @@ const envSchema = z.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: z.string().default("127.0.0.1"),
+  /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
+   * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
+   * nombre viejo no se leeria nunca. */
   WALLET_DB_PATH: z.string().optional(),
   /**
    * Nombre viejo de la misma variable, el que trae el `.env` de iwa-wallet.
@@ -50,6 +53,14 @@ const envSchema = z.object({
    * por defecto, indistinguible de "nunca sincronizaste".
    */
   BOLSILLO_DB_PATH: z.string().optional(),
+  /**
+   * Topes del sync incremental (ver sync/run-sync.ts). Sin valor, mandan los
+   * defaults del motor — no se repiten aca para no tener dos fuentes de
+   * verdad del mismo numero. Se tocan cuando el cliente que llama al sync
+   * tiene un timeout distinto al tipico de 60s del MCP.
+   */
+  WALLET_SYNC_BATCH_SIZE: z.coerce.number().int().positive().optional(),
+  WALLET_SYNC_MAX_MS: z.coerce.number().int().positive().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
   GMAIL_OAUTH_CLIENT_ID: z.string().optional(),

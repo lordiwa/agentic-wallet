@@ -63,6 +63,37 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 `;
 
+/**
+ * Checkpoint del sync incremental (ver `sync/run-sync.ts`).
+ *
+ * `sync_state` responde "hasta cuando llegue"; esta tabla responde "voy por
+ * la mitad de este backlog". Existe porque el PRIMER sync de un buzon real
+ * son miles de correos y cada uno pasa por Claude: procesarlos todos en una
+ * sola llamada tarda horas, y cualquier cliente con timeout (el MCP corta a
+ * los 60s) perdia el trabajo entero. Con el checkpoint, cada llamada drena
+ * un lote, persiste, y anota que falta — la siguiente sigue donde quedo.
+ *
+ * Fila unica (id = 1), igual que `sync_state`: no hay backlogs paralelos.
+ * `pending_ids` es el JSON de los gmail_msg_id que faltan; guardarlos evita
+ * repetir la busqueda de Gmail en cada lote y da un `total` exacto para
+ * reportar progreso. `started_at` es el "ahora" del momento en que se armo
+ * el backlog: es ESE, y no el del ultimo lote, el que se escribe en
+ * `sync_state.last_sync_ts` al terminar, para no saltearse los correos que
+ * llegaron mientras el drenado estaba en curso.
+ */
+const CREATE_SYNC_PROGRESS = `
+CREATE TABLE IF NOT EXISTS sync_progress (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  since_ts TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  processed INTEGER NOT NULL,
+  pending_ids TEXT NOT NULL,
+  totals TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 const CREATE_SAVINGS = `
 CREATE TABLE IF NOT EXISTS savings (
   id INTEGER PRIMARY KEY,
@@ -206,13 +237,14 @@ function addColumnIfMissing(db: Database.Database, table: string, column: string
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-/** Creates the 14 tables + indexes if they don't already exist. Safe to call on every startup. */
+/** Creates the 15 tables + indexes if they don't already exist. Safe to call on every startup. */
 export function migrate(db: Database.Database): void {
   db.exec(CREATE_TRANSACTIONS);
   db.exec(CREATE_STATEMENTS);
   db.exec(CREATE_DEBTS);
   db.exec(CREATE_STRATEGY_CONFIG);
   db.exec(CREATE_SYNC_STATE);
+  db.exec(CREATE_SYNC_PROGRESS);
   db.exec(CREATE_SAVINGS);
   db.exec(CREATE_CONVERSATIONS);
   db.exec(CREATE_MESSAGES);

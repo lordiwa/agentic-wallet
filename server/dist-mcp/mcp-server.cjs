@@ -28538,7 +28538,7 @@ var require_finalhandler = __commonJS({
       return typeof res.headersSent !== "boolean" ? Boolean(res._header) : res.headersSent;
     }
     function send(req, res, status, headers, message) {
-      function write() {
+      function write2() {
         var body = createHtmlDocument(message);
         res.statusCode = status;
         if (req.httpVersionMajor < 2) {
@@ -28559,11 +28559,11 @@ var require_finalhandler = __commonJS({
         res.end(body, "utf8");
       }
       if (isFinished(req)) {
-        write();
+        write2();
         return;
       }
       unpipe(req);
-      onFinished(req, write);
+      onFinished(req, write2);
       req.resume();
     }
     function setHeaders(res, headers) {
@@ -48723,6 +48723,9 @@ var envSchema = external_exports.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: external_exports.string().default("127.0.0.1"),
+  /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
+   * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
+   * nombre viejo no se leeria nunca. */
   WALLET_DB_PATH: external_exports.string().optional(),
   /**
    * Nombre viejo de la misma variable, el que trae el `.env` de iwa-wallet.
@@ -48731,6 +48734,14 @@ var envSchema = external_exports.object({
    * por defecto, indistinguible de "nunca sincronizaste".
    */
   BOLSILLO_DB_PATH: external_exports.string().optional(),
+  /**
+   * Topes del sync incremental (ver sync/run-sync.ts). Sin valor, mandan los
+   * defaults del motor — no se repiten aca para no tener dos fuentes de
+   * verdad del mismo numero. Se tocan cuando el cliente que llama al sync
+   * tiene un timeout distinto al tipico de 60s del MCP.
+   */
+  WALLET_SYNC_BATCH_SIZE: external_exports.coerce.number().int().positive().optional(),
+  WALLET_SYNC_MAX_MS: external_exports.coerce.number().int().positive().optional(),
   ANTHROPIC_API_KEY: external_exports.string().optional(),
   CLAUDE_CODE_OAUTH_TOKEN: external_exports.string().optional(),
   GMAIL_OAUTH_CLIENT_ID: external_exports.string().optional(),
@@ -48808,6 +48819,18 @@ CREATE TABLE IF NOT EXISTS sync_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   last_sync_ts TEXT,
   last_history TEXT
+);
+`;
+var CREATE_SYNC_PROGRESS = `
+CREATE TABLE IF NOT EXISTS sync_progress (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  since_ts TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  processed INTEGER NOT NULL,
+  pending_ids TEXT NOT NULL,
+  totals TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 `;
 var CREATE_SAVINGS = `
@@ -48910,6 +48933,7 @@ function migrate(db) {
   db.exec(CREATE_DEBTS);
   db.exec(CREATE_STRATEGY_CONFIG);
   db.exec(CREATE_SYNC_STATE);
+  db.exec(CREATE_SYNC_PROGRESS);
   db.exec(CREATE_SAVINGS);
   db.exec(CREATE_CONVERSATIONS);
   db.exec(CREATE_MESSAGES);
@@ -49625,6 +49649,81 @@ var briefQuerySchema = external_exports.object({
 
 // src/onboard/status.ts
 var import_node_fs2 = require("node:fs");
+
+// src/db/sync-progress.ts
+function parseJson(raw, fallback) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+function toProgress(row) {
+  return {
+    sinceTs: row.since_ts,
+    startedAt: row.started_at,
+    total: row.total,
+    processed: row.processed,
+    pendingIds: parseJson(row.pending_ids, []),
+    totals: parseJson(row.totals, {}),
+    updatedAt: row.updated_at
+  };
+}
+function getSyncProgress(db) {
+  const row = db.prepare("SELECT * FROM sync_progress WHERE id = 1").get();
+  return row ? toProgress(row) : void 0;
+}
+function startSyncProgress(db, input) {
+  const progress = {
+    sinceTs: input.sinceTs,
+    startedAt: input.startedAt,
+    total: input.pendingIds.length,
+    processed: 0,
+    pendingIds: [...input.pendingIds],
+    totals: {},
+    updatedAt: input.startedAt
+  };
+  write(db, progress);
+  return progress;
+}
+function advanceSyncProgress(db, input) {
+  const current = getSyncProgress(db);
+  if (!current) return;
+  write(db, {
+    ...current,
+    processed: input.processed,
+    pendingIds: [...input.pendingIds],
+    totals: input.totals,
+    updatedAt: input.updatedAt
+  });
+}
+function clearSyncProgress(db) {
+  db.prepare("DELETE FROM sync_progress WHERE id = 1").run();
+}
+function write(db, progress) {
+  db.prepare(
+    `INSERT INTO sync_progress (id, since_ts, started_at, total, processed, pending_ids, totals, updated_at)
+     VALUES (1, @since_ts, @started_at, @total, @processed, @pending_ids, @totals, @updated_at)
+     ON CONFLICT(id) DO UPDATE SET
+       since_ts = excluded.since_ts,
+       started_at = excluded.started_at,
+       total = excluded.total,
+       processed = excluded.processed,
+       pending_ids = excluded.pending_ids,
+       totals = excluded.totals,
+       updated_at = excluded.updated_at`
+  ).run({
+    since_ts: progress.sinceTs,
+    started_at: progress.startedAt,
+    total: progress.total,
+    processed: progress.processed,
+    pending_ids: JSON.stringify(progress.pendingIds),
+    totals: JSON.stringify(progress.totals),
+    updated_at: progress.updatedAt
+  });
+}
+
+// src/onboard/status.ts
 function hasValue(env, key) {
   const raw = env[key];
   return typeof raw === "string" && raw.trim() !== "";
@@ -49638,6 +49737,25 @@ function profileConfigured(db) {
   if (!db) return false;
   const config2 = getStrategyConfig(db);
   return config2.titular.trim() !== "" && config2.sueldo.diasPago.length > 0;
+}
+function syncStep(db) {
+  const pending = db ? getSyncProgress(db) : void 0;
+  const remaining = pending?.pendingIds.length ?? 0;
+  if (pending && remaining > 0) {
+    return {
+      id: "sync",
+      title: "Primer sync (historial en el ledger)",
+      done: false,
+      action: `Sync en curso: ${pending.processed} de ${pending.total} correos. Faltan ${remaining}: volve a llamar la tool \`sync\` (o \`curl -X POST localhost:3000/api/sync\`) hasta que \`progress.complete\` sea true. Lo ya procesado esta guardado; nada se repite.`,
+      progress: { processed: pending.processed, total: pending.total, remaining }
+    };
+  }
+  return {
+    id: "sync",
+    title: "Primer sync (historial en el ledger)",
+    done: ledgerSize(db) > 0,
+    action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`."
+  };
 }
 function onboardStatus({ envPath, env, db }) {
   const steps = [
@@ -49659,12 +49777,7 @@ function onboardStatus({ envPath, env, db }) {
       done: hasValue(env, "GMAIL_OAUTH_CLIENT_ID") && hasValue(env, "GMAIL_OAUTH_CLIENT_SECRET") && hasValue(env, "GMAIL_OAUTH_REFRESH_TOKEN"),
       action: "Crea un cliente OAuth2 tipo 'Desktop app' en Google Cloud, pon client id/secret en .env y corre `npm run gmail-auth` para obtener el refresh token. Ver docs/conectar-gmail.md."
     },
-    {
-      id: "sync",
-      title: "Primer sync (historial en el ledger)",
-      done: ledgerSize(db) > 0,
-      action: "Levanta el server (`npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`."
-    },
+    syncStep(db),
     {
       // El motor asume -5 cuando la variable no esta (ver strategy/dates.ts).
       // Es un default razonable, pero decide que cae en "hoy" y en "este mes"
@@ -50339,17 +50452,23 @@ function reversoAuditRow(candidate, threadId, needsReview) {
     source: "deterministic"
   };
 }
-async function ingestOnce(deps, options) {
-  return withSpan("ingest.run", { since_ts: options.sinceTs }, async () => {
+async function ingestBatch(deps, options) {
+  return withSpan("ingest.batch", { count: options.messageIds.length }, async () => {
     const summary = await runIngest(deps, options);
     emitMetric("ingest.summary", { ...summary });
     return summary;
   });
 }
+async function searchMessageIds(deps, sinceTs) {
+  const query2 = buildSearchQuery(sinceTs);
+  return withSpan("ingest.gmail_search", { query: query2 }, () => deps.gmailClient.searchMessageIds(query2));
+}
 async function runIngest(deps, options) {
   const { db, gmailClient, extractor, titular } = deps;
-  const query2 = buildSearchQuery(options.sinceTs);
-  const ids = await withSpan("ingest.gmail_search", { query: query2 }, () => gmailClient.searchMessageIds(query2));
+  const ids = options.messageIds;
+  const monotonicNow = options.monotonicNow ?? (() => Date.now());
+  const budgetMs = options.maxMs ?? Number.POSITIVE_INFINITY;
+  const startedAtMs = monotonicNow();
   const transactionCandidates = [];
   const reversoCandidates = [];
   const unresolvedReversos = [];
@@ -50359,6 +50478,7 @@ async function runIngest(deps, options) {
   let statementsPersisted = 0;
   let statementsNeedReview = 0;
   for (const id of ids) {
+    if (seen > 0 && monotonicNow() - startedAtMs >= budgetMs) break;
     seen += 1;
     const msg = await withSpan("ingest.gmail_get_message", { gmail_id: id }, () => gmailClient.getMessage(id));
     threadIdByMsgId.set(msg.gmail_msg_id, msg.gmail_thread_id);
@@ -50561,14 +50681,60 @@ function createClaudeEmailExtractor() {
 }
 
 // src/sync/run-sync.ts
+var DEFAULT_SYNC_BATCH_SIZE = 50;
+var DEFAULT_SYNC_MAX_MS = 45e3;
 var EPOCH = "1970-01-01T00:00:00.000Z";
+var EMPTY_SUMMARY = {
+  seen: 0,
+  inserted: 0,
+  duplicates: 0,
+  needsReview: 0,
+  skipped: 0,
+  statementsPersisted: 0,
+  statementsNeedReview: 0,
+  reversalsApplied: 0
+};
+function addSummaries(base, batch) {
+  const result = { ...EMPTY_SUMMARY };
+  for (const key of Object.keys(EMPTY_SUMMARY)) {
+    result[key] = (base[key] ?? 0) + batch[key];
+  }
+  return result;
+}
 async function runSync(deps, options = {}) {
   const now = options.now ?? (/* @__PURE__ */ new Date()).toISOString();
-  const state = getSyncState(deps.db);
-  const sinceTs = state?.last_sync_ts ?? EPOCH;
-  const summary = await ingestOnce(deps, { sinceTs });
-  setSyncState(deps.db, { last_sync_ts: now, last_history: JSON.stringify(summary) });
-  return summary;
+  const batchSize = Math.max(1, options.batchSize ?? DEFAULT_SYNC_BATCH_SIZE);
+  const progress = getSyncProgress(deps.db) ?? await openBacklog(deps, now);
+  const batch = progress.pendingIds.slice(0, batchSize);
+  const summary = batch.length ? await ingestBatch(deps, {
+    messageIds: batch,
+    maxMs: options.maxMs ?? DEFAULT_SYNC_MAX_MS,
+    monotonicNow: options.monotonicNow
+  }) : EMPTY_SUMMARY;
+  const pendingIds = progress.pendingIds.slice(summary.seen);
+  const processed = progress.processed + summary.seen;
+  const cumulative = addSummaries(progress.totals, summary);
+  if (pendingIds.length === 0) {
+    clearSyncProgress(deps.db);
+    setSyncState(deps.db, { last_sync_ts: progress.startedAt, last_history: JSON.stringify(cumulative) });
+  } else {
+    advanceSyncProgress(deps.db, { pendingIds, processed, totals: { ...cumulative }, updatedAt: now });
+  }
+  return {
+    ...summary,
+    cumulative,
+    progress: {
+      processed,
+      total: progress.total,
+      remaining: pendingIds.length,
+      complete: pendingIds.length === 0
+    }
+  };
+}
+async function openBacklog(deps, now) {
+  const sinceTs = getSyncState(deps.db)?.last_sync_ts ?? EPOCH;
+  const ids = await searchMessageIds(deps, sinceTs);
+  return startSyncProgress(deps.db, { sinceTs, startedAt: now, pendingIds: [...new Set(ids)] });
 }
 
 // src/sync/build-sync-runner.ts
@@ -50594,12 +50760,18 @@ function buildProductionSyncRunner(config2, getDb, factories = productionFactori
   const clientId = config2.GMAIL_OAUTH_CLIENT_ID;
   const clientSecret = config2.GMAIL_OAUTH_CLIENT_SECRET;
   const refreshToken = config2.GMAIL_OAUTH_REFRESH_TOKEN;
-  return async () => {
+  return async (options = {}) => {
     const db = getDb();
     const titular = readTitular(db);
     const gmailClient = await factories.createGmailClient({ clientId, clientSecret, refreshToken });
     const extractor = factories.createExtractor();
-    return runSync({ db, gmailClient, extractor, titular });
+    return runSync(
+      { db, gmailClient, extractor, titular },
+      {
+        batchSize: options.batchSize ?? config2.WALLET_SYNC_BATCH_SIZE,
+        maxMs: config2.WALLET_SYNC_MAX_MS
+      }
+    );
   };
 }
 
@@ -50741,10 +50913,12 @@ function createWalletMcpServer(deps) {
     "sync",
     {
       title: "Sincronizar con Gmail",
-      description: "Lee los correos de notificacion bancaria nuevos y los incorpora al ledger. Requiere credenciales de Gmail y de Claude en .env; sin ellas responde gmail_not_configured sin tocar nada. Es la unica tool que sale a la red y puede tardar.",
-      inputSchema: {}
+      description: "Lee los correos de notificacion bancaria nuevos y los incorpora al ledger. Cada llamada procesa UN LOTE y devuelve `progress` {processed, total, remaining, complete}: si `complete` es false, volve a llamarla \u2014 el avance queda guardado y no se reprocesa nada. El primer sync de un buzon con anios de historial necesita varias llamadas. Requiere credenciales de Gmail y de Claude en .env; sin ellas responde gmail_not_configured sin tocar nada. Es la unica tool que sale a la red y puede tardar.",
+      inputSchema: {
+        batch_size: external_exports.number().int().min(1).max(500).optional().describe("Correos como maximo en esta llamada. Sin valor usa el default del motor.")
+      }
     },
-    async () => {
+    async ({ batch_size }) => {
       const db = deps.getDb();
       const runner = deps.buildSyncRunner(db);
       if (!runner) {
@@ -50757,7 +50931,14 @@ function createWalletMcpServer(deps) {
       if (syncing) return json({ ok: false, error: "sync_already_running" });
       syncing = true;
       try {
-        return json({ ok: true, summary: await runner() });
+        const { progress, cumulative, ...summary } = await runner({ batchSize: batch_size });
+        return json({
+          ok: true,
+          summary,
+          cumulative,
+          progress,
+          next_action: progress.complete ? "Sync al dia: no queda backlog." : `Faltan ${progress.remaining} correos: volve a llamar \`sync\`.`
+        });
       } finally {
         syncing = false;
       }
@@ -50767,7 +50948,7 @@ function createWalletMcpServer(deps) {
     "onboarding_status",
     {
       title: "Estado del onboarding",
-      description: "En que punto de la configuracion esta el usuario: .env, credencial de Claude, Gmail conectado, primer sync y perfil financiero. Devuelve el siguiente paso pendiente y que hay que hacer para cerrarlo.",
+      description: "En que punto de la configuracion esta el usuario: .env, credencial de Claude, Gmail conectado, primer sync y perfil financiero. Devuelve el siguiente paso pendiente y que hay que hacer para cerrarlo. Si el primer sync quedo a medias, el paso `sync` trae `progress` {processed, total, remaining} para poder decir 'procesando 340/1717'.",
       inputSchema: {}
     },
     async () => {

@@ -1,23 +1,50 @@
+/**
+ * Dos cosas distintas del checklist se prueban aca:
+ *
+ * - El paso "huso horario", que no puede darse por hecho en silencio.
+ * - El paso "primer sync", el unico que puede quedar A MEDIAS: el backlog de
+ *   un buzon real se drena en varias llamadas (ver sync/run-sync.ts), asi que
+ *   "hay filas en el ledger" ya no alcanza para darlo por cerrado.
+ */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
+import { insertTransaction } from "../db/repository.js";
+import { startSyncProgress, advanceSyncProgress } from "../db/sync-progress.js";
 import { onboardStatus, type OnboardStatus, type StepId } from "./status.js";
 
-function status(env: NodeJS.ProcessEnv = {}): OnboardStatus {
-  const db = new Database(":memory:");
-  migrate(db);
-  // envPath apunta a un archivo que no existe: el paso "env" queda pendiente,
-  // que es irrelevante para lo que se prueba aca.
-  return onboardStatus({ envPath: "/no/existe/.env", env, db });
-}
+let db: Database.Database;
+let dir: string;
+let envPath: string;
 
-function step(env: NodeJS.ProcessEnv, id: StepId) {
-  const found = status(env).steps.find((s) => s.id === id);
-  if (!found) throw new Error(`no hay paso '${id}' en el checklist`);
-  return found;
-}
+beforeEach(() => {
+  db = new Database(":memory:");
+  migrate(db);
+  dir = mkdtempSync(path.join(tmpdir(), "wallet-onboard-status-"));
+  envPath = path.join(dir, ".env");
+});
+
+afterEach(() => {
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe("onboardStatus: huso horario", () => {
+  // envPath apunta a un archivo que no existe: el paso "env" queda pendiente,
+  // que es irrelevante para lo que se prueba aca.
+  function status(env: NodeJS.ProcessEnv = {}): OnboardStatus {
+    return onboardStatus({ envPath: "/no/existe/.env", env, db });
+  }
+
+  function step(env: NodeJS.ProcessEnv, id: StepId) {
+    const found = status(env).steps.find((s) => s.id === id);
+    if (!found) throw new Error(`no hay paso '${id}' en el checklist`);
+    return found;
+  }
+
   it("lista el huso como un paso propio del checklist", () => {
     expect(status().steps.map((s) => s.id)).toEqual(["env", "claude", "gmail", "sync", "huso", "profile"]);
   });
@@ -42,5 +69,78 @@ describe("onboardStatus: huso horario", () => {
 
   it("el onboarding no se declara completo mientras el huso siga implicito", () => {
     expect(status().complete).toBe(false);
+  });
+});
+
+describe("onboardStatus: paso sync", () => {
+  function status() {
+    return onboardStatus({ envPath, env: {}, db });
+  }
+
+  function syncStep() {
+    return status().steps.find((s) => s.id === "sync")!;
+  }
+
+  function unaFila(id: string) {
+    insertTransaction(db, {
+      gmail_msg_id: id,
+      ts: "2026-07-01T12:00:00.000Z",
+      direction: "out",
+      type: "debito",
+      amount: 10,
+    });
+  }
+
+  it("sin ledger, el paso esta pendiente y sin progreso que mostrar", () => {
+    const step = syncStep();
+    expect(step.done).toBe(false);
+    expect(step.progress).toBeUndefined();
+  });
+
+  it("con backlog a medias NO da el paso por cerrado, aunque ya haya filas", () => {
+    unaFila("m1");
+    startSyncProgress(db, {
+      sinceTs: "1970-01-01T00:00:00.000Z",
+      startedAt: "2026-07-20T10:00:00.000Z",
+      pendingIds: Array.from({ length: 1717 }, (_, i) => `msg-${i}`),
+    });
+    advanceSyncProgress(db, {
+      pendingIds: Array.from({ length: 1617 }, (_, i) => `msg-${i + 100}`),
+      processed: 100,
+      totals: { seen: 100 },
+      updatedAt: "2026-07-20T10:02:00.000Z",
+    });
+
+    const step = syncStep();
+    expect(step.done).toBe(false);
+    expect(step.progress).toEqual({ processed: 100, total: 1717, remaining: 1617 });
+    // El texto tiene que decirle al agente que la salida es seguir llamando.
+    expect(step.action).toContain("1617");
+  });
+
+  it("sin backlog pendiente y con ledger, el paso queda cerrado", () => {
+    unaFila("m1");
+    expect(syncStep().done).toBe(true);
+    expect(syncStep().progress).toBeUndefined();
+  });
+
+  it("el paso pendiente sigue siendo `sync` mientras quede backlog", () => {
+    writeFileSync(envPath, "");
+    unaFila("m1");
+    startSyncProgress(db, { sinceTs: "s", startedAt: "t", pendingIds: ["a", "b"] });
+
+    const result = onboardStatus({
+      envPath,
+      env: {
+        ANTHROPIC_API_KEY: "sk-test",
+        GMAIL_OAUTH_CLIENT_ID: "id",
+        GMAIL_OAUTH_CLIENT_SECRET: "secret",
+        GMAIL_OAUTH_REFRESH_TOKEN: "refresh",
+      },
+      db,
+    });
+
+    expect(result.complete).toBe(false);
+    expect(result.next?.id).toBe("sync");
   });
 });

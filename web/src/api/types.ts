@@ -123,11 +123,25 @@ export interface OverviewResponse {
 }
 
 /**
- * /api/sync lands in a later ticket (F1-08); its response shape is not yet
- * known, so this is deliberately an open record rather than a guessed
- * contract. The UI renders whatever keys come back without inventing any.
+ * Progreso del backlog del sync. Una llamada a /api/sync drena UN LOTE: el
+ * primer sync de un buzon con anios de historial son miles de correos, cada
+ * uno pasa por Claude, y no entra en una sola request (ver
+ * server/src/sync/run-sync.ts). Con `complete:false` hay que volver a pulsar.
  */
-export type SyncResponse = Record<string, unknown>;
+export interface SyncProgress {
+  processed: number;
+  total: number;
+  remaining: number;
+  complete: boolean;
+}
+
+/**
+ * El resto del cuerpo de /api/sync sigue siendo un record abierto a
+ * proposito: la UI muestra las claves que vengan sin inventar ninguna. Lo
+ * unico que si tiene contrato es `progress`, porque de ahi sale si el sync
+ * termino o falta seguir llamando.
+ */
+export type SyncResponse = Record<string, unknown> & { progress?: SyncProgress };
 
 /**
  * F3-C chat shapes, mirrored (as read from

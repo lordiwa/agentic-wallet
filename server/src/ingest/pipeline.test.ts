@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
-import { buildSearchQuery, ingestOnce } from "./pipeline.js";
+import { buildSearchQuery, ingestBatch, ingestOnce } from "./pipeline.js";
 import { listParsers } from "../parser/index.js";
 import type { IngestDeps } from "./pipeline.js";
 import type { EmailExtractor, ExtractedEmail, GmailClient, GmailMessage } from "./types.js";
@@ -706,5 +706,111 @@ describe("ingestOnce: category population (TASK-024 AC3)", () => {
     await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-06-01T00:00:00Z" });
 
     expect(txRow("msg-sueldo-category")?.category).toBe("otros");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ingestBatch — el lote es la unidad del sync incremental (ver sync/run-sync.ts).
+// ---------------------------------------------------------------------------
+
+describe("ingestBatch", () => {
+  /** N consumos distinguibles, con su respuesta de Claude ya coincidente. */
+  function consumos(n: number): { messages: GmailMessage[]; extractor: FakeEmailExtractor } {
+    const messages = Array.from({ length: n }, (_, i) =>
+      message({
+        gmail_msg_id: `msg-${i}`,
+        subject: `Consumo tarjeta de débito por USD ${(i + 1).toFixed(2)}`,
+        body: `Transacción: Consumo Tarjeta de Débito Produbanco\nEstablecimiento: COMERCIO ${i}`,
+      })
+    );
+    const extractor = new FakeEmailExtractor(
+      new Map(messages.map((m, i) => [m.subject, { amount_text_raw: `USD ${(i + 1).toFixed(2)}`, counterparty: null }]))
+    );
+    return { messages, extractor };
+  }
+
+  it("procesa exactamente los ids que recibe, sin buscar en Gmail", async () => {
+    const { messages, extractor } = consumos(5);
+    const gmail = new FakeGmailClient(messages);
+
+    const result = await ingestBatch(deps(gmail, extractor), { messageIds: ["msg-1", "msg-3"] });
+
+    expect(gmail.listCalls).toBe(0);
+    expect(result.seen).toBe(2);
+    expect(result.inserted).toBe(2);
+    expect(countTransactions()).toBe(2);
+    expect(txRow("msg-1")).toBeTruthy();
+    expect(txRow("msg-3")).toBeTruthy();
+    expect(txRow("msg-0")).toBeUndefined();
+  });
+
+  it("corta al agotarse el presupuesto de tiempo y persiste lo ya procesado", async () => {
+    const { messages, extractor } = consumos(10);
+    // Reloj falso: cada consulta avanza 10s, asi que con maxMs=25s entran
+    // tres correos y el cuarto ya encuentra el presupuesto agotado.
+    let tick = 0;
+    const monotonicNow = () => (tick++ * 10_000);
+
+    const result = await ingestBatch(deps(new FakeGmailClient(messages), extractor), {
+      messageIds: messages.map((m) => m.gmail_msg_id),
+      maxMs: 25_000,
+      monotonicNow,
+    });
+
+    // Lo procesado esta en la base ANTES de que termine el backlog entero:
+    // es justamente lo que evita perder 2 horas de trabajo por un timeout.
+    expect(result.seen).toBeGreaterThan(0);
+    expect(result.seen).toBeLessThan(10);
+    expect(countTransactions()).toBe(result.inserted);
+    expect(result.inserted).toBe(result.seen);
+  });
+
+  it("`seen` es siempre un prefijo del lote: lo no atendido queda intacto para la proxima llamada", async () => {
+    const { messages, extractor } = consumos(6);
+    let tick = 0;
+    const monotonicNow = () => (tick++ * 10_000);
+
+    const ids = messages.map((m) => m.gmail_msg_id);
+    const result = await ingestBatch(deps(new FakeGmailClient(messages), extractor), {
+      messageIds: ids,
+      maxMs: 25_000,
+      monotonicNow,
+    });
+
+    for (const id of ids.slice(0, result.seen)) expect(txRow(id)).toBeTruthy();
+    for (const id of ids.slice(result.seen)) expect(txRow(id)).toBeUndefined();
+  });
+
+  it("con el presupuesto ya vencido procesa igual un correo: el backlog nunca se traba", async () => {
+    const { messages, extractor } = consumos(3);
+
+    const result = await ingestBatch(deps(new FakeGmailClient(messages), extractor), {
+      messageIds: messages.map((m) => m.gmail_msg_id),
+      maxMs: 0,
+      monotonicNow: () => 0,
+    });
+
+    expect(result.seen).toBe(1);
+    expect(countTransactions()).toBe(1);
+  });
+
+  it("sin presupuesto de tiempo procesa el lote entero", async () => {
+    const { messages, extractor } = consumos(4);
+
+    const result = await ingestBatch(deps(new FakeGmailClient(messages), extractor), {
+      messageIds: messages.map((m) => m.gmail_msg_id),
+    });
+
+    expect(result.seen).toBe(4);
+    expect(countTransactions()).toBe(4);
+  });
+
+  it("un lote vacio no toca nada", async () => {
+    const result = await ingestBatch(deps(new FakeGmailClient([]), new FakeEmailExtractor(new Map())), {
+      messageIds: [],
+    });
+
+    expect(result.seen).toBe(0);
+    expect(countTransactions()).toBe(0);
   });
 });

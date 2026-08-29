@@ -59,8 +59,31 @@ export interface IngestOptions {
   sinceTs: string;
 }
 
+export interface IngestBatchOptions {
+  /** The exact Gmail message ids to process, in order. No search is run:
+   * the caller (`sync/run-sync.ts`) already has the backlog and decides how
+   * much of it fits in this call. */
+  messageIds: readonly string[];
+  /**
+   * Wall-clock budget in ms. The loop stops BEFORE starting a new message
+   * once the budget is spent — never mid-message, so a half-processed email
+   * is never persisted — and always processes at least one, so a caller with
+   * an absurdly small budget still makes progress instead of deadlocking the
+   * backlog. Defaults to no budget (process every id given).
+   */
+  maxMs?: number;
+  /** Monotonic clock in ms, injectable so tests don't sleep. Defaults to `Date.now`. */
+  monotonicNow?: () => number;
+}
+
 export interface IngestSummary {
-  /** Total messages returned by the Gmail search. */
+  /**
+   * Messages actually FETCHED AND PROCESSED in this run. For `ingestOnce`
+   * that's everything the Gmail search returned; for `ingestBatch` it's a
+   * PREFIX of `messageIds` (the loop can stop early on `maxMs`), which is
+   * what lets the caller slice the backlog by this number and know the rest
+   * is untouched.
+   */
   seen: number;
   /** Rows newly written to `transactions` (new gmail_msg_id). */
   inserted: number;
@@ -197,17 +220,45 @@ function reversoAuditRow(candidate: ReversoCandidate, threadId: string | null, n
  * never logs email content/amounts/counterparty, only ids and counts. */
 export async function ingestOnce(deps: IngestDeps, options: IngestOptions): Promise<IngestSummary> {
   return withSpan("ingest.run", { since_ts: options.sinceTs }, async () => {
+    const ids = await searchMessageIds(deps, options.sinceTs);
+    const summary = await runIngest(deps, { messageIds: ids });
+    emitMetric("ingest.summary", { ...summary });
+    return summary;
+  });
+}
+
+/**
+ * Ingests a KNOWN list of messages — the unit of work of the incremental
+ * sync (see `sync/run-sync.ts`). Same pipeline as `ingestOnce`, minus the
+ * Gmail search: the caller owns the backlog and the batching policy, so the
+ * only thing this adds is the `maxMs` budget that lets a caller with a
+ * timeout (a 60s MCP client, say) come back for more instead of losing
+ * hours of work.
+ *
+ * Everything this batch touched is persisted before it returns — that's what
+ * makes an interrupted first sync resumable rather than a total loss.
+ */
+export async function ingestBatch(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestSummary> {
+  return withSpan("ingest.batch", { count: options.messageIds.length }, async () => {
     const summary = await runIngest(deps, options);
     emitMetric("ingest.summary", { ...summary });
     return summary;
   });
 }
 
-async function runIngest(deps: IngestDeps, options: IngestOptions): Promise<IngestSummary> {
-  const { db, gmailClient, extractor, titular } = deps;
-  const query = buildSearchQuery(options.sinceTs);
+/** The Gmail half of `ingestOnce`, exposed so the incremental sync can build
+ * its backlog once and then drain it batch by batch. */
+export async function searchMessageIds(deps: Pick<IngestDeps, "gmailClient">, sinceTs: string): Promise<string[]> {
+  const query = buildSearchQuery(sinceTs);
+  return withSpan("ingest.gmail_search", { query }, () => deps.gmailClient.searchMessageIds(query));
+}
 
-  const ids = await withSpan("ingest.gmail_search", { query }, () => gmailClient.searchMessageIds(query));
+async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestSummary> {
+  const { db, gmailClient, extractor, titular } = deps;
+  const ids = options.messageIds;
+  const monotonicNow = options.monotonicNow ?? (() => Date.now());
+  const budgetMs = options.maxMs ?? Number.POSITIVE_INFINITY;
+  const startedAtMs = monotonicNow();
 
   const transactionCandidates: ReconcilableTransaction[] = [];
   const reversoCandidates: ReversoCandidate[] = [];
@@ -224,6 +275,11 @@ async function runIngest(deps: IngestDeps, options: IngestOptions): Promise<Inge
   let statementsNeedReview = 0;
 
   for (const id of ids) {
+    // El corte va ANTES de empezar un correo — nunca en el medio — y jamas
+    // en el primero: asi `seen` es siempre un prefijo exacto de `ids` (lo que
+    // el checkpoint usa para saber que falta) y un presupuesto ridiculamente
+    // corto igual avanza uno en vez de trabar el backlog para siempre.
+    if (seen > 0 && monotonicNow() - startedAtMs >= budgetMs) break;
     seen += 1;
     const msg = await withSpan("ingest.gmail_get_message", { gmail_id: id }, () => gmailClient.getMessage(id));
     threadIdByMsgId.set(msg.gmail_msg_id, msg.gmail_thread_id);

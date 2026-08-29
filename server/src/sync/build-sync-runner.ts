@@ -74,11 +74,19 @@ export function buildProductionSyncRunner(
   const clientSecret = config.GMAIL_OAUTH_CLIENT_SECRET;
   const refreshToken = config.GMAIL_OAUTH_REFRESH_TOKEN;
 
-  return async () => {
+  return async (options = {}) => {
     const db = getDb();
     const titular = readTitular(db);
     const gmailClient = await factories.createGmailClient({ clientId, clientSecret, refreshToken });
     const extractor = factories.createExtractor();
-    return runSync({ db, gmailClient, extractor, titular });
+    // Los topes del lote se pasan tal cual (undefined incluido): quien
+    // define el default es `runSync`, no esta capa ni el `.env`.
+    return runSync(
+      { db, gmailClient, extractor, titular },
+      {
+        batchSize: options.batchSize ?? config.WALLET_SYNC_BATCH_SIZE,
+        maxMs: config.WALLET_SYNC_MAX_MS,
+      }
+    );
   };
 }
