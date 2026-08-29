@@ -49000,9 +49000,12 @@ function categorize(tx, rules = []) {
     case "sueldo":
     case "recibido":
       return "otros";
-    case "transferencia":
+    case "transferencia": {
       if (tx.is_internal) return "otros";
+      const byRule = matchEstablishment(tx.counterparty, rules);
+      if (byRule) return byRule;
       return tx.counterparty ? "transferencia_persona" : "otros";
+    }
     default:
       break;
   }

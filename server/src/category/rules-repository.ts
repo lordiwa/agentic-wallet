@@ -8,7 +8,7 @@
  * bank cased or accented it in any given email.
  */
 import type Database from "better-sqlite3";
-import { toRulePattern, type Category, type EstablishmentRule } from "./categorize.js";
+import { CATEGORIES, toRulePattern, type Category, type EstablishmentRule } from "./categorize.js";
 
 interface CategoryRuleRow {
   pattern: string;
@@ -43,6 +43,102 @@ export function upsertCategoryRule(db: Database.Database, rawPattern: string, ca
      ON CONFLICT(pattern) DO UPDATE SET category = excluded.category`
   ).run(pattern, category);
   return true;
+}
+
+/**
+ * Las categorias que NO se aprenden del historial, y por que:
+ *
+ * - `otros` y `transferencia_persona` son los fallbacks que `categorize`
+ *   devuelve justamente cuando NO sabe. Aprenderlos convertiria un "no se" en
+ *   un dato, y ademas cristalizaria el nombre de una persona como patron de
+ *   comercio -- que despues matchearia por substring a cualquier otro.
+ * - `efectivo` y `recarga` salen del `type`, sin mirar la contraparte: una
+ *   regla ahi es redundante en el mejor caso y, si el mismo nombre aparece en
+ *   un consumo, un error.
+ */
+const NOT_LEARNABLE = new Set(["otros", "transferencia_persona", "efectivo", "recarga"]);
+
+/** Una categoria del glosario que vale la pena aprender. Lo de afuera del
+ * glosario (una etiqueta vieja, una migracion a medias) no se convierte en
+ * regla: `categorize` no la sabe devolver, asi que la regla seria letra
+ * muerta que ademas tapa a las que si matchean. */
+function isLearnable(category: string): category is Category {
+  return !NOT_LEARNABLE.has(category) && (CATEGORIES as readonly string[]).includes(category);
+}
+
+export interface LearnRulesResult {
+  /** Reglas nuevas escritas. */
+  learned: number;
+  /** Contrapartes con categorias contradictorias en el historial: no se adivina. */
+  skippedAmbiguous: number;
+  /** Contrapartes que ya tenian regla: la del usuario manda. */
+  skippedExisting: number;
+}
+
+/**
+ * Deriva reglas de comercio del historial que el usuario YA clasifico a mano.
+ *
+ * Es el complemento de `--rule`: cuando alguien llega con una base ya
+ * etiquetada (historial migrado, categorias corregidas a mano), esas etiquetas
+ * son conocimiento real sobre sus comercios que `category_rules` todavia no
+ * tiene. Sin las reglas, `categorize` -- que recalcula en vivo y no lee la
+ * columna `category` -- no puede reproducir esa clasificacion, y el dashboard
+ * muestra numeros distintos a los de la base.
+ *
+ * Dos cosas que deliberadamente NO hace:
+ *
+ * 1. **No pisa una regla existente.** Una regla escrita por el usuario es una
+ *    afirmacion; esto es una inferencia sobre su historial. La inferencia
+ *    nunca gana.
+ * 2. **No desempata.** Si la misma contraparte aparece con dos categorias
+ *    distintas, no hay forma de saber cual quiso el usuario, asi que se salta
+ *    y se reporta en `skippedAmbiguous` para que un humano decida.
+ *
+ * El patron es la contraparte normalizada COMPLETA, no un fragmento: inventar
+ * un prefijo ("centro medico" a partir de "CENTRO MEDICO SUR") arrastraria
+ * comercios que el usuario nunca clasifico. Idempotente.
+ */
+export function learnRulesFromHistory(db: Database.Database): LearnRulesResult {
+  const rows = db
+    .prepare(
+      `SELECT counterparty, category
+         FROM transactions
+        WHERE direction = 'out'
+          AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
+          AND category IS NOT NULL AND TRIM(category) != ''
+          AND is_internal = 0 AND is_reversed = 0 AND needs_review = 0`
+    )
+    .all() as { counterparty: string; category: string }[];
+
+  // `null` marca una contraparte vista con mas de una categoria.
+  const byPattern = new Map<string, Category | null>();
+  for (const row of rows) {
+    if (!isLearnable(row.category)) continue;
+    const pattern = toRulePattern(row.counterparty);
+    if (pattern === "") continue;
+    const seen = byPattern.get(pattern);
+    if (seen === undefined) byPattern.set(pattern, row.category);
+    else if (seen !== row.category) byPattern.set(pattern, null);
+  }
+
+  const existing = new Set(listCategoryRules(db).map((rule) => rule.pattern));
+  const result: LearnRulesResult = { learned: 0, skippedAmbiguous: 0, skippedExisting: 0 };
+
+  db.transaction(() => {
+    for (const [pattern, category] of byPattern) {
+      if (existing.has(pattern)) {
+        result.skippedExisting += 1;
+        continue;
+      }
+      if (category === null) {
+        result.skippedAmbiguous += 1;
+        continue;
+      }
+      if (upsertCategoryRule(db, pattern, category)) result.learned += 1;
+    }
+  })();
+
+  return result;
 }
 
 export interface UncategorizedCounterparty {

@@ -46,6 +46,7 @@ Subcomandos:
 | `npm run onboard -- --suggest` | Lee el ledger y propone un perfil |
 | `npm run onboard -- --set '<json>'` | Escribe campos de `strategy_config` |
 | `npm run onboard -- --rule <patrón>=<categoría>` | Agrega una regla de comercio |
+| `npm run onboard -- --learn-rules` | Deriva reglas del historial que ya clasificaste |
 | `npm run onboard -- --backfill` | Aplica las reglas al historial ya sincronizado |
 
 ---
@@ -243,6 +244,23 @@ Las reglas más largas ganan sobre las más cortas, así que podés tener
 > existen y a qué categoría pertenecen depende del país y de la persona. Una
 > lista de fábrica clasificaría mal el ledger de todo el mundo menos el de quien
 > la escribió.
+
+**Si ya venís con historial clasificado** (migraste una base, o corregiste
+categorías a mano), `--learn-rules` convierte esas etiquetas en reglas de una
+sola pasada:
+
+```bash
+npm run onboard -- --learn-rules
+# → {"ok": true, "learned": 55, "skippedAmbiguous": 2, "skippedExisting": 30}
+```
+
+Hace falta porque `categorize()` **no lee la columna `category`**: recalcula en
+vivo desde `type`/`counterparty` + `category_rules`. Sin las reglas, esa
+clasificación que ya existe en la base es invisible para el dashboard.
+
+Nunca pisa una regla que ya escribiste (`skippedExisting`), y si una misma
+contraparte aparece con dos categorías distintas no adivina: la cuenta en
+`skippedAmbiguous` y te deja decidir con un `--rule` explícito.
 
 Después de cargar todas las reglas, aplicalas al historial que ya estaba
 sincronizado:

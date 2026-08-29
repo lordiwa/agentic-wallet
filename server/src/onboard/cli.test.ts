@@ -205,6 +205,24 @@ describe("--rule", () => {
   });
 });
 
+describe("--learn-rules", () => {
+  it("convierte el historial ya clasificado en reglas y reporta el conteo", async () => {
+    insertTransaction(db, {
+      gmail_msg_id: "clasificada-a-mano",
+      ts: "2026-06-01T12:00:00Z",
+      direction: "out",
+      type: "transferencia",
+      amount: 30,
+      counterparty: "CENTRO MEDICO SUR",
+      category: "salud",
+    } satisfies NewTransaction);
+
+    expect(await runOnboardCli(["--learn-rules"], deps())).toBe(0);
+    expect(printedJson()).toMatchObject({ ok: true, learned: 1 });
+    expect(listCategoryRules(db)).toEqual([{ pattern: "centro medico sur", category: "salud" }]);
+  });
+});
+
 describe("--backfill", () => {
   it("applies newly-added rules to rows that were synced before them", async () => {
     insertTransaction(db, {

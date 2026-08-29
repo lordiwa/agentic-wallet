@@ -11,18 +11,29 @@
  *   2. `type: 'servicio'`                     -> 'servicios'
  *   3. `type: 'recarga'`                      -> 'recarga'
  *   4. `type: 'sueldo' | 'recibido'`          -> 'otros' (income, not a gasto — see note below)
- *   5. `type: 'transferencia'`, not internal, has a counterparty -> 'transferencia_persona'
- *      `type: 'transferencia'`, internal or no counterparty      -> 'otros'
+ *   5. `type: 'transferencia'`, internal                          -> 'otros'
+ *      `type: 'transferencia'` matching a user rule (see 6)       -> the rule's category
+ *      `type: 'transferencia'` with a counterparty                -> 'transferencia_persona'
+ *      `type: 'transferencia'` with no counterparty               -> 'otros'
  *   6. user-defined establishment match on `counterparty` (any remaining
  *      type, chiefly 'debito'/'credito' consumo rows, whose counterparty
  *      carries the "Establecimiento" merchant name) — see `rules` below
  *   7. no match -> 'otros'
  *
- * Type rules (1-5) are checked BEFORE the establishment match (6) so that,
+ * Type rules (1-4) are checked BEFORE the establishment match (6) so that,
  * e.g., a 'recarga' to a phone carrier categorizes as 'recarga' rather than
  * 'servicios' — the type is the more specific signal there, even when that
  * same carrier is also a servicios establishment for 'servicio'-type combo
  * payments.
+ *
+ * 'transferencia' is the exception, and deliberately so: it consults the user
+ * rules FIRST. Where instant account-to-account payment displaced the card,
+ * merchants charge by transfer, so the merchant's own name arrives as the
+ * counterparty of a 'transferencia' row. Reading that as "a transfer to a
+ * person" is strictly less information than the user's own "this name is a
+ * salud merchant" — with the fallback winning, no rule could ever reach those
+ * rows and every clinic, vet and restaurant piled into
+ * 'transferencia_persona'.
  *
  * Rule 6 is data, not code: the merchant patterns come from the user's own
  * `category_rules` table (filled by `npm run onboard`), because a shipped
@@ -152,9 +163,19 @@ export function categorize(tx: CategorizeInput, rules: readonly EstablishmentRul
     case "sueldo":
     case "recibido":
       return "otros";
-    case "transferencia":
+    case "transferencia": {
+      // `is_internal` gana incluso sobre una regla: no es un fallback grueso
+      // sino un hecho sobre las cuentas -- plata que no salio del bolsillo.
       if (tx.is_internal) return "otros";
+      // Una regla del usuario gana sobre 'transferencia_persona': donde el
+      // comercio cobra por transferencia inmediata, la clinica y el
+      // restaurante llegan con `type: 'transferencia'`, y "es una
+      // transferencia con contraparte" es estrictamente menos informacion que
+      // "el usuario dijo que este nombre es un comercio de salud".
+      const byRule = matchEstablishment(tx.counterparty, rules);
+      if (byRule) return byRule;
       return tx.counterparty ? "transferencia_persona" : "otros";
+    }
     default:
       break;
   }

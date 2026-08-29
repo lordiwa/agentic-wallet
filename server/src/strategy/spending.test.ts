@@ -58,6 +58,30 @@ describe("spendingByCategory (spec §9.8)", () => {
     });
   });
 
+  /**
+   * El caso que rompia el dashboard: cuando el comercio cobra por
+   * transferencia, el gasto real vive en filas `type: 'transferencia'`. Sin la
+   * prioridad de las reglas, las tres filas de abajo sumaban 300 en
+   * 'transferencia_persona' y comida/servicios/salud no aparecian.
+   */
+  it("clasifica por regla las transferencias a comercios, dejando solo las personas en transferencia_persona", () => {
+    upsertCategoryRule(db, "restaurante", "comida");
+    upsertCategoryRule(db, "electrica", "servicios");
+    upsertCategoryRule(db, "centro medico", "salud");
+
+    insertTransaction(db, tx({ gmail_msg_id: "t1", type: "transferencia", counterparty: "RESTAURANTE EL FOGON", amount: 100 }));
+    insertTransaction(db, tx({ gmail_msg_id: "t2", type: "transferencia", counterparty: "EMPRESA ELECTRICA REGIONAL", amount: 120 }));
+    insertTransaction(db, tx({ gmail_msg_id: "t3", type: "transferencia", counterparty: "CENTRO MEDICO SUR", amount: 80 }));
+    insertTransaction(db, tx({ gmail_msg_id: "t4", type: "transferencia", counterparty: "Maria Lopez", amount: 45 }));
+
+    expect(spendingByCategory(db, JULY)).toEqual({
+      comida: 100,
+      servicios: 120,
+      salud: 80,
+      transferencia_persona: 45,
+    });
+  });
+
   it("returns an empty object for a period with only income, no gasto", () => {
     insertTransaction(db, tx({ gmail_msg_id: "income", direction: "in", type: "sueldo", amount: 1000 }));
 

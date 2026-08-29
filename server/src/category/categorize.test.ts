@@ -88,6 +88,52 @@ describe("categorize", () => {
   });
 
   /**
+   * En Ecuador (y en cualquier plaza donde el pago inmediato entre cuentas
+   * reemplazo a la tarjeta) el comercio cobra por transferencia: la clinica,
+   * la veterinaria y el restaurante llegan como `type: 'transferencia'` con
+   * el nombre del comercio en `counterparty`. Con el fallback estructural
+   * corriendo primero, TODOS caian en 'transferencia_persona' y ninguna regla
+   * del usuario podia rescatarlos -- el dashboard mostraba una sola montania
+   * de "transferencias a personas" y salud/mascota/comida en cero.
+   *
+   * De ahi la prioridad: una regla es el usuario afirmando "este nombre es un
+   * comercio y es de esta categoria". El fallback por `type` solo sabe "es una
+   * transferencia con contraparte", que es estrictamente menos informacion.
+   */
+  describe("una regla del usuario gana sobre el fallback de transferencia", () => {
+    it("transferencia a un comercio con regla -> la categoria de la regla", () => {
+      expect(
+        categorize({ type: "transferencia", counterparty: "CENTRO MEDICO NORTE", is_internal: false }, RULES)
+      ).toBe("salud");
+      expect(
+        categorize({ type: "transferencia", counterparty: "Veterinaria Luna", is_internal: false }, RULES)
+      ).toBe("mascota");
+    });
+
+    it("transferencia a una persona sin regla -> sigue siendo transferencia_persona", () => {
+      expect(
+        categorize({ type: "transferencia", counterparty: "Maria Lopez", is_internal: false }, RULES)
+      ).toBe("transferencia_persona");
+    });
+
+    it("transferencia sin contraparte -> sigue siendo otros", () => {
+      expect(categorize({ type: "transferencia", counterparty: null, is_internal: false }, RULES)).toBe("otros");
+    });
+
+    /**
+     * `is_internal` sigue ganando: no es un fallback grueso sino un hecho
+     * sobre las cuentas (plata que no salio del bolsillo). Una regla de
+     * comercio no puede convertir un movimiento entre cuentas propias en
+     * gasto.
+     */
+    it("transferencia interna -> otros, aunque la contraparte matchee una regla", () => {
+      expect(
+        categorize({ type: "transferencia", counterparty: "Centro Medico Norte", is_internal: true }, RULES)
+      ).toBe("otros");
+    });
+  });
+
+  /**
    * The boilerplate guarantee: with no rules configured, no consumo is ever
    * assigned a category inherited from whoever the engine was built for.
    */

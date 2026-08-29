@@ -16,6 +16,7 @@
  *   npm run onboard -- --suggest         read the ledger, propose a profile
  *   npm run onboard -- --set '<json>'    write strategy_config fields
  *   npm run onboard -- --rule <pat>=<cat>  add a merchant category rule
+ *   npm run onboard -- --learn-rules     derive rules from already-classified history
  *   npm run onboard -- --backfill        apply the rules to already-synced rows
  *   npm run onboard -- --reclassify      recompute categories/internals already set
  *
@@ -28,7 +29,7 @@ import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import { openDb } from "../db/open.js";
 import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
-import { upsertCategoryRule } from "../category/rules-repository.js";
+import { learnRulesFromHistory, upsertCategoryRule } from "../category/rules-repository.js";
 import { CATEGORIES, type Category } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
 import { reclassifyTransactions } from "../category/reclassify.js";
@@ -232,6 +233,19 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
         return saved ? 0 : 1;
       }
 
+      case "--learn-rules": {
+        if (!db) {
+          deps.log(JSON.stringify({ ok: false, error: "No hay base de datos todavia. Corre un sync primero." }));
+          return 1;
+        }
+        // Para quien llega con historial ya etiquetado: convierte esas
+        // etiquetas en reglas, que es lo unico que `categorize` sabe leer.
+        // Nunca pisa una regla existente. Ver category/rules-repository.ts.
+        const result = learnRulesFromHistory(db);
+        deps.log(JSON.stringify({ ok: true, ...result }, null, 2));
+        return 0;
+      }
+
       default:
         deps.log(
           [
@@ -244,6 +258,7 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
             "  npm run onboard -- --suggest           propone perfil leyendo tu ledger",
             "  npm run onboard -- --set '<json>'      escribe campos de strategy_config",
             "  npm run onboard -- --rule <pat>=<cat>  agrega una regla de comercio",
+            "  npm run onboard -- --learn-rules       deriva reglas del historial que ya clasificaste",
             "  npm run onboard -- --backfill          aplica las reglas al historial ya sincronizado",
             "  npm run onboard -- --reclassify        recalcula categorias e internas ya asignadas (si repisa)",
           ].join("\n")
