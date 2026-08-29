@@ -50728,6 +50728,80 @@ async function createGoogleapisGmailClient(config2) {
   };
 }
 
+// src/ingest/heal-counterparty.ts
+var DEFAULT_HEAL_LIMIT = 500;
+var AMOUNT_EPSILON = 5e-3;
+function listHealableRows(db, limit) {
+  return db.prepare(
+    `SELECT id, gmail_msg_id, amount
+         FROM transactions
+        WHERE (counterparty IS NULL OR TRIM(counterparty) = '')
+          AND type != 'reverso'
+        ORDER BY amount DESC, id ASC
+        LIMIT ?`
+  ).all(limit);
+}
+function countHealableRows(db) {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n
+         FROM transactions
+        WHERE (counterparty IS NULL OR TRIM(counterparty) = '')
+          AND type != 'reverso'`
+  ).get();
+  return row.n;
+}
+async function healCounterparties({ db, gmailClient }, options = {}) {
+  return withSpan("ingest.heal_counterparty", {}, async () => {
+    const rows = listHealableRows(db, options.limit ?? DEFAULT_HEAL_LIMIT);
+    const update = db.prepare("UPDATE transactions SET counterparty = @counterparty WHERE id = @id");
+    let healed = 0;
+    let unnamed = 0;
+    let skippedAmountMismatch = 0;
+    let failed = 0;
+    for (const row of rows) {
+      let counterparty;
+      try {
+        const message = await gmailClient.getMessage(row.gmail_msg_id);
+        const parsed = parseEmail({
+          subject: message.subject,
+          body: message.body,
+          gmail_msg_id: message.gmail_msg_id,
+          gmail_thread_id: message.gmail_thread_id,
+          ts: message.ts
+        });
+        if (parsed.kind !== "transaction") {
+          failed += 1;
+          continue;
+        }
+        if (parsed.amount === null || Math.abs(parsed.amount - row.amount) >= AMOUNT_EPSILON) {
+          skippedAmountMismatch += 1;
+          continue;
+        }
+        counterparty = parsed.counterparty?.trim() || null;
+      } catch {
+        failed += 1;
+        continue;
+      }
+      if (counterparty === null) {
+        unnamed += 1;
+        continue;
+      }
+      update.run({ id: row.id, counterparty });
+      healed += 1;
+    }
+    const result = {
+      candidates: rows.length,
+      healed,
+      unnamed,
+      skippedAmountMismatch,
+      failed,
+      remaining: countHealableRows(db)
+    };
+    emitMetric("ingest.heal_counterparty.summary", { ...result });
+    return result;
+  });
+}
+
 // src/ingest/claude-email-extractor.ts
 var import_claude_agent_sdk = require("@anthropic-ai/claude-agent-sdk");
 var ExtractedEmailSchema = external_exports.object({
@@ -51136,6 +51210,27 @@ function createWalletMcpServer(deps) {
       return json({ ok: true, updated, ...result });
     }
   );
+  server.registerTool(
+    "heal_counterparties",
+    {
+      title: "Recuperar el comercio de los movimientos que quedaron sin nombre",
+      description: "Relee en Gmail el correo original de cada movimiento guardado SIN nombre de comercio y le devuelve el nombre, usando el parser actual. Sirve para el historial que entro con un parser mas viejo o migrado desde otra base: esos movimientos no tienen contra que enganchar una regla de `set_rule`, asi que caen todos en 'otros' y ninguna regla los saca de ahi. Solo escribe la contraparte, jamas el monto, y solo sobre las filas que la tienen vacia. No recategoriza: despues de esto llama a `apply_rules` con `reclassify: true`. Idempotente.",
+      inputSchema: {
+        limit: external_exports.number().int().positive().optional().describe("Tope de correos a releer en esta corrida, del gasto mas caro al mas barato.")
+      }
+    },
+    async ({ limit }) => {
+      const db = deps.getDb();
+      const gmailClient = await deps.buildGmailClient();
+      if (!gmailClient) {
+        throw new Error(
+          "heal_counterparties: faltan credenciales de Gmail. Pon GMAIL_OAUTH_CLIENT_ID/SECRET en el .env y corre `npm run gmail-auth` para el refresh token."
+        );
+      }
+      const result = await healCounterparties({ db, gmailClient }, { limit });
+      return json({ ok: true, ...result, next: "apply_rules con reclassify: true" });
+    }
+  );
   return server;
 }
 function productionDeps() {
@@ -51149,6 +51244,15 @@ function productionDeps() {
     projectRoot,
     env: process.env,
     buildSyncRunner: (handle) => buildProductionSyncRunner(config2, () => handle),
+    buildGmailClient: async () => {
+      const { GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN } = config2;
+      if (!GMAIL_OAUTH_CLIENT_ID || !GMAIL_OAUTH_CLIENT_SECRET || !GMAIL_OAUTH_REFRESH_TOKEN) return null;
+      return createGoogleapisGmailClient({
+        clientId: GMAIL_OAUTH_CLIENT_ID,
+        clientSecret: GMAIL_OAUTH_CLIENT_SECRET,
+        refreshToken: GMAIL_OAUTH_REFRESH_TOKEN
+      });
+    },
     now: () => /* @__PURE__ */ new Date()
   };
 }

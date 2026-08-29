@@ -19,6 +19,7 @@
  *   npm run onboard -- --learn-rules     derive rules from already-classified history
  *   npm run onboard -- --backfill        apply the rules to already-synced rows
  *   npm run onboard -- --reclassify      recompute categories/internals already set
+ *   npm run onboard -- --heal-counterparties  re-read the emails of rows with no merchant name
  *
  * `--set` takes the same shape `--suggest` emits, so the agent's confirm loop
  * is "show suggestion -> user edits -> pass it straight back".
@@ -33,6 +34,8 @@ import { learnRulesFromHistory, upsertCategoryRule } from "../category/rules-rep
 import { CATEGORIES, type Category } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
 import { reclassifyTransactions } from "../category/reclassify.js";
+import { createGoogleapisGmailClient, healCounterparties } from "../ingest/index.js";
+import type { GmailClient } from "../ingest/index.js";
 import { buildSuggestions } from "./suggest.js";
 import { onboardStatus } from "./status.js";
 
@@ -48,6 +51,24 @@ export interface OnboardCliDeps {
   envPath: string;
   envExamplePath: string;
   log: (line: string) => void;
+  /**
+   * Cliente de Gmail para `--heal-counterparties`, el unico subcomando que
+   * necesita red. Devuelve `null` — y nunca tira — cuando faltan credenciales,
+   * igual que `buildProductionSyncRunner`: asi el subcomando reporta un error
+   * limpio en vez de reventar construyendo un cliente que no puede
+   * autenticar. Es una funcion, no un cliente ya construido, para que ningun
+   * OTRO subcomando pague una conexion que no usa.
+   */
+  buildGmailClient: () => Promise<Pick<GmailClient, "getMessage"> | null>;
+}
+
+/** Las tres credenciales de Gmail del `.env`, o `null` si falta alguna. */
+async function gmailClientFromEnv(env: NodeJS.ProcessEnv): Promise<Pick<GmailClient, "getMessage"> | null> {
+  const clientId = env.GMAIL_OAUTH_CLIENT_ID;
+  const clientSecret = env.GMAIL_OAUTH_CLIENT_SECRET;
+  const refreshToken = env.GMAIL_OAUTH_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) return null;
+  return createGoogleapisGmailClient({ clientId, clientSecret, refreshToken });
 }
 
 function defaultDeps(dbPath?: string): OnboardCliDeps {
@@ -57,6 +78,7 @@ function defaultDeps(dbPath?: string): OnboardCliDeps {
     envPath: ENV_PATH,
     envExamplePath: ENV_EXAMPLE_PATH,
     log: (line) => console.log(line),
+    buildGmailClient: () => gmailClientFromEnv(process.env),
   };
 }
 
@@ -233,6 +255,32 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
         return saved ? 0 : 1;
       }
 
+      case "--heal-counterparties": {
+        if (!db) {
+          deps.log(JSON.stringify({ ok: false, error: "No hay base de datos todavia. Corre un sync primero." }));
+          return 1;
+        }
+        const gmailClient = await deps.buildGmailClient();
+        if (!gmailClient) {
+          deps.log(
+            JSON.stringify({
+              ok: false,
+              error: "gmail_not_configured",
+              next: "Pon GMAIL_OAUTH_CLIENT_ID/SECRET y corre `npm run gmail-auth` para el refresh token.",
+            })
+          );
+          return 1;
+        }
+        // Relee el correo original de las filas que quedaron sin comercio y
+        // les devuelve el nombre. Recategorizar es un paso aparte a
+        // proposito: aca no se decide ninguna categoria, solo se recupera el
+        // dato con el que `--reclassify` despues puede decidirla. Ver
+        // ingest/heal-counterparty.ts.
+        const result = await healCounterparties({ db, gmailClient });
+        deps.log(JSON.stringify({ ok: true, ...result, next: "npm run onboard -- --reclassify" }, null, 2));
+        return 0;
+      }
+
       case "--learn-rules": {
         if (!db) {
           deps.log(JSON.stringify({ ok: false, error: "No hay base de datos todavia. Corre un sync primero." }));
@@ -261,6 +309,7 @@ export async function runOnboardCli(argv: readonly string[], deps: OnboardCliDep
             "  npm run onboard -- --learn-rules       deriva reglas del historial que ya clasificaste",
             "  npm run onboard -- --backfill          aplica las reglas al historial ya sincronizado",
             "  npm run onboard -- --reclassify        recalcula categorias e internas ya asignadas (si repisa)",
+            "  npm run onboard -- --heal-counterparties  relee el correo de las filas sin comercio y les pone nombre",
           ].join("\n")
         );
         return 1;

@@ -7,6 +7,12 @@ export type { ExtractedReversoFields } from "./reverso-extract.js";
 export { buildSearchQuery, ingestBatch, ingestOnce, searchMessageIds } from "./pipeline.js";
 export type { IngestBatchOptions, IngestDeps, IngestOptions, IngestSummary } from "./pipeline.js";
 export { createGoogleapisGmailClient } from "./googleapis-gmail-client.js";
+export { DEFAULT_HEAL_LIMIT, healCounterparties } from "./heal-counterparty.js";
+export type {
+  HealCounterpartiesDeps,
+  HealCounterpartiesOptions,
+  HealCounterpartiesResult,
+} from "./heal-counterparty.js";
 export type { GoogleapisGmailClientConfig } from "./googleapis-gmail-client.js";
 export { createClaudeEmailExtractor, ExtractedEmailSchema } from "./claude-email-extractor.js";
 export { InMemoryTokenStore, KeyringTokenStore } from "./token-store.js";

@@ -37,6 +37,7 @@ describe("MCP server del wallet", () => {
   let db: Database.Database;
   let client: Client;
   let syncRunner: WalletMcpDeps["buildSyncRunner"];
+  let gmailClient: WalletMcpDeps["buildGmailClient"];
 
   beforeEach(async () => {
     projectRoot = mkdtempSync(path.join(tmpdir(), "wallet-mcp-"));
@@ -92,12 +93,14 @@ describe("MCP server del wallet", () => {
     // Sin credenciales de Gmail/Claude el runner real es null; el test lo
     // inyecta para no depender del `.env` de nadie.
     syncRunner = () => null;
+    gmailClient = async () => null;
 
     const server = createWalletMcpServer({
       getDb: () => db,
       projectRoot,
       env: {},
       buildSyncRunner: (handle) => syncRunner(handle),
+      buildGmailClient: () => gmailClient(),
       now: () => NOW,
     });
 
@@ -128,6 +131,7 @@ describe("MCP server del wallet", () => {
         "onboarding_status",
         "query_transactions",
         "apply_rules",
+        "heal_counterparties",
         "set_profile",
         "set_rule",
         "suggest_profile",

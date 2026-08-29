@@ -32,6 +32,8 @@ import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db
 import { onboardStatus, type OnboardStatus } from "../onboard/status.js";
 import { buildSuggestions } from "../onboard/suggest.js";
 import { buildProductionSyncRunner } from "../sync/index.js";
+import { createGoogleapisGmailClient, healCounterparties } from "../ingest/index.js";
+import type { GmailClient } from "../ingest/index.js";
 import type { SyncRunner } from "../api/sync-route.js";
 import {
   addDays,
@@ -55,6 +57,14 @@ export interface WalletMcpDeps {
   env: NodeJS.ProcessEnv;
   /** Devuelve null cuando faltan credenciales de Gmail/Claude. */
   buildSyncRunner: (db: Database.Database) => SyncRunner | null;
+  /**
+   * Cliente de Gmail para `heal_counterparties`. Va aparte de
+   * `buildSyncRunner` porque las credenciales que necesita son un subconjunto:
+   * releer un correo ya conocido no pasa por Claude, asi que esta tool
+   * funciona en un wallet con Gmail configurado y sin credencial de Claude.
+   * Devuelve null cuando faltan las de Gmail.
+   */
+  buildGmailClient: () => Promise<Pick<GmailClient, "getMessage"> | null>;
   now: () => Date;
 }
 
@@ -428,6 +438,40 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
     }
   );
 
+  server.registerTool(
+    "heal_counterparties",
+    {
+      title: "Recuperar el comercio de los movimientos que quedaron sin nombre",
+      description:
+        "Relee en Gmail el correo original de cada movimiento guardado SIN nombre de comercio y le devuelve el " +
+        "nombre, usando el parser actual. Sirve para el historial que entro con un parser mas viejo o migrado " +
+        "desde otra base: esos movimientos no tienen contra que enganchar una regla de `set_rule`, asi que caen " +
+        "todos en 'otros' y ninguna regla los saca de ahi. Solo escribe la contraparte, jamas el monto, y solo " +
+        "sobre las filas que la tienen vacia. No recategoriza: despues de esto llama a `apply_rules` con " +
+        "`reclassify: true`. Idempotente.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Tope de correos a releer en esta corrida, del gasto mas caro al mas barato."),
+      },
+    },
+    async ({ limit }) => {
+      const db = deps.getDb();
+      const gmailClient = await deps.buildGmailClient();
+      if (!gmailClient) {
+        throw new Error(
+          "heal_counterparties: faltan credenciales de Gmail. Pon GMAIL_OAUTH_CLIENT_ID/SECRET en el .env y " +
+            "corre `npm run gmail-auth` para el refresh token."
+        );
+      }
+      const result = await healCounterparties({ db, gmailClient }, { limit });
+      return json({ ok: true, ...result, next: "apply_rules con reclassify: true" });
+    }
+  );
+
   return server;
 }
 
@@ -453,6 +497,15 @@ export function productionDeps(): WalletMcpDeps {
     projectRoot,
     env: process.env,
     buildSyncRunner: (handle) => buildProductionSyncRunner(config, () => handle),
+    buildGmailClient: async () => {
+      const { GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN } = config;
+      if (!GMAIL_OAUTH_CLIENT_ID || !GMAIL_OAUTH_CLIENT_SECRET || !GMAIL_OAUTH_REFRESH_TOKEN) return null;
+      return createGoogleapisGmailClient({
+        clientId: GMAIL_OAUTH_CLIENT_ID,
+        clientSecret: GMAIL_OAUTH_CLIENT_SECRET,
+        refreshToken: GMAIL_OAUTH_REFRESH_TOKEN,
+      });
+    },
     now: () => new Date(),
   };
 }

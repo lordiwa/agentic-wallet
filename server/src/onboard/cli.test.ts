@@ -48,6 +48,9 @@ function deps(overrides: Partial<OnboardCliDeps> = {}): OnboardCliDeps {
     envPath: path.join(workdir, ".env"),
     envExamplePath: path.join(workdir, ".env.example"),
     log: (line) => output.push(line),
+    // Sin credenciales por defecto: el unico subcomando que lo usa
+    // (--heal-counterparties) tiene que reportar "gmail_not_configured".
+    buildGmailClient: async () => null,
     ...overrides,
   };
 }
@@ -251,6 +254,67 @@ describe("--backfill", () => {
       },
     });
     expect(await runOnboardCli(["--backfill"], d)).toBe(1);
+  });
+});
+
+describe("--heal-counterparties", () => {
+  const email = {
+    gmail_msg_id: "sin-comercio",
+    gmail_thread_id: null,
+    subject: "Consumo Tarjeta de Crédito por USD 11.99",
+    body: "Detalle\nValor: USD\n11.99\nEstablecimiento:\nNETFLIX.COM\nAtentamente Produbanco",
+    ts: "2026-06-01T12:00:00Z",
+  };
+
+  function seedRowWithoutCounterparty(): void {
+    insertTransaction(db, {
+      gmail_msg_id: "sin-comercio",
+      ts: "2026-06-01T12:00:00Z",
+      direction: "out",
+      type: "credito",
+      amount: 11.99,
+      counterparty: null,
+    } satisfies NewTransaction);
+  }
+
+  it("le devuelve el nombre del comercio a una fila que lo perdio", async () => {
+    seedRowWithoutCounterparty();
+    const d = deps({ buildGmailClient: async () => ({ getMessage: async () => email }) });
+
+    expect(await runOnboardCli(["--heal-counterparties"], d)).toBe(0);
+
+    const row = db.prepare("SELECT counterparty FROM transactions WHERE gmail_msg_id = ?").get("sin-comercio") as {
+      counterparty: string;
+    };
+    expect(row.counterparty).toBe("NETFLIX.COM");
+    expect(printedJson()).toMatchObject({ ok: true, healed: 1 });
+  });
+
+  // El nombre solo, sin recategorizar, no mueve el gasto: por eso el
+  // subcomando apunta explicitamente al paso siguiente.
+  it("apunta a --reclassify como paso siguiente", async () => {
+    seedRowWithoutCounterparty();
+    const d = deps({ buildGmailClient: async () => ({ getMessage: async () => email }) });
+
+    await runOnboardCli(["--heal-counterparties"], d);
+
+    expect(printedJson().next).toContain("--reclassify");
+  });
+
+  it("reporta gmail_not_configured en vez de reventar sin credenciales", async () => {
+    seedRowWithoutCounterparty();
+
+    expect(await runOnboardCli(["--heal-counterparties"], deps())).toBe(1);
+    expect(printedJson()).toMatchObject({ ok: false, error: "gmail_not_configured" });
+  });
+
+  it("no corre contra una base que todavia no existe", async () => {
+    const d = deps({
+      openDatabase: () => {
+        throw new Error("no db");
+      },
+    });
+    expect(await runOnboardCli(["--heal-counterparties"], d)).toBe(1);
   });
 });
 
