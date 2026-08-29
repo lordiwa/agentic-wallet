@@ -335,16 +335,43 @@ a.card .more { display: inline-block; margin-top: .8rem; font-size: .88rem; font
   display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
   background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: .95rem;
 }
+/* `min-width: 0` en la columna de texto: sin esto el mínimo automático de un
+   item de grilla es su tamaño min-content, y un comando largo empujaría la
+   tarjeta más allá del ancho del viewport en vez de acomodarse. */
+.install-step > div { min-width: 0; }
 .install-step h3 { margin-bottom: .35rem; }
 .install-step p { margin: 0 0 .7rem; color: var(--ink-soft); font-size: .97rem; }
 .install-step p:last-child { margin-bottom: 0; }
 
+/* Los comandos se envuelven, no scrollean.
+   Un `pre` con `overflow-x: auto` y altura automática no crece para hacerle
+   lugar a la barra de scroll horizontal: la barra se dibuja DENTRO de la caja y
+   tapa el último renglón. En pantallas anchas no se nota porque las líneas
+   entran; en móvil, donde sí desbordan, el bloque de comandos aparecía cortado
+   por abajo. Con `pre-wrap` nunca hay desborde horizontal, así que nunca hay
+   barra que tape nada. `anywhere` es necesario porque la URL del `git clone`
+   es un solo token sin espacios donde cortar. */
 pre.cmd {
-  margin: .2rem 0 0; padding: .85rem 1rem; overflow-x: auto;
+  margin: .2rem 0 0; padding: .85rem 1rem;
+  max-width: 100%; overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;  /* Safari < 15.4 no entiende `anywhere` */
+  overflow-wrap: anywhere;
   background: var(--paper-alt); border: 1px solid var(--line); border-radius: 10px;
   font-size: .86rem; line-height: 1.7; color: var(--ink);
 }
 pre.cmd .c { color: var(--ink-faint); }
+
+/* En pantallas angostas la tarjeta cede padding y el número achica, para que
+   la columna de texto quede lo más ancha posible y los comandos corten menos. */
+@media (max-width: 620px) {
+  .install-step {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: .85rem; padding: 1.2rem 1.1rem 1.3rem;
+  }
+  .install-step::before { width: 28px; height: 28px; font-size: .88rem; }
+  pre.cmd { padding: .75rem .85rem; font-size: .8rem; }
+}
 
 .req-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; font-size: .97rem; }
 .req-table th, .req-table td { text-align: left; padding: .85rem 1rem; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -410,9 +437,15 @@ pre.cmd .c { color: var(--ink-faint); }
 .content table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .94rem; display: block; overflow-x: auto; }
 .content th, .content td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--line); }
 .content th { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
+/* Mismo motivo que `pre.cmd`: en móvil la barra de scroll horizontal se dibuja
+   dentro de la caja y tapa el último renglón. Los bloques de las guías se
+   envuelven en vez de scrollear. */
 .content pre {
   background: var(--paper-alt); border: 1px solid var(--line); border-radius: 10px;
   padding: 1rem 1.15rem; overflow-x: auto; font-size: .87rem; line-height: 1.6;
+  max-width: 100%; white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .content :not(pre) > code {
   background: var(--paper-alt); border: 1px solid var(--line); border-radius: 5px;
