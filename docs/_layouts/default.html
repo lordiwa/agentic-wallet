@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang | default: 'es' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title and page.url != '/' %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }} — tu copiloto financiero local-first{% endif %}</title>
+  <meta name="description" content="{{ page.description | default: site.description | strip_newlines }}">
+  <meta name="theme-color" content="#0f4c46">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ site.title }}">
+  <meta property="og:title" content="{% if page.title and page.url != '/' %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}">
+  <meta property="og:description" content="{{ page.description | default: site.description | strip_newlines }}">
+  <meta property="og:locale" content="es_ES">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+  <link rel="icon" href="{{ '/assets/img/favicon.svg' | relative_url }}" type="image/svg+xml">
+</head>
+<body class="{% if page.url == '/' %}is-landing{% else %}is-doc{% endif %}">
+
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5.5A2.5 2.5 0 0 1 3 16.5z"></path>
+          <path d="M3 8.5V7a2 2 0 0 1 2-2h11"></path>
+          <circle cx="16.5" cy="12.5" r="1.4"></circle>
+        </svg>
+      </span>
+      <span class="brand-text">Agentic&nbsp;Wallet</span>
+    </a>
+
+    <nav class="site-nav" aria-label="Secciones">
+      {% for item in site.nav %}
+        {% if item.url contains '#' %}
+          <a href="{{ '/' | relative_url }}{{ item.url }}">{{ item.title }}</a>
+        {% else %}
+          <a href="{{ item.url | relative_url }}">{{ item.title }}</a>
+        {% endif %}
+      {% endfor %}
+      <a class="nav-cta" href="{{ site.repo_url }}">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="contenido">
+  {% if page.url == '/' %}
+    {{ content }}
+  {% else %}
+  <div class="wrap page">
+    {% if page.kicker %}<p class="kicker">{{ page.kicker }}</p>{% endif %}
+
+    {% if page.canonical %}
+    <p class="source-note">
+      Fuente: <a href="{{ site.repo_blob }}/docs/{{ page.path }}"><code>docs/{{ page.path }}</code></a>
+      — esta página lo publica tal cual, sin modificarlo.
+    </p>
+    {% endif %}
+
+    <div class="content">
+      {{ content }}
+    </div>
+
+    <p class="back-home"><a href="{{ '/' | relative_url }}">&larr; Volver al inicio</a></p>
+  </div>
+  {% endif %}
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="footer-lead">
+      <strong>Agentic Wallet</strong> — tu plata, tu historial y tus credenciales
+      no salen de tu computadora.
+    </p>
+    <p class="footer-links">
+      <a href="{{ site.repo_url }}">Código en GitHub</a> ·
+      <a href="{{ '/onboarding-para-humanos.html' | relative_url }}">Guía para humanos</a> ·
+      <a href="{{ '/conectar-gmail.html' | relative_url }}">Conectar Gmail</a> ·
+      <a href="{{ '/multibanco.html' | relative_url }}">Soportar otro banco</a>
+    </p>
+    <p class="fine">
+      Proyecto de uso personal. El repositorio no incluye datos de nadie: la base
+      arranca vacía y todos los valores de tu perfil son cero hasta que vos los
+      configurás.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

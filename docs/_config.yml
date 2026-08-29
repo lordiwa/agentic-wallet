@@ -1,0 +1,99 @@
+# Configuración de GitHub Pages para la landing de Agentic Wallet.
+#
+# El sitio se sirve desde main + /docs (modo "legacy": GitHub corre Jekyll solo,
+# sin workflow de CI extra).
+#
+# CÓMO SE PUBLICAN LOS DOCUMENTOS CANÓNICOS
+# -----------------------------------------
+# onboarding-para-humanos.md, conectar-gmail.md, multibanco.md, onboarding.md y
+# mcp.md se publican SIN modificarlos: no llevan front matter ni marcadores de
+# Jekyll. Funcionan gracias a plugins que GitHub Pages trae activados de fábrica:
+#
+#   - jekyll-optional-front-matter: convierte los .md sin front matter en
+#     páginas igual. Por eso existe /onboarding-para-humanos.html.
+#   - jekyll-relative-links: reescribe los enlaces .md entre documentos a la URL
+#     de la página renderizada, así que los enlaces cruzados del markdown
+#     canónico funcionan solos, sin JavaScript.
+#
+# El `defaults` de más abajo es lo único que hace falta para vestirlos: les
+# aplica el layout del sitio sin tocar ni un byte del contenido. Los docs siguen
+# siendo la fuente de verdad y se pueden reemplazar enteros sin que el sitio se
+# entere.
+
+title: Agentic Wallet
+description: >-
+  Tu copiloto financiero local-first: lee los correos que tu banco ya te manda,
+  arma tu historial en tu propia computadora, y te deja preguntarle cosas en
+  lenguaje natural. Sin nube, sin cuenta, sin que tus datos salgan de tu máquina.
+lang: es
+
+baseurl: "/agentic-wallet"
+url: "https://lordiwa.github.io"
+
+repo_url: "https://github.com/lordiwa/agentic-wallet"
+repo_blob: "https://github.com/lordiwa/agentic-wallet/blob/main"
+
+# Navegación del header. Las cuatro primeras son anclas de la landing; la última
+# es la guía para la persona que va a usar el wallet.
+nav:
+  - title: Qué es
+    url: "#que-es"
+  - title: Cómo funciona
+    url: "#como-funciona"
+  - title: Privacidad
+    url: "#privacidad"
+  - title: Instalación
+    url: "#instalacion"
+  - title: Preguntas
+    url: "#faq"
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+      canonical: false
+
+  - scope:
+      path: "onboarding-para-humanos.md"
+    values:
+      title: Configurar tu wallet — guía para humanos
+      kicker: Guía paso a paso, sin tecnicismos
+      canonical: true
+
+  - scope:
+      path: "conectar-gmail.md"
+    values:
+      title: Conectar Gmail
+      kicker: Permiso de solo lectura, una sola vez
+      canonical: true
+
+  - scope:
+      path: "multibanco.md"
+    values:
+      title: Soportar otro banco
+      kicker: Documento técnico
+      canonical: true
+
+  - scope:
+      path: "onboarding.md"
+    values:
+      title: Onboarding para agentes
+      kicker: Documento técnico
+      canonical: true
+
+  - scope:
+      path: "mcp.md"
+    values:
+      title: El wallet como herramientas MCP
+      kicker: Documento técnico
+      canonical: true
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
