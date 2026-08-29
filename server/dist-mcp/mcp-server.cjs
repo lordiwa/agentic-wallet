@@ -49156,8 +49156,20 @@ function isWithinReversalWindow(consumoTs, reversoTs) {
 function amountsEqual(a, b) {
   return Math.round(a * 100) === Math.round(b * 100);
 }
-function accountsEqual(a, b) {
-  return (a ?? null) === (b ?? null);
+function accountsCompatible(a, b) {
+  if (a === null || a === void 0 || b === null || b === void 0) return true;
+  return a === b;
+}
+function accountsCorroborate(a, b) {
+  return a !== null && a !== void 0 && b !== null && b !== void 0 && a === b;
+}
+function counterpartiesCorroborate(a, b) {
+  if (a === null || a === void 0 || b === null || b === void 0) return false;
+  const normalizedA = normalizeName(a);
+  return normalizedA !== "" && normalizedA === normalizeName(b);
+}
+function corroborations(tx, reverso) {
+  return (accountsCorroborate(tx.account, reverso.account) ? 1 : 0) + (counterpartiesCorroborate(tx.counterparty, reverso.counterparty) ? 1 : 0);
 }
 function applyReversals(transactions, reversos) {
   const result = transactions.map((tx) => ({ ...tx }));
@@ -49176,22 +49188,24 @@ function applyReversals(transactions, reversos) {
       continue;
     }
     const candidates = result.filter(
-      (tx) => tx.type === "debito" && tx.direction === "out" && !tx.is_reversed && tx.amount !== null && amountsEqual(tx.amount, reverso.amount) && accountsEqual(tx.account, reverso.account) && isWithinReversalWindow(tx.ts, reverso.ts)
+      (tx) => tx.type === "debito" && tx.direction === "out" && !tx.is_reversed && tx.amount !== null && amountsEqual(tx.amount, reverso.amount) && accountsCompatible(tx.account, reverso.account) && isWithinReversalWindow(tx.ts, reverso.ts)
     );
     if (candidates.length === 0) {
       unmatched.push(reverso);
       continue;
     }
-    if (candidates.length > 1) {
+    const best = Math.max(...candidates.map((tx) => corroborations(tx, reverso)));
+    const strongest = candidates.filter((tx) => corroborations(tx, reverso) === best);
+    if (strongest.length > 1) {
       ambiguous.push(reverso);
-      for (const candidate of candidates) {
+      for (const candidate of strongest) {
         candidate.needs_review = true;
         candidate.review_reason = candidate.review_reason ?? "ambiguous_reversal_match";
       }
       continue;
     }
-    candidates[0].is_reversed = true;
-    reversalsApplied.push({ reverso, consumo: candidates[0] });
+    strongest[0].is_reversed = true;
+    reversalsApplied.push({ reverso, consumo: strongest[0] });
   }
   return { transactions: result, reversalsApplied, ambiguous, unmatched };
 }
@@ -50160,10 +50174,23 @@ function extractAccountHolder(body, label, stopLabels = []) {
 // src/ingest/reverso-extract.ts
 var AMOUNT_LABELS = ["Valor", "Monto"];
 var PROSE_AMOUNT_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
-var FIELD_STOP_LABELS = ["Fecha", "Hora", "Establecimiento", "Referencia", "Monto", "Valor"];
 var DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[e\xE9]bito";
+var ESTABLISHMENT_LABEL = "Establecimiento";
+var FIELD_STOP_LABELS = [
+  "Fecha",
+  "Hora",
+  ESTABLISHMENT_LABEL,
+  "Referencia",
+  "Monto",
+  "Valor",
+  DEBIT_ACCOUNT_LABEL
+];
 function extractReversoFields(body) {
-  return { amount: extractAmount(body), account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS) };
+  return {
+    amount: extractAmount(body),
+    account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS),
+    counterparty: extractLabeledField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS)
+  };
 }
 function extractAmount(body) {
   for (const label of AMOUNT_LABELS) {
@@ -50610,6 +50637,9 @@ function reversoAuditRow(candidate, threadId, needsReview) {
     type: "reverso",
     amount: candidate.amount,
     account: candidate.account,
+    // El comercio va a la fila para que una revisión ambigua se pueda
+    // resolver sin volver al correo.
+    counterparty: candidate.counterparty ?? null,
     raw_subject: candidate.raw_subject,
     needs_review: needsReview,
     source: "deterministic"
@@ -50671,6 +50701,7 @@ async function runIngest(deps, options) {
           type: "reverso",
           amount: null,
           account: fields.account,
+          counterparty: fields.counterparty,
           raw_subject: parseResult.raw_subject,
           needs_review: true,
           source: "deterministic"
@@ -50681,6 +50712,7 @@ async function runIngest(deps, options) {
         raw_subject: parseResult.raw_subject,
         amount: fields.amount,
         account: fields.account,
+        counterparty: fields.counterparty,
         ts: email2.ts,
         gmail_msg_id: email2.gmail_msg_id
       });

@@ -99,6 +99,7 @@ function reversoAuditRow(candidate: ReversoCandidate, threadId: string | null, n
     type: "reverso",
     amount: candidate.amount,
     account: candidate.account,
+    counterparty: candidate.counterparty ?? null,
     raw_subject: candidate.raw_subject,
     needs_review: needsReview,
     source: "deterministic",
@@ -165,6 +166,7 @@ export function reconstructFromMessages(
           type: "reverso",
           amount: null,
           account: fields.account,
+          counterparty: fields.counterparty,
           raw_subject: parseResult.raw_subject,
           needs_review: true,
           source: "deterministic",
@@ -175,6 +177,7 @@ export function reconstructFromMessages(
         raw_subject: parseResult.raw_subject,
         amount: fields.amount,
         account: fields.account,
+        counterparty: fields.counterparty,
         ts: email.ts,
         gmail_msg_id: email.gmail_msg_id,
       });

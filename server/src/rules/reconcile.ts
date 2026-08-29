@@ -39,6 +39,9 @@ export interface ReversoCandidate {
   raw_subject: string;
   amount: number;
   account: string | null;
+  /** El comercio del consumo revertido ("Establecimiento" en el cuerpo). Es
+   * el segundo eje del apareo cuando no hay cuenta — ver `corroborations`. */
+  counterparty?: string | null;
   ts: string;
   gmail_msg_id?: string;
 }
@@ -92,8 +95,58 @@ function amountsEqual(a: number, b: number): boolean {
   return Math.round(a * 100) === Math.round(b * 100);
 }
 
-function accountsEqual(a: string | null | undefined, b: string | null | undefined): boolean {
-  return (a ?? null) === (b ?? null);
+/**
+ * Si dos cuentas **pueden** ser la misma.
+ *
+ * Tres valores, no dos: `null` es "no lo sé", no "una cuenta más". La versión
+ * anterior comparaba por igualdad y eso rompía el apareo en las dos
+ * direcciones a la vez:
+ *
+ * - dos desconocidas daban IGUAL, así que el eje desaparecía y el apareo
+ *   degeneraba a monto + día — dos consumos del mismo monto el mismo día
+ *   quedaban marcados para siempre (29 % de las revisiones del ledger real);
+ * - una conocida contra una desconocida daba DISTINTA, así que un reverso no
+ *   apareaba a nadie y **su consumo seguía sumando como gasto**. Ese es el
+ *   caso de quien empieza hoy: el correo de consumo trae "Cuenta débito" y el
+ *   de reverso no.
+ *
+ * Desconocida es compatible con todo. Lo que excluye es un desacuerdo real
+ * entre dos cuentas conocidas: eso sí es evidencia de que son otra tarjeta.
+ */
+function accountsCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === null || a === undefined || b === null || b === undefined) return true;
+  return a === b;
+}
+
+/** Compatible no es lo mismo que corroborado: dos cuentas conocidas e iguales
+ * son evidencia a favor; una desconocida no es evidencia de nada. */
+function accountsCorroborate(a: string | null | undefined, b: string | null | undefined): boolean {
+  return a !== null && a !== undefined && b !== null && b !== undefined && a === b;
+}
+
+/**
+ * El comercio corrobora cuando los dos correos lo nombran igual (tolerando
+ * tildes, mayúsculas y espacios: es el mismo campo del mismo banco).
+ *
+ * Un comercio **distinto** no descarta: el nombre llega recortado o con
+ * sufijo de sucursal según el correo, y descartar por eso dejaría el consumo
+ * revertido sumando como gasto. Sirve para elegir entre candidatos, nunca
+ * para quedarse sin ninguno.
+ */
+function counterpartiesCorroborate(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === null || a === undefined || b === null || b === undefined) return false;
+  const normalizedA = normalizeName(a);
+  return normalizedA !== "" && normalizedA === normalizeName(b);
+}
+
+/** Cuánta evidencia independiente tiene este candidato a favor. Los dos ejes
+ * pesan igual: si uno corrobora la cuenta y otro el comercio, no hay con qué
+ * elegir y decide un humano. */
+function corroborations(tx: ReconcilableTransaction, reverso: ReversoCandidate): number {
+  return (
+    (accountsCorroborate(tx.account, reverso.account) ? 1 : 0) +
+    (counterpartiesCorroborate(tx.counterparty, reverso.counterparty) ? 1 : 0)
+  );
 }
 
 /**
@@ -103,9 +156,19 @@ function accountsEqual(a: string | null | undefined, b: string | null | undefine
  * leave the reverso itself untouched as an auditable record — it is never
  * summed by this layer or any caller.
  *
- * Ambiguity guard (AC5): if a reverso has more than one un-reversed,
- * amount+account+window-matching candidate, none of them are touched; the
- * reverso is reported in `ambiguous` instead of guessing.
+ * El apareo es en dos pasos, y la diferencia importa cuando falta un campo
+ * (ver `accountsCompatible`):
+ *
+ * 1. **Compatibilidad** — quién *podría* ser: mismo monto, dentro de la
+ *    ventana, y sin desacuerdo entre dos cuentas conocidas. Un campo
+ *    desconocido no descarta a nadie.
+ * 2. **Corroboración** — quién tiene más evidencia a favor (cuenta y comercio
+ *    que coinciden). Gana la cima; si hay empate en la cima, no se elige.
+ *
+ * Ambiguity guard (AC5): si más de un candidato empata en la cima, ninguno se
+ * toca y el reverso se reporta en `ambiguous`. Nunca se casa a ciegas —
+ * apuntarle al consumo equivocado borra un gasto real de los totales y suma
+ * uno que sí ocurrió.
  *
  * Matching is first-come-first-served over `reversos` in array order: once
  * a consumo is claimed by one reverso it's no longer a candidate for a
@@ -113,7 +176,7 @@ function accountsEqual(a: string | null | undefined, b: string | null | undefine
  * `unmatched` rather than being flagged ambiguous.
  *
  * MEDIUM-1: when a reverso is ambiguous, `needs_review = true` is set on
- * every candidate row itself (not just recorded in the separate
+ * the tied candidate rows themselves (not just recorded in the separate
  * `ambiguous` array), so the flag survives on the real transaction.
  *
  * MEDIUM-2: a reverso that matches zero candidates is reported in
@@ -155,7 +218,7 @@ export function applyReversals(
         !tx.is_reversed &&
         tx.amount !== null &&
         amountsEqual(tx.amount, reverso.amount) &&
-        accountsEqual(tx.account, reverso.account) &&
+        accountsCompatible(tx.account, reverso.account) &&
         isWithinReversalWindow(tx.ts, reverso.ts)
     );
 
@@ -163,17 +226,27 @@ export function applyReversals(
       unmatched.push(reverso);
       continue;
     }
-    if (candidates.length > 1) {
+
+    // Entre los compatibles gana el que trae más evidencia corroborante. No es
+    // un desempate cosmético: sin él, aflojar la comparación de cuentas
+    // (`accountsCompatible`) convertiría en ambiguo todo lo que hoy aparea bien
+    // por cuenta, y una bandera puesta no se saca nunca.
+    const best = Math.max(...candidates.map((tx) => corroborations(tx, reverso)));
+    const strongest = candidates.filter((tx) => corroborations(tx, reverso) === best);
+
+    if (strongest.length > 1) {
       ambiguous.push(reverso);
-      for (const candidate of candidates) {
+      // Sólo los empatados en la cima: los candidatos con menos evidencia no
+      // compiten con ellos y marcarlos sería daño permanente gratis.
+      for (const candidate of strongest) {
         candidate.needs_review = true;
         candidate.review_reason = candidate.review_reason ?? "ambiguous_reversal_match";
       }
       continue;
     }
 
-    candidates[0].is_reversed = true;
-    reversalsApplied.push({ reverso, consumo: candidates[0] });
+    strongest[0].is_reversed = true;
+    reversalsApplied.push({ reverso, consumo: strongest[0] });
   }
 
   return { transactions: result, reversalsApplied, ambiguous, unmatched };

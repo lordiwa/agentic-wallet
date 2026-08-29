@@ -68,6 +68,22 @@ describe("extractReversoFields", () => {
     const result = extractReversoFields(REAL_REVERSO_BODY);
     expect(result.account).toBeNull();
   });
+
+  // El establecimiento es la segunda evidencia del apareo: cuando el correo de
+  // reverso no trae "Cuenta débito" (el caso real de arriba), es lo único que
+  // distingue dos consumos del mismo monto el mismo día.
+  it("lee el establecimiento, que es lo que desempata cuando no hay cuenta", () => {
+    expect(extractReversoFields(REAL_REVERSO_BODY).counterparty).toBe("DLC* UBER RIDES SAN JOSE CR");
+  });
+
+  it("deja el establecimiento en null cuando el cuerpo no trae el campo", () => {
+    expect(extractReversoFields("Detalle Monto: $20.00 Cuenta débito: ANA XXXXXX20924").counterparty).toBeNull();
+  });
+
+  it("no se lleva el campo siguiente dentro del establecimiento", () => {
+    const cuerpo = "Establecimiento: TIENDA EJEMPLO Referencia: 998877";
+    expect(extractReversoFields(cuerpo).counterparty).toBe("TIENDA EJEMPLO");
+  });
 });
 
 // TASK-041 end-to-end: a real-shaped reverso must actually reconcile against
@@ -130,6 +146,10 @@ describe("extractReversoFields sobre cuerpos con marcado (HTML)", () => {
 
   it("lee la cuenta enmascarada, que es con lo que se aparea el consumo", () => {
     expect(extractReversoFields(REVERSO_HTML).account).toBe("XXXXXX4321");
+  });
+
+  it("lee el establecimiento aunque el marcado se interponga", () => {
+    expect(extractReversoFields(REVERSO_HTML).counterparty).toBe("TIENDA EJEMPLO");
   });
 
   it("lee la cuenta aunque el valor del campo esté partido en dos líneas", () => {

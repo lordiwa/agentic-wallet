@@ -213,6 +213,156 @@ describe("applyReversals", () => {
 });
 
 // ---------------------------------------------------------------------------
+// El apareo cuando falta la cuenta (paso 1 de docs/investigacion-riesgos.md).
+//
+// `account` no llega siempre ni llega en los dos lados: hay correos de consumo
+// que no traen "Cuenta débito", correos de reverso que tampoco (el cuerpo real
+// de TASK-041 es uno), y todo el historial sincronizado antes del arreglo del
+// parser lo tiene en NULL. Tratar ese `null` como si fuera un valor rompe el
+// apareo en las dos direcciones a la vez: dos desconocidos se daban por
+// iguales (el eje desaparecía y quedaba monto+día), y un conocido contra un
+// desconocido se daba por distinto (el reverso no apareaba nada y su consumo
+// seguía sumando como gasto).
+//
+// La regla que fijan estos tests: `null` es "no lo sé" — compatible con todo,
+// evidencia de nada. Nunca se casa el reverso equivocado; si la evidencia no
+// alcanza para elegir, decide un humano.
+// ---------------------------------------------------------------------------
+
+describe("applyReversals cuando falta la cuenta", () => {
+  it("aparea el consumo sin cuenta con un reverso que sí la trae, si es el único candidato", () => {
+    const txs = [consumo({ account: null })];
+
+    const result = applyReversals(txs, [reverso({ account: "XXXXXX20924" })]);
+
+    expect(result.transactions[0].is_reversed).toBe(true);
+    expect(result.reversalsApplied).toHaveLength(1);
+    expect(result.unmatched).toHaveLength(0);
+  });
+
+  it("aparea el consumo con cuenta contra un reverso que no la trae, si es el único candidato", () => {
+    const txs = [consumo({ account: "XXXXXX20924" })];
+
+    const result = applyReversals(txs, [reverso({ account: null })]);
+
+    expect(result.transactions[0].is_reversed).toBe(true);
+    expect(result.reversalsApplied).toHaveLength(1);
+  });
+
+  it("dos cuentas conocidas y distintas siguen sin cruzarse", () => {
+    const txs = [consumo({ account: "XXXXXX99999" })];
+
+    const result = applyReversals(txs, [reverso({ account: "XXXXXX20924" })]);
+
+    expect(result.transactions[0].is_reversed).toBeFalsy();
+    expect(result.unmatched).toHaveLength(1);
+    expect(result.ambiguous).toHaveLength(0);
+  });
+
+  it("dos consumos del mismo monto y día sin cuenta: ambiguo, ninguno se casa a ciegas", () => {
+    const txs = [
+      consumo({ gmail_msg_id: "msg-a", account: null, counterparty: null, ts: "2026-07-01T10:00:00Z" }),
+      consumo({ gmail_msg_id: "msg-b", account: null, counterparty: null, ts: "2026-07-01T11:00:00Z" }),
+    ];
+
+    const result = applyReversals(txs, [reverso({ account: null, counterparty: null })]);
+
+    expect(result.reversalsApplied).toHaveLength(0);
+    expect(result.ambiguous).toHaveLength(1);
+    expect(result.transactions.every((tx) => !tx.is_reversed)).toBe(true);
+    expect(result.transactions.every((tx) => tx.needs_review)).toBe(true);
+  });
+
+  it("entre un candidato que corrobora la cuenta y otro que no la trae, gana el que la corrobora", () => {
+    const txs = [
+      consumo({ gmail_msg_id: "msg-con-cuenta", account: "XXXXXX20924", ts: "2026-07-01T10:00:00Z" }),
+      consumo({ gmail_msg_id: "msg-sin-cuenta", account: null, ts: "2026-07-01T11:00:00Z" }),
+    ];
+
+    const result = applyReversals(txs, [reverso({ account: "XXXXXX20924" })]);
+
+    expect(result.reversalsApplied.map((m) => m.consumo.gmail_msg_id)).toEqual(["msg-con-cuenta"]);
+    expect(result.ambiguous).toHaveLength(0);
+    // El candidato descartado no es sospechoso de nada: una bandera no se
+    // saca nunca, así que sólo se marca a quien de verdad compite.
+    expect(result.transactions.find((tx) => tx.gmail_msg_id === "msg-sin-cuenta")?.needs_review).toBe(false);
+  });
+
+  it("el establecimiento desempata cuando no se conoce ninguna cuenta", () => {
+    const txs = [
+      consumo({ gmail_msg_id: "msg-tienda", account: null, counterparty: "TIENDA EJEMPLO" }),
+      consumo({
+        gmail_msg_id: "msg-otro",
+        account: null,
+        counterparty: "OTRO COMERCIO",
+        ts: "2026-07-01T11:00:00Z",
+      }),
+    ];
+
+    const result = applyReversals(txs, [reverso({ account: null, counterparty: "Tienda Ejemplo" })]);
+
+    expect(result.reversalsApplied.map((m) => m.consumo.gmail_msg_id)).toEqual(["msg-tienda"]);
+    expect(result.transactions.find((tx) => tx.gmail_msg_id === "msg-otro")?.needs_review).toBe(false);
+  });
+
+  it("mismo establecimiento en los dos candidatos: sigue siendo ambiguo", () => {
+    const txs = [
+      consumo({ gmail_msg_id: "msg-a", account: null, counterparty: "TIENDA EJEMPLO" }),
+      consumo({
+        gmail_msg_id: "msg-b",
+        account: null,
+        counterparty: "TIENDA EJEMPLO",
+        ts: "2026-07-01T11:00:00Z",
+      }),
+    ];
+
+    const result = applyReversals(txs, [reverso({ account: null, counterparty: "TIENDA EJEMPLO" })]);
+
+    expect(result.reversalsApplied).toHaveLength(0);
+    expect(result.ambiguous).toHaveLength(1);
+    expect(result.transactions.every((tx) => tx.needs_review)).toBe(true);
+  });
+
+  it("sólo marca a los candidatos empatados en la cima, no a todo el que coincida en monto y día", () => {
+    const txs = [
+      consumo({ gmail_msg_id: "msg-a", account: null, counterparty: "TIENDA EJEMPLO" }),
+      consumo({
+        gmail_msg_id: "msg-b",
+        account: null,
+        counterparty: "TIENDA EJEMPLO",
+        ts: "2026-07-01T11:00:00Z",
+      }),
+      consumo({
+        gmail_msg_id: "msg-c",
+        account: null,
+        counterparty: "OTRO COMERCIO",
+        ts: "2026-07-01T12:00:00Z",
+      }),
+    ];
+
+    const result = applyReversals(txs, [reverso({ account: null, counterparty: "TIENDA EJEMPLO" })]);
+
+    expect(result.ambiguous).toHaveLength(1);
+    expect(result.transactions.find((tx) => tx.gmail_msg_id === "msg-a")?.needs_review).toBe(true);
+    expect(result.transactions.find((tx) => tx.gmail_msg_id === "msg-b")?.needs_review).toBe(true);
+    expect(result.transactions.find((tx) => tx.gmail_msg_id === "msg-c")?.needs_review).toBe(false);
+  });
+
+  it("un establecimiento distinto no descarta al único candidato", () => {
+    // El nombre del comercio llega recortado, con sufijos de sucursal o
+    // directamente vacío según el correo. Sirve para elegir ENTRE candidatos,
+    // nunca para descartar al único que hay: descartarlo dejaría el consumo
+    // revertido sumando como gasto.
+    const txs = [consumo({ account: null, counterparty: "TIENDA EJEMPLO SUCURSAL NORTE" })];
+
+    const result = applyReversals(txs, [reverso({ account: null, counterparty: "TIENDA EJEMPLO" })]);
+
+    expect(result.transactions[0].is_reversed).toBe(true);
+    expect(result.reversalsApplied).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rule 2: retiro dedup (spec 5.3.2 / AC2)
 // ---------------------------------------------------------------------------
 

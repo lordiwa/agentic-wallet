@@ -202,6 +202,9 @@ function reversoAuditRow(candidate: ReversoCandidate, threadId: string | null, n
     type: "reverso",
     amount: candidate.amount,
     account: candidate.account,
+    // El comercio va a la fila para que una revisión ambigua se pueda
+    // resolver sin volver al correo.
+    counterparty: candidate.counterparty ?? null,
     raw_subject: candidate.raw_subject,
     needs_review: needsReview,
     source: "deterministic",
@@ -309,6 +312,7 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
           type: "reverso",
           amount: null,
           account: fields.account,
+          counterparty: fields.counterparty,
           raw_subject: parseResult.raw_subject,
           needs_review: true,
           source: "deterministic",
@@ -319,6 +323,7 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
         raw_subject: parseResult.raw_subject,
         amount: fields.amount,
         account: fields.account,
+        counterparty: fields.counterparty,
         ts: email.ts,
         gmail_msg_id: email.gmail_msg_id,
       });

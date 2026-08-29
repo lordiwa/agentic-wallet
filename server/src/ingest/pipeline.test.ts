@@ -293,6 +293,70 @@ describe("ingestOnce: reversal rules (F1-04)", () => {
     expect(extractor.received).toHaveLength(1);
   });
 
+  // El caso de quien empieza de cero hoy: el correo de consumo trae
+  // "Cuenta débito" y el de reverso (cuerpo real de TASK-041) no. Con el
+  // apareo por igualdad estricta, conocido-contra-desconocido daba distinto:
+  // el reverso no apareaba nada y su consumo seguía sumando como gasto.
+  it("aparea un reverso sin 'Cuenta débito' contra el consumo que sí la trae", async () => {
+    const consumo = message({
+      gmail_msg_id: "msg-consumo-sin-cuenta-en-reverso",
+      subject: "Consumo tarjeta de débito por USD 2.61",
+      body:
+        "Transacción: Consumo Tarjeta de Débito Produbanco\n" +
+        "Cuenta débito: PEREZ GOMEZ ANA XXXXXX20924\n" +
+        "Establecimiento: TIENDA EJEMPLO",
+      ts: "2026-07-01T15:00:00Z",
+    });
+    const reverso = message({
+      gmail_msg_id: "msg-reverso-sin-cuenta",
+      subject: "Notificación Reverso Consumo Tarjeta de Débito Produbanco",
+      body: "Detalle\nValor: USD 2.61\nEstablecimiento: TIENDA EJEMPLO",
+      ts: "2026-07-01T15:30:00Z",
+    });
+    const gmail = new FakeGmailClient([consumo, reverso]);
+    const extractor = new FakeEmailExtractor(
+      new Map([[consumo.subject, { amount_text_raw: "USD 2.61", counterparty: "TIENDA EJEMPLO" }]])
+    );
+
+    const summary = await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-06-01T00:00:00Z" });
+
+    expect(summary.reversalsApplied).toBe(1);
+    expect(txRow("msg-consumo-sin-cuenta-en-reverso")?.is_reversed).toBe(1);
+    expect(txRow("msg-reverso-sin-cuenta")?.needs_review).toBe(0);
+  });
+
+  it("con dos consumos del mismo monto y día, aparea el del mismo establecimiento y no marca al otro", async () => {
+    const consumoTienda = message({
+      gmail_msg_id: "msg-consumo-tienda",
+      subject: "Consumo tarjeta de débito por USD 9.42",
+      body: "Transacción: Consumo Tarjeta de Débito Produbanco\nEstablecimiento: TIENDA EJEMPLO",
+      ts: "2026-07-01T10:00:00Z",
+    });
+    const consumoFarmacia = message({
+      gmail_msg_id: "msg-consumo-farmacia",
+      subject: "Consumo tarjeta de débito por USD 9.42",
+      body: "Transacción: Consumo Tarjeta de Débito Produbanco\nEstablecimiento: FARMACIA CENTRAL",
+      ts: "2026-07-01T11:00:00Z",
+    });
+    const reverso = message({
+      gmail_msg_id: "msg-reverso-tienda",
+      subject: "Notificación Reverso Consumo Tarjeta de Débito Produbanco",
+      body: "Detalle\nValor: USD 9.42\nEstablecimiento: TIENDA EJEMPLO",
+      ts: "2026-07-01T11:30:00Z",
+    });
+    const gmail = new FakeGmailClient([consumoTienda, consumoFarmacia, reverso]);
+    const extractor = new FakeEmailExtractor(
+      new Map([[consumoTienda.subject, { amount_text_raw: "USD 9.42", counterparty: "TIENDA EJEMPLO" }]])
+    );
+
+    const summary = await ingestOnce(deps(gmail, extractor), { sinceTs: "2026-06-01T00:00:00Z" });
+
+    expect(summary.reversalsApplied).toBe(1);
+    expect(txRow("msg-consumo-tienda")?.is_reversed).toBe(1);
+    expect(txRow("msg-consumo-farmacia")?.is_reversed).toBe(0);
+    expect(txRow("msg-consumo-farmacia")?.needs_review).toBe(0);
+  });
+
   it("persists an ambiguous reverso (2+ candidates) as its own needs_review row, and flags both candidate consumos", async () => {
     const consumoA = message({
       gmail_msg_id: "msg-consumo-a",

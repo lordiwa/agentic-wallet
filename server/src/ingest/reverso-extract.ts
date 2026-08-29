@@ -13,7 +13,12 @@
  * `rules/reconcile.ts` aparea sólo por monto y día.
  */
 
-import { extractLabeledAmount, extractMaskedAccount, normalizeBody } from "../parser/field-extract.js";
+import {
+  extractLabeledAmount,
+  extractLabeledField,
+  extractMaskedAccount,
+  normalizeBody,
+} from "../parser/field-extract.js";
 
 // TASK-041: real "Reverso Consumo Tarjeta de Débito" emails carry the amount
 // as a "Valor:" field in the Detalle block (not "Monto:"), and repeat it in
@@ -24,22 +29,43 @@ import { extractLabeledAmount, extractMaskedAccount, normalizeBody } from "../pa
 const AMOUNT_LABELS = ["Valor", "Monto"] as const;
 const PROSE_AMOUNT_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
 
-// Etiquetas que pueden seguir a "Cuenta débito" en un cuerpo de Produbanco;
-// la lectura del campo corta en la primera para que no se le cuele el campo
-// siguiente.
-const FIELD_STOP_LABELS = ["Fecha", "Hora", "Establecimiento", "Referencia", "Monto", "Valor"] as const;
 const DEBIT_ACCOUNT_LABEL = "Cuenta\\s*d[eé]bito";
+const ESTABLISHMENT_LABEL = "Establecimiento";
+
+// Etiquetas que pueden seguir a un campo en un cuerpo de Produbanco; la
+// lectura del campo corta en la primera para que no se le cuele el campo
+// siguiente. La lista incluye la etiqueta que se está leyendo: el corte se
+// busca DESPUÉS de ella, así que sólo frenaría en una segunda aparición.
+const FIELD_STOP_LABELS = [
+  "Fecha",
+  "Hora",
+  ESTABLISHMENT_LABEL,
+  "Referencia",
+  "Monto",
+  "Valor",
+  DEBIT_ACCOUNT_LABEL,
+] as const;
 
 export interface ExtractedReversoFields {
   amount: number | null;
   account: string | null;
+  /** El comercio del consumo revertido. Es el segundo eje del apareo
+   * (`rules/reconcile.ts`): cuando el correo de reverso no trae cuenta —el
+   * cuerpo real de TASK-041 no la trae— es lo único que distingue dos
+   * consumos del mismo monto el mismo día. */
+  counterparty: string | null;
 }
 
-/** Extracts amount/account from a "Reverso Consumo Tarjeta" email body. `ts`
- * and `gmail_msg_id` come from the enclosing `InboundEmail` instead — the
- * reverso notification's own arrival time/id, not anything in the body. */
+/** Extracts amount/account/counterparty from a "Reverso Consumo Tarjeta"
+ * email body. `ts` and `gmail_msg_id` come from the enclosing `InboundEmail`
+ * instead — the reverso notification's own arrival time/id, not anything in
+ * the body. */
 export function extractReversoFields(body: string): ExtractedReversoFields {
-  return { amount: extractAmount(body), account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS) };
+  return {
+    amount: extractAmount(body),
+    account: extractMaskedAccount(body, DEBIT_ACCOUNT_LABEL, FIELD_STOP_LABELS),
+    counterparty: extractLabeledField(body, ESTABLISHMENT_LABEL, FIELD_STOP_LABELS),
+  };
 }
 
 function extractAmount(body: string): number | null {
