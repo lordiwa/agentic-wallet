@@ -285,6 +285,133 @@ real. De paso:
 
 ---
 
+## Paso 5 — Las reglas de categorización, sobre filas de verdad (ítems #7 y #8)
+
+Los ítems #7 y #8 estaban ✅ **de contrato** con un caveat que se repetía en los
+dos: *"con el ledger vacío no se observó el matcheo por substring ni el
+desempate por longitud"*, y *"todos los contadores dieron 0"*. Acá los
+contadores no dan 0.
+
+Punto de partida: **`category_rules` vacía** y **689 filas en `otros`** — es
+decir, casi todo el gasto sin clasificar. Es el estado real de un ledger recién
+drenado.
+
+### 5a. `--backfill` **no** es `--reclassify`, y la diferencia se siente
+
+La primera sorpresa útil. Con las 10 reglas ya escritas, `--backfill` devolvió
+`updated: 138`… y el gasto por categoría casi no se movió: `transporte` quedó
+en 113 cuando UBER solo tiene **437** filas, y `otros` incluso **subió** de 689
+a 691.
+
+No es un bug, es la definición de cada comando, y ahora está observada:
+
+| Comando | A qué filas les toca la categoría |
+|---|---|
+| `--backfill` | Sólo las que la tienen **vacía**: `WHERE category IS NULL OR category = ''` (`backfill.ts:27`) |
+| `--reclassify` | **Recalcula** las ya clasificadas, incluidas las que quedaron en `otros` |
+
+Las 138 de `--backfill` eran las 116 filas con `category` en `NULL`. Todo lo que
+ya decía `otros` —que es donde se acumula el gasto sin regla— **sólo lo mueve
+`--reclassify`**:
+
+```
+--reclassify -> {"markedInternal": 71, "recategorized": 501}
+```
+
+Ahí sí: `otros` cayó de 691 a 200.
+
+> **Esto importa para Kevin.** Si corre sólo `--backfill` después de escribir
+> sus reglas, va a ver casi todo el gasto en `otros` y va a concluir que las
+> reglas no funcionan.
+>
+> `onboarding.md` §5b **ya lo advierte** y lo advierte bien: *"una fila que ya
+> decía `otros` es una fila 'con categoría', y `--backfill` la va a saltear para
+> siempre"*, con el orden correcto (`--set` → `--backfill` → `--reclassify`).
+> La doc acertó; lo que faltaba era el número que muestra cuánto se juega ahí:
+> **`--backfill` movió 138 filas, `--reclassify` movió 501**. Es la diferencia
+> entre un tablero que parece roto y uno que no.
+
+### 5b. El desempate por longitud, verificado
+
+Ésta es la afirmación que nunca se había podido probar: *"las reglas más largas
+ganan"*. Se montó el caso a propósito — dos reglas que compiten por las mismas
+filas:
+
+- `uber` → `transporte`
+- `uber eats` → `comida`
+
+Resultado sobre el ledger real:
+
+| Contraparte | Filas | Categoría |
+|---|---|---|
+| `…UBER EATS…` | 7 | **`comida`** ✅ (ganó la regla larga) |
+| `…UBER RIDES…` | 518 | `transporte` |
+| `UBR* PENDING.UBER.COM…` | 35 | `transporte` |
+| `METRORED…` | 6 | `salud` |
+| `TITAN…` | 7 | `comida` |
+| `ANTHROPIC…` / `CLAUDE.AI…` | 5 / 1 | `suscripcion` |
+| `…GOOGLE ONE…` / `…YouTubePremium…` | 8 / 3 | `suscripcion` |
+| `TIPTI…` | 3 | `comida` |
+
+Las siete filas de UBER EATS podrían haber caído en `transporte` por la regla
+`uber`, y no cayeron: ganó `uber eats`, que es más larga. **El desempate por
+longitud funciona.**
+
+Y el matcheo por substring también, en las dos direcciones que importaban:
+
+- `uber` matchea `DLC* UBER RIDES SAN JOSE CR` y `UBR* PENDING.UBER.COM
+  Amsterdam IE` — contrapartes con formas muy distintas.
+- `google one` matchea `Google One 650-…` **y** `GOOGLE *GOOGLE ONE MOUNTAIN
+  VIUS`. Para que eso pase, la normalización (minúsculas + espacios) tiene que
+  aplicarse **a los dos lados**, no sólo al patrón guardado. Se aplica.
+
+### 5c. Idempotencia, medida
+
+Repetir los dos comandos sobre el mismo estado:
+
+```
+--backfill    -> {"updated": 0}
+--reclassify  -> {"markedInternal": 0, "recategorized": 0}
+```
+
+Cero en todo. *"Correrlos dos veces es inofensivo"* deja de ser una promesa.
+
+### 5d. `--learn-rules` con datos: 26 aprendidas, 0 ambiguas
+
+```
+{"learned": 26, "skippedAmbiguous": 0, "skippedExisting": 2}
+```
+
+Las 26 son la **contraparte normalizada completa**, no fragmentos
+(`rules-repository.ts:97`) — `dlc* uber rides san jose cr`,
+`metrored carolina quito ec`, `google youtubepremium 650-2530000 us`. Conviven
+sin pelearse con las 10 cortas escritas a mano porque, justamente, la más larga
+gana: la aprendida es más específica y coincide con la corta en la categoría.
+
+Los `skippedExisting: 2` son las que ya estaban. Un `--reclassify` posterior dio
+`0, 0`: las reglas aprendidas no cambiaron ninguna clasificación, que es lo
+esperable si son consistentes con las escritas a mano.
+
+### Distribución final del gasto
+
+| Categoría | Filas |
+|---|---|
+| `transporte` | 564 |
+| `transferencia_persona` | 211 |
+| `otros` | 152 |
+| `servicios` | 22 |
+| `suscripcion` | 18 |
+| `comida` | 17 |
+| `efectivo` | 14 |
+| `salud` | 6 |
+| `recarga` | 5 |
+
+De **689 en `otros` a 152**, con 36 reglas (10 a mano + 26 aprendidas). Las 152
+que quedan son comercios de una sola aparición y 24 filas sin contraparte —
+ésas no las puede resolver ninguna regla de substring.
+
+---
+
 ## Reproducir los pasos 1 y 2
 
 ```bash
