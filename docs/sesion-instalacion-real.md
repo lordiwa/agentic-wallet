@@ -126,6 +126,85 @@ verdad y va a obtener el de un año.
 
 ---
 
+## Paso 3 — El sync, drenado de verdad (ítem #4)
+
+El ítem #4 estaba ASUMIDO porque *"el drenaje multi-lote nunca se observó"*:
+sin credenciales no se pudo correr un solo lote, y el checkpoint, el `progress`
+incremental y el "nada se reprocesa" descansaban en `run-sync.test.ts`. Acá se
+observan los tres contra el buzón real.
+
+### 3a. Drenaje multi-lote y checkpoint — base temporal, procesos separados
+
+Lotes de 5 contra `/tmp/e2e-sync.sqlite`, cada lote en **un proceso nuevo**. Si
+el checkpoint no sobreviviera a la muerte del proceso, el lote 2 empezaría de
+cero:
+
+| Lote | `processed` | `total` | `remaining` | `complete` | `seen` | `duplicates` |
+|---|---|---|---|---|---|---|
+| 1 | 5 | 1734 | 1729 | false | 5 | 0 |
+| 2 | 10 | 1734 | 1724 | false | 5 | 0 |
+| 3 | 15 | 1734 | 1719 | false | 5 | 0 |
+
+`total` se mantiene fijo en 1734 (el backlog se abre **una** vez y queda
+guardado), `processed` avanza exactamente `seen`, y `remaining` baja de a 5. El
+checkpoint en la base, leído aparte, cierra la aritmética:
+
+```
+checkpoint: processed=15 total=1734 pendingIds.length=1719   # 1734 - 15
+```
+
+### 3b. "Nada se reprocesa" — sobre el ledger real, que es donde se prueba
+
+Éste es el que no se podía falsear con una base vacía. La base real ya tenía
+**1140** transacciones drenadas y un `last_sync_ts` de unas horas antes:
+
+| Llamada | `total` | `seen` | `inserted` | `duplicates` | `skipped` | `complete` |
+|---|---|---|---|---|---|---|
+| 1 | 21 | 16 | **0** | **11** | 5 | false |
+| 2 | 21 | 5 | **0** | **3** | 2 | true |
+
+Tres cosas quedan probadas de una sola vez:
+
+1. **La ventana incremental funciona.** El backlog es de **21**, no de 1734: la
+   `after:` derivada de `last_sync_ts` (menos un día de solape, `pipeline.ts:127`)
+   acota la búsqueda. Contra una base virgen el mismo código abre 1734 — o sea
+   que el filtro es real y no decorativo.
+2. **Nada se reprocesa.** 14 duplicados, **0 inserciones**, y el conteo de la
+   tabla quedó en **1140 antes y 1140 después**. La idempotencia por
+   `gmail_msg_id` no es una promesa de test unitario: un re-drenado completo de
+   la ventana no movió una sola fila.
+3. **Al cerrar, cierra bien.** `complete: true`, `remaining: 0`,
+   `sync_progress` con **0 filas** (checkpoint borrado) y `last_sync_ts`
+   avanzado. Es exactamente la secuencia que describe `run-sync.ts:156-159`.
+
+### 3c. El tope de 45 segundos, visto en vivo
+
+La primera llamada se pidió con `batchSize: 50` y devolvió `seen: 16` en
+**49,6 s**. No se quedó corta de correos: se quedó corta de **tiempo**, y cortó
+donde dice la doc (`DEFAULT_SYNC_MAX_MS = 45_000`). Los 5 que faltaban salieron
+en la llamada siguiente. El `seen` es un prefijo exacto del lote y lo no
+atendido queda pendiente tal cual — la doc lo afirmaba, acá se ve.
+
+Esto le pone número al costo real: **~4,4 s por correo** (los ~4,2 s del
+extractor de Claude del paso 2, más red). Para quien arranque de cero con este
+buzón, **1734 correos ≈ 2 horas de sync**, en lotes de ~45 s. No es un
+problema, pero conviene decirlo: el primer sync no es instantáneo, y hay que
+volver a llamar mientras `complete` sea `false`.
+
+### Hallazgo de paso: el anclaje de rutas relativas es real
+
+Corriendo el probe desde `server/` con `PROBE_DB=../bolsillo.sqlite`, el motor
+**no** abrió `/opt/data/home/wallet-prueba/bolsillo.sqlite` sino
+`/opt/data/home/bolsillo.sqlite`: una ruta relativa se ancla a la **raíz del
+repo**, no al `cwd` (`db/open.ts:20-23`). Es el comportamiento documentado y es
+el correcto — pero conviene saber que convierte un `../` distraído en una base
+nueva y vacía, en silencio, fuera del repo. Se borró; la base del usuario no se
+tocó.
+
+Es la misma familia de trampa que el `server/bolsillo.sqlite` viejo del paso 1.
+
+---
+
 ## Reproducir los pasos 1 y 2
 
 ```bash
