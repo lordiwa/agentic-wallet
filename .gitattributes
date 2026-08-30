@@ -1,0 +1,5 @@
+# Los scripts de Windows tienen que llegar con finales de linea CRLF sin
+# importar como tenga configurado git quien clone: cmd.exe y PowerShell 5.1
+# leen mal un .bat/.ps1 con finales de linea de Unix.
+*.bat text eol=crlf
+*.ps1 text eol=crlf

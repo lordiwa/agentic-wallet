@@ -47,6 +47,19 @@ uso**. La API key de `console.anthropic.com` es la alternativa medida.
 
 ## Empezar
 
+### En Windows, sin saber programar
+
+Doble clic en **`setup.bat`** y listo: detecta o instala Node 22, instala las
+dependencias, compila, y deja el checklist de configuración a la vista. Después
+`configurar.bat` abre el asistente que guía el onboarding, y `iniciar.bat`
+levanta el wallet.
+
+Paso a paso en [docs/instalar-en-windows.md](docs/instalar-en-windows.md).
+Qué falta probar de ese instalador está en
+[docs/pruebas-windows.md](docs/pruebas-windows.md).
+
+### A mano (cualquier sistema)
+
 ```bash
 git clone https://github.com/lordiwa/agentic-wallet.git
 cd agentic-wallet
