@@ -53,6 +53,16 @@ function parse(subject: string, html: string): ParsedTransaction {
   return result;
 }
 
+/** El `reason` con el que se descarta un correo que NO es un movimiento de
+ * plata. Se afirma el motivo y no sólo el descarte: "no lo catalogo" y "lo
+ * catalogué como no-movimiento" se ven igual en el ledger y son cosas
+ * distintas. */
+function ignoredReason(subject: string, html: string): string {
+  const result = produbancoParser.parse(email(subject, html));
+  if (result.kind !== "ignored") throw new Error(`esperaba "ignored", vino "${result.kind}"`);
+  return result.reason;
+}
+
 // ---------------------------------------------------------------------------
 // 4.1 Consumo tarjeta de débito
 // ---------------------------------------------------------------------------
@@ -346,5 +356,330 @@ describe("compra de minutos (formato real)", () => {
       account: "XXXXXX54321",
       needs_review: false,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.8-bis La preposicion del ancla: "de SU cuenta"
+// ---------------------------------------------------------------------------
+
+// El cuerpo REAL de la compra de minutos no dice "de la cuenta" sino "de su
+// cuenta", y con el tipo de cuenta ("AHO") delante del token. El ancla anterior
+// pedia "de la cuenta" y por eso `account` salia null en el 100% de las
+// recargas de la bandeja real.
+const CLARO_DE_SU_CUENTA = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y hora de
+compra:01/Agosto/2026 14:32</FONT></P>
+<P><FONT face="Nunito Sans Normal">Se ha realizado la compra de minutos Claro por un
+valor de USD 12.34 debitado de su cuenta AHO
+XXXXXX54321.</FONT></P>`;
+
+describe("compra de minutos, cuerpo real (4.8)", () => {
+  it("lee la cuenta cuando el correo dice 'de su cuenta' y no 'de la cuenta'", () => {
+    expect(parse("COMPRA MINUTOS CLARO", CLARO_DE_SU_CUENTA)).toMatchObject({
+      type: "recarga",
+      direction: "out",
+      amount: 12.34,
+      counterparty: "Claro",
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.10 COMPRA RECARGA MOVISTAR
+// ---------------------------------------------------------------------------
+
+const MOVISTAR = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y hora de
+proceso:01/Julio/2026 9:05</FONT></P>
+<P><FONT face="Nunito Sans Normal">Se realizo una recarga Movistar por un valor
+de USD 12.34 debitado de su cuenta ANA XXXXXX54321.</FONT></P>
+<P><FONT face="Nunito Sans Normal">Este es un servicio de PRODUBANCO
+enlínea.</FONT></P>`;
+
+describe("compra recarga Movistar (4.10)", () => {
+  it("lee monto, operadora y cuenta", () => {
+    expect(parse("COMPRA RECARGA MOVISTAR", MOVISTAR)).toMatchObject({
+      type: "recarga",
+      direction: "out",
+      amount: 12.34,
+      counterparty: "Movistar",
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.11 Cobranza con debito automatico
+// ---------------------------------------------------------------------------
+
+// Sin bloque `Detalle`, sin ningun campo de cuenta, y —lo que lo hacia
+// imposible de leer— con el `Monto:` SIN token de moneda.
+const COBRANZA = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/07/2026
+09:05:11</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>DEBITO EMPRESA
+EJEMPLO S.A</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Canal: <STRONG>Produbanco
+Empresas</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Monto: <STRONG>123.45</STRONG></FONT></P>`;
+
+describe("cobranza con débito automático (4.11)", () => {
+  it("lee el monto aunque venga sin USD ni $, y la empresa del Transacción:", () => {
+    expect(parse("Cobranza con débito automático", COBRANZA)).toMatchObject({
+      type: "servicio",
+      direction: "out",
+      amount: 123.45,
+      counterparty: "EMPRESA EJEMPLO S.A",
+      needs_review: false,
+    });
+  });
+
+  it("deja account en null: el correo no dice de qué cuenta salió", () => {
+    expect(parse("Cobranza con débito automático", COBRANZA).account).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.12 Retiro de Efectivo en cajero
+// ---------------------------------------------------------------------------
+
+// Mismo bloque `Detalle` que 4.6, pero con `Fecha y Hora de Proceso` en vez de
+// `Fecha y Hora` y otro asunto.
+const RETIRO_CAJERO = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora de Proceso: 01/08/2026
+14:32</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Retiro de Efectivo
+Produbanco en Cajero Automático</STRONG></FONT></P>
+<P><STRONG><FONT face="Nunito Sans Normal">Detalle</FONT></STRONG></P>
+<P><FONT face="Nunito Sans Normal"><STRONG>Monto:</STRONG>
+$12.34<BR><STRONG>Cuenta débito:</STRONG>
+ANA XXXXXX54321<BR><STRONG>Cajero:</STRONG> Banred</FONT></P>`;
+
+describe("retiro de efectivo en cajero (4.12)", () => {
+  it("lee monto y cuenta sin arrastrar el campo Cajero", () => {
+    expect(parse("Retiro de Efectivo Produbanco en Cajero Automático", RETIRO_CAJERO)).toMatchObject({
+      type: "retiro",
+      direction: "out",
+      amount: 12.34,
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.13 Pago Tarjeta de Credito
+// ---------------------------------------------------------------------------
+
+// Todo en una frase: la tarjeta pagada, el monto, y la cuenta de la que salio.
+const PAGO_TARJETA = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/Agosto/2026 14:32</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Pago Tarjeta de
+Crédito Produbanco</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Registramos el pago de la tarjeta VISA EJEMPLO
+XXXXXXXXXXXX4321 por el monto de USD 123.45 a través del canal App Móvil,
+debitado de la cuenta XXXXXX54321.</FONT></P>`;
+
+describe("pago de tarjeta de crédito (4.13)", () => {
+  it("lee monto, tarjeta pagada y cuenta debitada de la prosa", () => {
+    expect(parse("Pago Tarjeta de Crédito Produbanco", PAGO_TARJETA)).toMatchObject({
+      type: "transferencia",
+      direction: "out",
+      amount: 123.45,
+      counterparty: "VISA EJEMPLO XXXXXXXXXXXX4321",
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+
+  it("lo marca interno: es plata propia pagando deuda propia, no gasto nuevo", () => {
+    // El gasto ya se contó cuando se usó la tarjeta (las filas `credito`).
+    // Sumarlo otra vez acá seria contar el mismo consumo dos veces.
+    expect(parse("Pago Tarjeta de Crédito Produbanco", PAGO_TARJETA).is_internal).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.14 Notificacion Pago de Servicio <EMPRESA>
+// ---------------------------------------------------------------------------
+
+// Es un correo DISTINTO del 4.5 y de un pago distinto: se verifico en la
+// bandeja real que los dos llegan el mismo minuto por dos servicios diferentes
+// pagados en la misma sesion, no por duplicado del mismo pago.
+const NOTIF_SERVICIO = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/Agosto/2026 9:05</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Pago de Servicio
+AGUA EJEMPLO</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Confirmamos el pago del servicio de agua
+potable AGUA EJEMPLO por un valor de USD 12.34 debitado de su cuenta ANA
+XXXXXX54321.</FONT></P>`;
+
+describe("notificación pago de servicio (4.14)", () => {
+  it("lee servicio, monto y cuenta de la prosa", () => {
+    expect(parse("Notificación Pago de Servicio AGUA EJEMPLO", NOTIF_SERVICIO)).toMatchObject({
+      type: "servicio",
+      direction: "out",
+      amount: 12.34,
+      counterparty: "AGUA EJEMPLO",
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.15 Transferencia acreditada (plantilla vieja de la transferencia enviada)
+// ---------------------------------------------------------------------------
+
+// Labels `Beneficiario` / `Cuenta Beneficiario` en vez de `Contacto` /
+// `Cuenta Destino`. La cuenta sigue siendo la del OTRO: `account` va null.
+const ACREDITADA = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/05/2026
+15:28:03</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Transferencia
+Acreditada Produbanco</STRONG></FONT></P>
+<P><STRONG><FONT face="Nunito Sans Normal">Detalle</FONT></STRONG></P>
+<P><FONT face="Nunito Sans Normal"><STRONG>Beneficiario:</STRONG> NOMBRE DEL
+BENEFICIARIO<BR><STRONG>Banco Beneficiario:</STRONG>
+Produbanco<BR><STRONG>Cuenta Beneficiario:</STRONG>
+XXXXXX54321<BR><STRONG>Monto:</STRONG> $12.34<BR><STRONG>Descripción:</STRONG>
+Deuda<BR><STRONG>Canal:</STRONG> App Móvil<BR><STRONG>Referencia:</STRONG>
+987654321</FONT></P>`;
+
+describe("transferencia acreditada (4.15)", () => {
+  it("lee beneficiario y monto, y NO guarda la cuenta ajena como propia", () => {
+    expect(parse("Transferencia acreditada Produbanco", ACREDITADA)).toMatchObject({
+      type: "transferencia",
+      direction: "out",
+      amount: 12.34,
+      counterparty: "NOMBRE DEL BENEFICIARIO",
+      account: null,
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.16 Transferencia Recibida EN Produbanco
+// ---------------------------------------------------------------------------
+
+// Aca la contraparte SI tiene campo propio (`Enviada por:`) — a diferencia de
+// 4.4, donde solo esta en la prosa. Y `Cuenta Beneficiario` es la del usuario.
+const RECIBIDA_EN = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/mayo/2026 10:15</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Transferencia Recibida
+Produbanco</STRONG></FONT></P>
+<P><STRONG><FONT face="Nunito Sans Normal">Detalle</FONT></STRONG></P>
+<P><FONT face="Nunito Sans Normal"><STRONG>Enviada por:</STRONG> EMPRESA
+EJEMPLO SA<BR><STRONG>Banco Origen:</STRONG> BANCO
+EJEMPLO<BR><STRONG>Beneficiario:</STRONG> PEREZ GOMEZ ANA
+MARIA<BR><STRONG>Cuenta Beneficiario:</STRONG>
+XXXXXX54321<BR><STRONG>Monto:</STRONG> $12.34<BR><STRONG>Descripción:</STRONG>
+PAGOS VARIOS<BR><STRONG>Referencia:</STRONG> 98765432</FONT></P>`;
+
+describe("transferencia recibida en Produbanco (4.16)", () => {
+  it("lee remitente, monto y la cuenta acreditada del usuario", () => {
+    expect(parse("Transferencia Recibida en Produbanco", RECIBIDA_EN)).toMatchObject({
+      type: "recibido",
+      direction: "in",
+      amount: 12.34,
+      counterparty: "EMPRESA EJEMPLO SA",
+      account: "XXXXXX54321",
+      needs_review: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5.2-bis Los correos que NO son movimientos de plata
+// ---------------------------------------------------------------------------
+
+// Este es el mas peligroso de todos: es la EMISION DEL CODIGO de un retiro sin
+// tarjeta, no el retiro. No trae monto, y el retiro de verdad llega despues en
+// su propio correo ("Retiro sin tarjeta ... en cajero automatico", 4.6).
+// Catalogarlo como movimiento contaria el retiro dos veces.
+const RETIRO_CODIGO = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/Agosto/2026 13:27</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Retiro de Efectivo sin
+Tarjeta de Débito Produbanco</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Canal: <STRONG>App Móvil</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Tu orden de retiro sin tarjeta ha sido
+registrada. Usa el siguiente código en nuestra red de cajeros
+automáticos:</FONT></P>
+<P><FONT face="Nunito Sans Normal">Código: <STRONG>123456</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Vigencia: 24 horas o hasta realizar el
+retiro.</FONT></P>`;
+
+// Un consumo RECHAZADO. Trae "$12.34" en la prosa: un catalogo laxo lo leeria
+// como un gasto que nunca ocurrio.
+const NO_PROCESADO = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Fecha y Hora: 01/08/2026
+18:02:44</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Consumo No
+Procesado</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">Te informamos que el pago con tu tarjeta de
+débito Produbanco terminada en XXX54321 por $12.34 en COMERCIO EJEMPLO no fue
+procesada por insuficiencia de fondos en la cuenta.</FONT></P>`;
+
+const APORTE_FLEXI = `<P><FONT face="Nunito Sans Normal">Estimado/a,</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Te confirmamos que realizaste un aporte de
+USD 123.45 a tu FlexiAhorro Ahorrar por ahorrar.</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Aporte de dinero de
+FlexiAhorro</STRONG></FONT></P>`;
+
+const ESTADO_TARJETA = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Transacción: <STRONG>Estado de Cuenta
+Tarjeta de Crédito</STRONG></FONT></P>
+<P><FONT face="Nunito Sans Normal">En el adjunto podrás encontrar el Estado de
+Cuenta de tu TARJETA DE CREDITO Produbanco.</FONT></P>`;
+
+const CLAVE_TEMPORAL = `<P><FONT face="Nunito Sans Normal">Estimado/a</FONT></P>
+<P><FONT face="Nunito Sans Normal">PEREZ GOMEZ ANA MARIA</FONT></P>
+<P><FONT face="Nunito Sans Normal">Tu clave temporal para compras por internet
+es 123456.</FONT></P>`;
+
+describe("correos que no son movimientos de plata (5.2)", () => {
+  it("la emisión del código de retiro sin tarjeta NO es el retiro", () => {
+    expect(ignoredReason("Retiro de Efectivo sin tarjeta de débito Produbanco", RETIRO_CODIGO)).toBe(
+      "retiro_code_issued"
+    );
+  });
+
+  it("un consumo rechazado no es un gasto, aunque el cuerpo traiga un monto", () => {
+    expect(ignoredReason("Consumo No Procesado", NO_PROCESADO)).toBe("consumo_no_procesado");
+  });
+
+  it("el aporte al FlexiAhorro es interno, igual que el retiro del FlexiAhorro", () => {
+    expect(ignoredReason("Aportaste a tu FlexiAhorro Ahorrar por ahorrar", APORTE_FLEXI)).toBe(
+      "flexiahorro_internal_transfer"
+    );
+  });
+
+  it("el estado de cuenta de la tarjeta no trae datos en el cuerpo: van en el adjunto", () => {
+    expect(ignoredReason("Notificación Estado de Cuenta Tarjeta de Crédito", ESTADO_TARJETA)).toBe(
+      "statement_attachment_only"
+    );
+  });
+
+  it("los avisos de seguridad y servicio no son movimientos", () => {
+    expect(
+      ignoredReason("Notificación Clave Temporal de Seguridad para Compras por Internet", CLAVE_TEMPORAL)
+    ).toBe("security_notice");
   });
 });

@@ -163,6 +163,22 @@ export function extractField(body: string, label: string, stopLabels: readonly s
  * una fecha o de un número de referencia. Dos decimales exactos. */
 const VALUE_AMOUNT_RE = /^(?:USD|\$)\s*([0-9]+\.[0-9]{2})(?![0-9])/i;
 
+/**
+ * El mismo monto pero SIN token de moneda (`Monto: 45.00`), para los correos
+ * donde el banco no lo escribe — verificado en la cobranza con débito
+ * automático de Produbanco.
+ *
+ * Es opt-in por campo y nunca el default: sin la moneda delante, lo único que
+ * separa un monto de una fecha o de una referencia es la forma del número, y
+ * quien llama tiene que afirmar que ESA etiqueta trae un monto. Los dos
+ * decimales exactos y el corte al inicio del valor siguen siendo obligatorios,
+ * y el lookahead descarta todo lo que CONTINÚE con forma de número compuesto:
+ * `Referencia: 987654321` no matchea (no tiene dos decimales) y
+ * `Fecha: 01.07.2026` tampoco, aunque su prefijo "01.07" sí tenga la forma de
+ * un monto — lo que lo delata es el separador que viene después.
+ */
+const BARE_VALUE_AMOUNT_RE = /^([0-9]+\.[0-9]{2})(?![0-9.,:/-])/;
+
 export interface LabeledAmount {
   /** El monto leído, o `null` si no se pudo leer con certeza. */
   amount: number | null;
@@ -193,10 +209,22 @@ export interface LabeledAmount {
  * elegir— y una aparición sin cifra (la palabra en prosa) tampoco compite. Lo
  * que se marca es el desacuerdo real.
  */
-export function extractLabeledAmount(body: string, label: string): LabeledAmount {
+export interface LabeledAmountOptions {
+  /**
+   * Acepta también el monto escrito sin token de moneda (`Monto: 45.00`). Por
+   * defecto `false`: ver `BARE_VALUE_AMOUNT_RE` para por qué es opt-in.
+   */
+  bareAllowed?: boolean;
+}
+
+export function extractLabeledAmount(
+  body: string,
+  label: string,
+  { bareAllowed = false }: LabeledAmountOptions = {}
+): LabeledAmount {
   const readings = new Set<number>();
   for (const value of extractFieldValues(body, label, [])) {
-    const match = value.match(VALUE_AMOUNT_RE);
+    const match = value.match(VALUE_AMOUNT_RE) ?? (bareAllowed ? value.match(BARE_VALUE_AMOUNT_RE) : null);
     if (match) readings.add(Number(match[1]));
   }
 

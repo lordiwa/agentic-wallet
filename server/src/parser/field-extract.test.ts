@@ -198,6 +198,47 @@ describe("extractLabeledAmount", () => {
     const cuerpo = "Saldo disponible: $154.30\nComisión: $0.50\nMonto: $20.00\nCajero: Sucursal Centro";
     expect(extractLabeledAmount(cuerpo, "Monto")).toEqual({ amount: 20.0, ambiguous: false });
   });
+
+  describe("bareAllowed (monto sin token de moneda)", () => {
+    // La cobranza con débito automático de Produbanco escribe "Monto: 45.00",
+    // sin USD ni $. Sin esta opción el monto no se lee y el correo entero no
+    // se puede catalogar.
+    it("por defecto NO lee un monto sin moneda", () => {
+      expect(extractLabeledAmount("Monto: 45.00", "Monto")).toEqual({ amount: null, ambiguous: false });
+    });
+
+    it("lo lee cuando quien llama lo declara", () => {
+      expect(extractLabeledAmount("Monto: 45.00", "Monto", { bareAllowed: true })).toEqual({
+        amount: 45.0,
+        ambiguous: false,
+      });
+    });
+
+    it("sigue leyendo el monto CON moneda", () => {
+      expect(extractLabeledAmount("Monto: USD 45.00", "Monto", { bareAllowed: true })).toEqual({
+        amount: 45.0,
+        ambiguous: false,
+      });
+    });
+
+    it("no confunde una fecha ni una referencia con un monto", () => {
+      expect(extractLabeledAmount("Fecha: 01.07.2026", "Fecha", { bareAllowed: true })).toEqual({
+        amount: null,
+        ambiguous: false,
+      });
+      expect(extractLabeledAmount("Referencia: 987654321", "Referencia", { bareAllowed: true })).toEqual({
+        amount: null,
+        ambiguous: false,
+      });
+    });
+
+    it("mantiene el guarda de ambigüedad", () => {
+      expect(extractLabeledAmount("Monto: 45.00\nMonto: 46.00", "Monto", { bareAllowed: true })).toEqual({
+        amount: null,
+        ambiguous: true,
+      });
+    });
+  });
 });
 
 describe("maskedAccount", () => {

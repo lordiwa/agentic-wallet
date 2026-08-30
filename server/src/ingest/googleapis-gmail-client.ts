@@ -8,6 +8,7 @@
  * real package to resolve at module-load time.
  */
 import { htmlToText } from "../parser/html-text.js";
+import { repairMojibake } from "./mojibake.js";
 import type { GmailClient, GmailMessage } from "./types.js";
 
 export interface GoogleapisGmailClientConfig {
@@ -29,9 +30,14 @@ interface MessagePart {
 
 // Gmail returns body data base64url-encoded — decoding as plain base64
 // silently corrupts '-'/'_' characters (see the skill's Common Pitfalls).
+//
+// `repairMojibake` va acá y no en el parser: parte de los correos reales llegan
+// con los bytes UTF-8 ya doble-encodeados por el mailer (`informaciÃ³n`), y eso
+// es un defecto de la DECODIFICACIÓN del mensaje, no de la gramática de los
+// campos — un parser de otro banco heredaría el mismo daño. Ver mojibake.ts.
 function decodePartData(part: MessagePart | undefined): string {
   const data = part?.body?.data;
-  return data ? Buffer.from(data, "base64url").toString("utf-8") : "";
+  return data ? repairMojibake(Buffer.from(data, "base64url").toString("utf-8")) : "";
 }
 
 /** Primer descendiente con este mimeType, en profundidad. Produbanco no manda

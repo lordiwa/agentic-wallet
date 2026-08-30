@@ -129,6 +129,21 @@ const AFTER_CUENTA = [
   "Establecimiento",
 ];
 const AFTER_ESTABLECIMIENTO = ["Cuenta Débito", "Cuenta", "Fecha y Hora", "Fecha", "Referencia", "Valor", "Monto"];
+/** La plantilla vieja de transferencia (doc 4.15/4.16) usa `Beneficiario` donde
+ * la nueva usa `Contacto`, y agrega `Enviada por` / `Banco Origen`. */
+const AFTER_BENEFICIARIO = [
+  "Banco Beneficiario",
+  "Cuenta Beneficiario",
+  "Banco Origen",
+  "Beneficiario",
+  "Monto",
+  "Descripción",
+  "Canal",
+  "Referencia",
+];
+/** `Transacción:` es un campo más en los correos que no traen bloque `Detalle`
+ * (la cobranza automática lleva ahí el nombre de la empresa). */
+const AFTER_TRANSACCION = ["Canal", "Monto", "Fecha y Hora", "Fecha", "Detalle"];
 
 const DEBIT_ACCOUNT_LABEL = "Cuenta Débito";
 
@@ -168,6 +183,9 @@ function transaction(params: {
   currency?: string;
   /** Fuerza needs_review aunque el monto sí se haya podido leer. */
   forceReview?: boolean;
+  /** El tipo de correo es un movimiento entre cuentas propias — ver
+   * `ParsedTransaction.is_internal`. */
+  isInternal?: boolean;
 }): ParseResult {
   const needsReview = params.amount === null || params.forceReview === true;
   return {
@@ -179,6 +197,7 @@ function transaction(params: {
     counterparty: params.counterparty ?? null,
     account: params.account ?? null,
     account_holder: params.account_holder ?? null,
+    ...(params.isInternal === true ? { is_internal: true } : {}),
     raw_subject: params.raw_subject,
     needs_review: needsReview,
     ...(needsReview ? { review_reason: params.reviewReason ?? "amount_not_found" } : {}),
@@ -207,12 +226,30 @@ const REMITENTE_RE = /te confirmamos que\s+(.+?)\s+ha realizado una transferenci
 /** "...en tu cuenta XXXXXX54321 de la transferencia..." (internacional). */
 const CUENTA_ACREDITADA_RE = new RegExp(`en tu cuenta\\s+(${MASKED_ACCOUNT_RE.source})`, "i");
 
-/** "...debitado de la cuenta ANA XXXXXX54321." (compra de minutos). El punto
- * final va pegado a la cuenta, por eso el corte es en `.` y no en `\s`. */
-const CUENTA_DEBITADA_RE = new RegExp(`de la cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+/**
+ * "...debitado de su cuenta AHO XXXXXX54321." — la cuenta de la que sale la
+ * plata en los correos que no traen bloque `Detalle` (recarga, notificación de
+ * pago de servicio, pago de tarjeta). El punto final va pegado a la cuenta, por
+ * eso el corte es en `.` y no en `\s`.
+ *
+ * Las tres preposiciones son obligatorias, no defensivas: el cuerpo real de la
+ * recarga dice **"de su cuenta"** y el del pago de tarjeta **"de la cuenta"**.
+ * Con el ancla fija en `de la cuenta` la recarga perdía la cuenta entera —
+ * `account = null` en el 100 % de las recargas de la bandeja real.
+ */
+const CUENTA_DEBITADA_RE = new RegExp(`de (?:la|su|tu) cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
 
-/** "por un valor de USD 12.34" — minutos Claro. */
+/** "por un valor de USD 12.34" — recargas y notificación de pago de servicio. */
 const VALOR_PROSA_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+
+/** "por el monto de USD 123.45" — pago de tarjeta de crédito. Es la tercera
+ * forma que usa Produbanco para decir lo mismo; cada una vive donde su correo
+ * la usa en vez de fundirse en una alternancia que matchearía cualquier cosa. */
+const MONTO_PROSA_RE = /por el monto de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+
+/** "Registramos el pago de la tarjeta VISA EJEMPLO XXXXXXXXXXXX4321 por el
+ * monto de..." — la tarjeta pagada es la contraparte del pago, y sólo está acá. */
+const TARJETA_PAGADA_RE = /pago de la tarjeta\s+(.+?)\s+por el monto de/i;
 
 /** "por el valor de USD 1234.56." — transferencia internacional. */
 const VALOR_INTERNACIONAL_RE = /por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
@@ -229,9 +266,94 @@ const EMPRESA_INTERNACIONAL_RE = /\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i;
  * Combos Ejemplo") y se repite en `Descripción:`. No hay campo "Empresa". */
 const SERVICIO_RE = /Pago de Servicio\s+(.+?)(?=\n|$)/i;
 
+/** La empresa de una cobranza automática va pegada al `Transacción:`, con el
+ * prefijo "DEBITO" delante ("DEBITO EMPRESA EJEMPLO S.A"). */
+const COBRANZA_PREFIJO_RE = /^DEBITO\s+/i;
+
+/**
+ * La operadora de una recarga sale del ASUNTO (`COMPRA MINUTOS CLARO`,
+ * `COMPRA RECARGA MOVISTAR`) porque el cuerpo la escribe distinto en cada
+ * variante ("compra de minutos Claro" / "una recarga Movistar"). Se lee del
+ * asunto normalizado, así que llega en minúsculas y hay que capitalizarla.
+ */
+const RECARGA_SUBJECT_RE = /^compra (?:minutos|recarga)\s+(.+?)\s*$/;
+
 function amountFromProse(body: string, re: RegExp): number | null {
   const match = body.match(re);
   return match ? Number(match[1]) : null;
+}
+
+/** "movistar" -> "Movistar". Sólo para la operadora de recarga, que viene del
+ * asunto en mayúsculas y pasa por `normalize`. */
+function capitalize(text: string): string {
+  return text.replace(/\S+/g, (word) => word[0].toUpperCase() + word.slice(1));
+}
+
+/** La empresa que cobró, del `Transacción: DEBITO <EMPRESA>` de una cobranza
+ * automática. Se le quita el prefijo `DEBITO`: es el verbo del banco, no parte
+ * del nombre, y dejarlo rompería el matching por substring de las reglas de
+ * categoría que escribe el usuario. */
+function cobranzaEmpresa(body: string): string | null {
+  const transaccion = extractField(body, "Transacción", AFTER_TRANSACCION);
+  return transaccion === null ? null : cleanFieldValue(transaccion.replace(COBRANZA_PREFIJO_RE, ""));
+}
+
+// ---------------------------------------------------------------------------
+// 5.2: los correos que NO son movimientos de plata
+// ---------------------------------------------------------------------------
+
+/**
+ * Asuntos verificados en la bandeja real que **no mueven plata**, con el motivo
+ * con el que se descartan. Es una lista explícita y no el caso por defecto a
+ * propósito: `unrecognized_subject` significa "no sé qué es esto" y hay que
+ * mirarlo; estas entradas significan "sé qué es y no va al ledger".
+ *
+ * Dos de ellas son trampas activas, no ruido:
+ *
+ * - **`retiro de efectivo sin tarjeta`** es la EMISIÓN DEL CÓDIGO, no el
+ *   retiro. El retiro llega después en su propio correo (doc 4.6) y llega
+ *   siempre: en la bandeja real los dos aparecen apareados con ~1 h de
+ *   diferencia. Catalogar éste contaría cada retiro dos veces.
+ * - **`consumo no procesado`** es un consumo RECHAZADO por fondos
+ *   insuficientes, y su cuerpo trae un `$12.34` bien formado. Un catálogo laxo
+ *   inventaría un gasto que nunca ocurrió.
+ *
+ * El orden importa: `reverso pago tarjeta de credito` tiene que resolverse acá
+ * antes de que la rama de catálogo vea el `pago tarjeta de credito` que
+ * contiene.
+ */
+const NON_MOVEMENT_SUBJECTS: ReadonlyArray<readonly [fragment: string, reason: string]> = [
+  ["retiro de efectivo sin tarjeta", "retiro_code_issued"],
+  ["consumo no procesado", "consumo_no_procesado"],
+  ["estado de cuenta tarjeta de credito", "statement_attachment_only"],
+  // El pago de tarjeta se registra como movimiento interno (excluido de todos
+  // los totales), así que su reverso tampoco cambia ningún número: guardarlo
+  // sólo agregaría una fila que no neteaba nada.
+  ["reverso pago tarjeta de credito", "credit_card_payment_reversal_internal"],
+  ["ingreso exitoso", "login_notification"],
+  ["ingreso fallido", "login_notification"],
+  ["ingreso incorrecto de clave", "login_notification"],
+  ["clave temporal", "security_notice"],
+  ["cambio de clave", "security_notice"],
+  ["clave incorrecta", "security_notice"],
+  ["error en ingreso de cvv", "security_notice"],
+  ["bloqueo", "security_notice"],
+  ["desbloqueo", "security_notice"],
+  ["cancelacion de tu tarjeta", "security_notice"],
+  ["entrega tarjeta", "security_notice"],
+  ["no aceptada", "security_notice"],
+  ["confirmacion transacciones tarjeta", "security_notice"],
+  ["notificacion modificacion de contacto", "contact_modified"],
+  ["consulta y registro de servicios", "bank_service_notice"],
+  ["valora tu opinion", "customer_support"],
+  ["reclamo", "customer_support"],
+  ["respuesta id", "customer_support"],
+];
+
+/** El motivo de descarte de `subject` (ya normalizado), o `null` si no está en
+ * la lista — en cuyo caso le toca a las ramas de catálogo. */
+function ignoreReason(subject: string): string | null {
+  return NON_MOVEMENT_SUBJECTS.find(([fragment]) => subject.includes(fragment))?.[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,11 +383,19 @@ function classify(email: InboundEmail): ParseResult {
   if (subject.includes("manten tu flexiahorro en marcha")) {
     return { kind: "ignored", reason: "flexiahorro_reminder" };
   }
-  if (subject.includes("retiro de tu flexiahorro")) {
+  // El aporte y el retiro del FlexiAhorro son las dos mitades del mismo
+  // movimiento interno: plata que va y vuelve entre dos cuentas del usuario.
+  // Se descartan igual y por la misma razón.
+  if (subject.includes("retiro de tu flexiahorro") || subject.includes("aportaste a tu flexiahorro")) {
     return { kind: "ignored", reason: "flexiahorro_internal_transfer" };
   }
   if (subject.includes("estado de cuenta produbanco")) {
     return { kind: "statement", raw_subject: rawSubject };
+  }
+
+  const noEsMovimiento = ignoreReason(subject);
+  if (noEsMovimiento !== null) {
+    return { kind: "ignored", reason: noEsMovimiento };
   }
 
   // --- 5.1 catalog ---
@@ -342,9 +472,15 @@ function classify(email: InboundEmail): ParseResult {
     });
   }
 
-  // 4.6: el asunto no trae monto; `Cuenta débito` va en minúscula y la sigue
-  // el campo `Cajero`.
-  if (subject.includes("retiro sin tarjeta de debito") && subject.includes("cajero automatico")) {
+  // 4.6 y 4.12: dos asuntos ("Retiro sin tarjeta de débito ... en cajero
+  // automático" y "Retiro de Efectivo Produbanco en Cajero Automático") con el
+  // MISMO bloque `Detalle`. El asunto no trae monto; `Cuenta débito` va en
+  // minúscula y la sigue el campo `Cajero`.
+  //
+  // La condición pide "cajero automatico" y no sólo "retiro": es lo que
+  // distingue el retiro EJECUTADO del correo que sólo emite el código
+  // (descartado arriba como `retiro_code_issued`).
+  if (subject.includes("retiro") && subject.includes("cajero automatico")) {
     const monto = extractLabeledAmount(body, "Monto");
     return transaction({
       type: "retiro",
@@ -356,16 +492,101 @@ function classify(email: InboundEmail): ParseResult {
     });
   }
 
-  // 4.8: sin bloque `Detalle`; monto y cuenta salen los dos de la prosa.
-  if (subject.includes("compra minutos claro")) {
+  // 4.8 y 4.10: sin bloque `Detalle`; monto y cuenta salen los dos de la prosa,
+  // y la operadora del asunto (`COMPRA MINUTOS CLARO`, `COMPRA RECARGA
+  // MOVISTAR`), que es donde se escribe igual en las dos variantes.
+  const recarga = subject.match(RECARGA_SUBJECT_RE);
+  if (recarga) {
     return transaction({
       type: "recarga",
       direction: "out",
       amount: amountFromProse(body, VALOR_PROSA_RE),
-      counterparty: "Claro",
+      counterparty: capitalize(recarga[1]),
       account: fromProse(body, CUENTA_DEBITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body",
+    });
+  }
+
+  // 4.11: sin `Detalle`, sin ningún campo de cuenta —el correo no dice de dónde
+  // salió la plata, así que `account` queda null— y con el `Monto:` SIN token
+  // de moneda, que es lo que exige el `bareAllowed` de la capa compartida.
+  if (subject.includes("cobranza con debito automatico")) {
+    const monto = extractLabeledAmount(body, "Monto", { bareAllowed: true });
+    return transaction({
+      type: "servicio",
+      direction: "out",
+      amount: monto.amount,
+      counterparty: cobranzaEmpresa(body),
+      account: null,
+      raw_subject: rawSubject,
+      reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body",
+    });
+  }
+
+  // 4.13: el pago de la propia tarjeta de crédito. Todo está en una frase.
+  //
+  // Va marcado `is_internal`: la plata sale de una cuenta propia para bajar una
+  // deuda propia. El gasto ya se contó cuando se usó la tarjeta (las filas
+  // `credito`), así que sumarlo otra vez acá contaría el mismo consumo dos
+  // veces. `markInternalTransfers` no puede deducirlo —compara la contraparte
+  // contra el titular, y acá la contraparte es la tarjeta—, por eso lo afirma
+  // el parser.
+  if (subject.includes("pago tarjeta de credito")) {
+    return transaction({
+      type: "transferencia",
+      direction: "out",
+      amount: amountFromProse(body, MONTO_PROSA_RE),
+      counterparty: fromProse(body, TARJETA_PAGADA_RE),
+      account: fromProse(body, CUENTA_DEBITADA_RE),
+      isInternal: true,
+      raw_subject: rawSubject,
+      reviewReason: "amount_not_found_in_body",
+    });
+  }
+
+  // 4.14: otro pago de servicio, con otra plantilla. Verificado que NO es un
+  // duplicado del 4.5: en la bandeja real los dos llegan el mismo minuto por
+  // dos servicios distintos pagados en la misma sesión.
+  if (subject.includes("notificacion pago de servicio")) {
+    return transaction({
+      type: "servicio",
+      direction: "out",
+      amount: amountFromProse(body, VALOR_PROSA_RE),
+      counterparty: fromProse(body, SERVICIO_RE),
+      account: fromProse(body, CUENTA_DEBITADA_RE),
+      raw_subject: rawSubject,
+      reviewReason: "amount_not_found_in_body",
+    });
+  }
+
+  // 4.15: la plantilla vieja de la transferencia enviada (`Beneficiario` en vez
+  // de `Contacto`). `Cuenta Beneficiario` es del OTRO, así que `account` va
+  // null — el mismo criterio que 4.3, por la misma razón.
+  if (subject.includes("transferencia acreditada")) {
+    const reading = crossCheckAmount(extractAmount(rawSubject, "dollar"), extractLabeledAmount(body, "Monto"));
+    return transaction({
+      type: "transferencia",
+      direction: "out",
+      counterparty: extractField(body, "Beneficiario", AFTER_BENEFICIARIO),
+      account: null,
+      raw_subject: rawSubject,
+      ...reviewed(reading, "amount_not_found_in_body"),
+    });
+  }
+
+  // 4.16: la plantilla vieja de la transferencia recibida. A diferencia de 4.4,
+  // acá el remitente SÍ tiene campo propio (`Enviada por`), y la cuenta
+  // acreditada —la del usuario— es `Cuenta Beneficiario`.
+  if (subject.includes("transferencia recibida en produbanco")) {
+    const reading = crossCheckAmount(extractAmount(rawSubject, "either"), extractLabeledAmount(body, "Monto"));
+    return transaction({
+      type: "recibido",
+      direction: "in",
+      counterparty: extractField(body, "Enviada por", AFTER_BENEFICIARIO),
+      account: maskedAccount(extractField(body, "Cuenta Beneficiario", AFTER_BENEFICIARIO)),
+      raw_subject: rawSubject,
+      ...reviewed(reading, "amount_not_found_in_body"),
     });
   }
 

@@ -51,6 +51,20 @@ export interface ParsedTransaction {
    * las dos cosas rompe ese apareo.
    */
   account_holder?: string | null;
+  /**
+   * Movimiento entre instrumentos del propio usuario: plata que cambia de
+   * lugar sin ser gasto ni ingreso. Se excluye de todos los agregados
+   * (`EXCLUDE_FROM_TOTALS_SQL`).
+   *
+   * Va acá, y no sólo en `rules/reconcile.ts`, porque hay tipos de correo que
+   * son internos **por lo que son**, no por a quién nombran: el pago de la
+   * propia tarjeta de crédito lo es siempre, y su contraparte es la tarjeta,
+   * no el titular, así que la regla de `markInternalTransfers` —que compara
+   * la contraparte contra el nombre del titular— no puede verlo. Cuando el
+   * parser lo sabe por el tipo de correo, lo afirma; el resto lo sigue
+   * resolviendo reconcile.
+   */
+  is_internal?: boolean;
   raw_subject: string;
   needs_review: boolean;
   review_reason?: string;

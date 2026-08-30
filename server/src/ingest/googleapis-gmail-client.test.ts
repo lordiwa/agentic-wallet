@@ -159,4 +159,39 @@ describe("createGoogleapisGmailClient", () => {
 
     expect(message.body).toBe("Contacto: ANA PEREZ\nBanco Destino: Produbanco");
   });
+
+  it("repara el doble-encode UTF-8 -> latin-1 con el que llega el cuerpo real", async () => {
+    // Los bytes son los del correo de COMPRA MINUTOS CLARO: la "ó" viaja como
+    // `C3 83 C2 B3` (el doble-encode) en vez de `C3 B3`. Decodificar como UTF-8
+    // —que es lo correcto— da "informaciÃ³n"; sin reparar, ese texto termina en
+    // `counterparty` y ninguna regla de categoría con tilde vuelve a matchear.
+    getMock.mockReset();
+    const danados = Buffer.from([
+      ...Buffer.from("Establecimiento: FARMACIA LA ", "utf-8"),
+      0xc3, 0x83, 0xe2, 0x80, 0x9c, // "Ó" (C3 93) doble-encodeada vía windows-1252
+      ...Buffer.from("PTIMA", "utf-8"),
+    ]);
+    getMock.mockResolvedValueOnce({
+      data: {
+        id: "msg-4",
+        threadId: "thread-4",
+        internalDate: "1751328000000",
+        payload: {
+          mimeType: "text/plain",
+          headers: [{ name: "Subject", value: "COMPRA MINUTOS CLARO" }],
+          body: { data: danados.toString("base64url") },
+        },
+      },
+    });
+    const { createGoogleapisGmailClient } = await import("./googleapis-gmail-client.js");
+
+    const client = await createGoogleapisGmailClient({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-token",
+    });
+    const message = await client.getMessage("msg-4");
+
+    expect(message.body).toBe("Establecimiento: FARMACIA LA ÓPTIMA");
+  });
 });
