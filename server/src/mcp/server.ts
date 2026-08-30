@@ -29,6 +29,7 @@ import { upsertCategoryRule } from "../category/rules-repository.js";
 import { buildOverview } from "../api/routes.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
 import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
+import { listReviewResolutions, resolveReview, REVIEW_ACTIONS } from "../review/resolve.js";
 import { onboardStatus, type OnboardStatus } from "../onboard/status.js";
 import { buildSuggestions } from "../onboard/suggest.js";
 import { buildProductionSyncRunner } from "../sync/index.js";
@@ -190,6 +191,10 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         offset: z.number().int().min(0).optional(),
         include_reversed: z.boolean().optional().describe("Default false"),
         include_internal: z.boolean().optional().describe("Default false"),
+        include_discarded: z
+          .boolean()
+          .optional()
+          .describe("Incluye las filas que un humano descarto al revisarlas. Default false."),
       },
     },
     async (args) => {
@@ -205,6 +210,7 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         offset: args.offset,
         includeReversed: args.include_reversed,
         includeInternal: args.include_internal,
+        includeDiscarded: args.include_discarded,
       });
       return json({ transactions: rows, count: rows.length });
     }
@@ -217,11 +223,58 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       description:
         "Filas con needs_review=1: el parser y Claude no coincidieron en el monto, o no se pudo leer. " +
         "Estan excluidas de todos los totales hasta que un humano las resuelva.",
-      inputSchema: {},
+      inputSchema: {
+        history: z
+          .boolean()
+          .optional()
+          .describe("Ademas de la cola, devuelve el historial de resoluciones ya hechas. Default false."),
+      },
     },
-    async () => {
-      const rows = queryReviewTransactions(deps.getDb());
-      return json({ transactions: rows, count: rows.length });
+    async ({ history }) => {
+      const db = deps.getDb();
+      const rows = queryReviewTransactions(db);
+      return json({
+        transactions: rows,
+        count: rows.length,
+        ...(history ? { resolutions: listReviewResolutions(db) } : {}),
+      });
+    }
+  );
+
+  server.registerTool(
+    "resolve_review",
+    {
+      title: "Resolver un movimiento de la cola de revision",
+      description:
+        "Saca UNA fila de `needs_review`, que es lo unico que la devuelve a los totales. Tres acciones: " +
+        "`confirm` (el monto del parser esta bien -> la fila entra a los totales tal cual), `correct` (el " +
+        "monto esta mal y el HUMANO afirma otro -> requiere `amount`, y la fila queda marcada `source: human`), " +
+        "y `discard` (no es un movimiento real -> sale de la cola y NO vuelve a los totales). " +
+        "`confirm` y `discard` RECHAZAN un `amount` en vez de ignorarlo. Nunca inventes un monto ni lo deduzcas " +
+        "vos: `correct` es para el numero que dice la persona, leido del correo o del banco. Idempotente: " +
+        "resolver dos veces la misma fila devuelve `changed: false`. Toda resolucion queda auditada con quien " +
+        "y cuando; pasa `resolved_by` con el nombre de la persona si lo sabes.",
+      inputSchema: {
+        id: z.number().int().positive().describe("El `id` de la fila, tal como lo devuelve get_review_queue"),
+        action: z.enum(REVIEW_ACTIONS),
+        amount: z.number().nonnegative().optional().describe("Solo (y siempre) con action='correct'"),
+        note: z.string().min(1).optional().describe("Por que se resolvio asi"),
+        resolved_by: z.string().min(1).optional().describe("Quien resuelve. Sin valor queda 'mcp'."),
+      },
+    },
+    async ({ id, action, amount, note, resolved_by }) => {
+      const result = resolveReview(deps.getDb(), {
+        id,
+        action,
+        amount,
+        note,
+        resolvedBy: resolved_by ?? "mcp",
+      });
+      // Un error del motor tiene que llegar como error de la tool: devolverlo
+      // como un `ok: false` dentro de un resultado exitoso invita al agente a
+      // leerlo por arriba y seguir como si hubiera resuelto algo.
+      if (!result.ok) throw new Error(`resolve_review: ${result.error}`);
+      return json(result);
     }
   );
 

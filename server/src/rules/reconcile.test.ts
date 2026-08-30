@@ -72,6 +72,21 @@ function transferencia(overrides: Partial<ReconcilableTransaction> = {}): Reconc
   };
 }
 
+/** La variante 4.4b: el titular se manda plata entre cuentas propias y el
+ * banco lo notifica como transferencia recibida (`Enviada por: <titular>`), asi
+ * que entra al ledger como `recibido` / `direction: 'in'`. */
+function recibidoDelTitular(overrides: Partial<ReconcilableTransaction> = {}): ReconcilableTransaction {
+  return transferencia({
+    type: "recibido",
+    direction: "in",
+    counterparty: TITULAR,
+    account: "XXXXXX20924",
+    raw_subject: "Transferencia recibida desde Produbanco",
+    gmail_msg_id: "msg-recibido-propio",
+    ...overrides,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Rule 1: reversos (spec 5.3.1 / AC1, AC5)
 // ---------------------------------------------------------------------------
@@ -511,9 +526,42 @@ describe("markInternalTransfers", () => {
     expect(result.is_internal).toBeFalsy();
   });
 
-  it("only applies to type 'transferencia'", () => {
-    const txs = [consumo({ counterparty: TITULAR })];
+  // La variante 4.4b del formato ("Enviada por" + "Cuenta Contacto", ver
+  // docs/formato-correos-produbanco.md): el titular se transfiere plata a si
+  // mismo entre cuentas propias y el correo llega como transferencia RECIBIDA,
+  // asi que el parser la clasifica `recibido` y no `transferencia`. Es el mismo
+  // hecho que la regla 3 ya cubria en el sentido de salida — plata que no entro
+  // al bolsillo desde afuera — y sin esto suma como ingreso.
+  it("marks is_internal on a RECEIVED transfer whose sender is the titular (4.4b)", () => {
+    const txs = [recibidoDelTitular()];
     const [result] = markInternalTransfers(txs, { titular: TITULAR });
+
+    expect(result.is_internal).toBe(true);
+  });
+
+  it("marks the received transfer with the same name tolerance as the sent one", () => {
+    const txs = [recibidoDelTitular({ counterparty: "ANA MARIA PEREZ GOMEZ (Otro Banco)" })];
+    const [result] = markInternalTransfers(txs, { titular: TITULAR });
+
+    expect(result.is_internal).toBe(true);
+  });
+
+  it("does not mark a transfer received from a third party", () => {
+    const txs = [recibidoDelTitular({ counterparty: "Carlos Andres Molina Vera" })];
+    const [result] = markInternalTransfers(txs, { titular: TITULAR });
+
+    expect(result.is_internal).toBeFalsy();
+  });
+
+  // `sueldo` queda afuera a proposito aunque tambien sea `direction: 'in'`: lo
+  // paga un empleador, no una cuenta propia. Si algun dia el nombre del
+  // empleador se pareciera al del titular, marcarlo borraria el ingreso mas
+  // grande del ledger.
+  it.each([
+    ["debito", consumo({ counterparty: TITULAR })],
+    ["sueldo", consumo({ type: "sueldo", direction: "in", counterparty: TITULAR })],
+  ])("only applies to transfer-like types, not %s", (_caso, tx) => {
+    const [result] = markInternalTransfers([tx], { titular: TITULAR });
 
     expect(result.is_internal).toBeFalsy();
   });

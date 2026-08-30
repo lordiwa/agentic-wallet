@@ -214,12 +214,44 @@ CREATE TABLE IF NOT EXISTS category_rules (
 );
 `;
 
+/**
+ * Auditoría de la cola de revisión: qué fila salió de `needs_review`, cómo,
+ * por quién y cuándo. Ver `server/src/review/resolve.ts`.
+ *
+ * Existe porque hasta ahora **ningún camino escribía `needs_review = 0`**: una
+ * bandera puesta era permanente y las filas marcadas quedaban fuera de todos
+ * los totales para siempre. Construir la salida sin dejar rastro habría sido
+ * peor que no tenerla: una fila que reaparece en los totales sin explicación
+ * es indistinguible de un bug del motor.
+ *
+ * `previous_amount` se guarda SIEMPRE y `new_amount` sólo cuando la acción fue
+ * `correct` — así el registro distingue "un humano confirmó lo que leyó el
+ * parser" de "un humano afirmó otro número", que es la única excepción a la
+ * regla de oro y tiene que ser legible como tal.
+ *
+ * `ON DELETE` no hace falta: nada borra filas de `transactions`.
+ */
+const CREATE_REVIEW_RESOLUTIONS = `
+CREATE TABLE IF NOT EXISTS review_resolutions (
+  id INTEGER PRIMARY KEY,
+  transaction_id INTEGER NOT NULL REFERENCES transactions(id),
+  gmail_msg_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('confirm', 'correct', 'discard')),
+  previous_amount REAL,
+  new_amount REAL,
+  note TEXT,
+  resolved_by TEXT NOT NULL,
+  resolved_at TEXT NOT NULL
+);
+`;
+
 const CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_transactions_ts ON transactions (ts);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
 CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions (direction);
 CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counterparty);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
+CREATE INDEX IF NOT EXISTS idx_review_resolutions_tx ON review_resolutions (transaction_id);
 `;
 
 /**
@@ -237,7 +269,7 @@ function addColumnIfMissing(db: Database.Database, table: string, column: string
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-/** Creates the 15 tables + indexes if they don't already exist. Safe to call on every startup. */
+/** Creates the 16 tables + indexes if they don't already exist. Safe to call on every startup. */
 export function migrate(db: Database.Database): void {
   db.exec(CREATE_TRANSACTIONS);
   db.exec(CREATE_STATEMENTS);
@@ -254,7 +286,12 @@ export function migrate(db: Database.Database): void {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  db.exec(CREATE_REVIEW_RESOLUTIONS);
   // Bases creadas antes de que el parser guardara el nombre del titular.
   addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
+  // Bases creadas antes de que existiera la salida de `needs_review`. El
+  // default 0 es el correcto para todo el historial: nadie descartó nada
+  // todavía. Ver review/resolve.ts y strategy/totals.ts.
+  addColumnIfMissing(db, "transactions", "is_discarded", "INTEGER NOT NULL DEFAULT 0");
   db.exec(CREATE_INDEXES);
 }

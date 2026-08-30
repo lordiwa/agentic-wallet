@@ -71,6 +71,20 @@ describe("balanceActual (spec §9.2)", () => {
     expect(balanceActual(db, new Date("2026-07-25T12:00:00Z"))).toBe(2409);
   });
 
+  // El otro sentido de la misma interna: la variante 4.4b del formato llega
+  // como transferencia RECIBIDA del propio titular. Si no queda marcada,
+  // `direction: 'in'` la suma como ingreso e infla el saldo con plata que solo
+  // cambio de cuenta. Ver rules/reconcile.ts (regla 3).
+  it("excludes an is_internal RECEIVED transfer from the delta (it is not income)", () => {
+    seedFixture(db);
+    insertTransaction(
+      db,
+      tx({ gmail_msg_id: "internal-in", direction: "in", type: "recibido", amount: 200, is_internal: true })
+    );
+
+    expect(balanceActual(db, new Date("2026-07-25T12:00:00Z"))).toBe(2409);
+  });
+
   it("excludes is_reversed transactions from the delta", () => {
     seedFixture(db);
     insertTransaction(db, tx({ gmail_msg_id: "reversed", direction: "out", amount: 40, is_reversed: true }));

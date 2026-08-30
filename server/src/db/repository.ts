@@ -18,6 +18,9 @@ export interface TransactionRow {
   is_reversed: number;
   is_internal: number;
   needs_review: number;
+  /** 1 = un humano la descartó al resolverla: no es un movimiento real y no
+   * vuelve a los totales. Ver `review/resolve.ts`. */
+  is_discarded: number;
   source: string;
   created_at: string;
 }
@@ -150,6 +153,12 @@ export function insertTransaction(db: Database.Database, tx: NewTransaction): In
     throw new Error(`insertTransaction: no row found for gmail_msg_id ${tx.gmail_msg_id}`);
   }
   return { inserted: result.changes === 1, row };
+}
+
+/** Por clave primaria. La cola de revisión trabaja por `id` (es lo que ve el
+ * humano en `/api/review`), no por `gmail_msg_id`. */
+export function getTransactionById(db: Database.Database, id: number): TransactionRow | undefined {
+  return db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as TransactionRow | undefined;
 }
 
 export function getTransactionByGmailMsgId(db: Database.Database, gmailMsgId: string): TransactionRow | undefined {

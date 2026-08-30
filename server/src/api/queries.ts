@@ -21,6 +21,11 @@ export interface TransactionsListFilter {
   includeReversed?: boolean;
   /** When false (default), rows with is_internal=1 are excluded entirely. */
   includeInternal?: boolean;
+  /** When false (default), rows a human discarded from the review queue
+   * (is_discarded=1) are excluded entirely — mismo criterio que las otras dos
+   * banderas: una fila que alguien declaró "esto no es un movimiento real" no
+   * tiene por qué aparecer en un listado salvo que se la pida. */
+  includeDiscarded?: boolean;
 }
 
 /**
@@ -59,6 +64,9 @@ export function queryTransactions(db: Database.Database, filter: TransactionsLis
   }
   if (!filter.includeInternal) {
     clauses.push("is_internal = 0");
+  }
+  if (!filter.includeDiscarded) {
+    clauses.push("is_discarded = 0");
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";

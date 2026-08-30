@@ -14,6 +14,7 @@
     "test": "vitest run",
     "seed": "npm run seed --workspace=server",
     "onboard": "npm run onboard --workspace=server --",
+    "review": "npm run review --workspace=server --",
     "gmail-auth": "npm run gmail-auth --workspace=server",
     "reconstruct": "npm run reconstruct --workspace=server --"
   },

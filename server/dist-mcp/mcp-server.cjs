@@ -48915,12 +48915,26 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT
 );
 `;
+var CREATE_REVIEW_RESOLUTIONS = `
+CREATE TABLE IF NOT EXISTS review_resolutions (
+  id INTEGER PRIMARY KEY,
+  transaction_id INTEGER NOT NULL REFERENCES transactions(id),
+  gmail_msg_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('confirm', 'correct', 'discard')),
+  previous_amount REAL,
+  new_amount REAL,
+  note TEXT,
+  resolved_by TEXT NOT NULL,
+  resolved_at TEXT NOT NULL
+);
+`;
 var CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_transactions_ts ON transactions (ts);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
 CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions (direction);
 CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counterparty);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
+CREATE INDEX IF NOT EXISTS idx_review_resolutions_tx ON review_resolutions (transaction_id);
 `;
 function addColumnIfMissing(db, table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -48943,7 +48957,9 @@ function migrate(db) {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  db.exec(CREATE_REVIEW_RESOLUTIONS);
   addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
+  addColumnIfMissing(db, "transactions", "is_discarded", "INTEGER NOT NULL DEFAULT 0");
   db.exec(CREATE_INDEXES);
 }
 
@@ -49262,9 +49278,10 @@ function isSameHolder(counterparty, titular) {
   if (shared === titularTokens.size && shared === cpTokens.size) return true;
   return shared >= INTERNAL_NAME_TOKEN_MATCH;
 }
+var TRANSFER_LIKE_TYPES = /* @__PURE__ */ new Set(["transferencia", "recibido"]);
 function isInternalTransfer(tx, titular) {
   if (titular === null || titular.trim() === "") return false;
-  if (tx.type !== "transferencia" || !tx.counterparty) return false;
+  if (!TRANSFER_LIKE_TYPES.has(tx.type) || !tx.counterparty) return false;
   return isSameHolder(tx.counterparty, titular);
 }
 function markInternalTransfers(transactions, { titular }) {
@@ -49391,6 +49408,9 @@ function withSpanSync(name, attributes, fn) {
 }
 function logInfo(event, fields) {
   emit2("info", event, fields);
+}
+function emitMetric2(name, attributes) {
+  emit2("info", `metric.${name}`, attributes);
 }
 
 // src/db/strategy-config.ts
@@ -49540,7 +49560,7 @@ function paydaysBetween(db, from, until) {
 }
 
 // src/strategy/totals.ts
-var EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND type != 'reverso'";
+var EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND is_discarded = 0 AND type != 'reverso'";
 
 // src/strategy/card.ts
 function latestStatement(db) {
@@ -49730,6 +49750,9 @@ function queryTransactions(db, filter = {}) {
   if (!filter.includeInternal) {
     clauses.push("is_internal = 0");
   }
+  if (!filter.includeDiscarded) {
+    clauses.push("is_discarded = 0");
+  }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
   params.limit = filter.limit ?? 100;
   params.offset = filter.offset ?? 0;
@@ -49762,6 +49785,162 @@ function getBalanceSnapshot(db) {
   }
 }
 
+// src/db/repository.ts
+var UNKNOWN_AMOUNT_PLACEHOLDER = 0;
+function insertTransaction(db, tx) {
+  const amountUnknown = tx.amount === null || tx.amount === void 0;
+  const result = db.prepare(
+    `INSERT INTO transactions (
+        gmail_msg_id, gmail_thread_id, ts, direction, type, amount, currency,
+        counterparty, account, account_holder, category, raw_subject, is_reversed, is_internal, needs_review, source
+      ) VALUES (
+        @gmail_msg_id, @gmail_thread_id, @ts, @direction, @type, @amount, @currency,
+        @counterparty, @account, @account_holder, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
+      )
+      ON CONFLICT(gmail_msg_id) DO NOTHING`
+  ).run({
+    gmail_msg_id: tx.gmail_msg_id,
+    gmail_thread_id: tx.gmail_thread_id ?? null,
+    ts: tx.ts,
+    direction: tx.direction,
+    type: tx.type,
+    amount: amountUnknown ? UNKNOWN_AMOUNT_PLACEHOLDER : tx.amount,
+    currency: tx.currency ?? "USD",
+    counterparty: tx.counterparty ?? null,
+    account: tx.account ?? null,
+    account_holder: tx.account_holder ?? null,
+    category: tx.category ?? null,
+    raw_subject: tx.raw_subject ?? null,
+    is_reversed: tx.is_reversed ? 1 : 0,
+    is_internal: tx.is_internal ? 1 : 0,
+    needs_review: tx.needs_review || amountUnknown ? 1 : 0,
+    source: tx.source ?? "claude"
+  });
+  const row = getTransactionByGmailMsgId(db, tx.gmail_msg_id);
+  if (!row) {
+    throw new Error(`insertTransaction: no row found for gmail_msg_id ${tx.gmail_msg_id}`);
+  }
+  return { inserted: result.changes === 1, row };
+}
+function getTransactionById(db, id) {
+  return db.prepare("SELECT * FROM transactions WHERE id = ?").get(id);
+}
+function getTransactionByGmailMsgId(db, gmailMsgId) {
+  return db.prepare("SELECT * FROM transactions WHERE gmail_msg_id = ?").get(gmailMsgId);
+}
+function updateTransactionReviewFlags(db, gmailMsgId, flags) {
+  const sets = [];
+  const params = { gmail_msg_id: gmailMsgId };
+  if (flags.is_reversed !== void 0) {
+    sets.push("is_reversed = @is_reversed");
+    params.is_reversed = flags.is_reversed ? 1 : 0;
+  }
+  if (flags.needs_review !== void 0) {
+    sets.push("needs_review = @needs_review");
+    params.needs_review = flags.needs_review ? 1 : 0;
+  }
+  if (sets.length > 0) {
+    db.prepare(`UPDATE transactions SET ${sets.join(", ")} WHERE gmail_msg_id = @gmail_msg_id`).run(params);
+  }
+  return getTransactionByGmailMsgId(db, gmailMsgId);
+}
+function getSyncState(db) {
+  return db.prepare("SELECT * FROM sync_state WHERE id = 1").get();
+}
+function setSyncState(db, state) {
+  db.prepare(
+    `INSERT INTO sync_state (id, last_sync_ts, last_history) VALUES (1, @last_sync_ts, @last_history)
+     ON CONFLICT(id) DO UPDATE SET last_sync_ts = excluded.last_sync_ts, last_history = excluded.last_history`
+  ).run(state);
+}
+function insertStatement(db, statement) {
+  const gmailMsgId = statement.gmail_msg_id ?? null;
+  if (!gmailMsgId) {
+    throw new Error("insertStatement: gmail_msg_id is required");
+  }
+  const result = db.prepare(
+    `INSERT INTO statements (gmail_msg_id, card_mask, issue_date, balance, min_payment, due_date)
+       VALUES (@gmail_msg_id, @card_mask, @issue_date, @balance, @min_payment, @due_date)
+       ON CONFLICT(gmail_msg_id) DO NOTHING`
+  ).run({
+    gmail_msg_id: gmailMsgId,
+    card_mask: statement.card_mask ?? null,
+    issue_date: statement.issue_date ?? null,
+    balance: statement.balance ?? null,
+    min_payment: statement.min_payment ?? null,
+    due_date: statement.due_date ?? null
+  });
+  const row = db.prepare("SELECT * FROM statements WHERE gmail_msg_id = ?").get(gmailMsgId);
+  if (!row) {
+    throw new Error(`insertStatement: no row found for gmail_msg_id ${gmailMsgId}`);
+  }
+  return { inserted: result.changes === 1, row };
+}
+
+// src/review/resolve.ts
+var REVIEW_ACTIONS = ["confirm", "correct", "discard"];
+function isWritableAmount(amount) {
+  return Number.isFinite(amount) && amount >= 0;
+}
+function resolveReview(db, input, options = {}) {
+  return withSpanSync("review.resolve", { action: input.action }, () => {
+    if (input.resolvedBy.trim() === "") return { ok: false, error: "resolved_by_required" };
+    if (input.action === "correct") {
+      if (input.amount === void 0) return { ok: false, error: "amount_required" };
+      if (!isWritableAmount(input.amount)) return { ok: false, error: "invalid_amount" };
+    } else if (input.amount !== void 0) {
+      return { ok: false, error: "amount_not_allowed" };
+    }
+    const row = getTransactionById(db, input.id);
+    if (!row) return { ok: false, error: "not_found" };
+    if (row.needs_review !== 1) return { ok: true, changed: false, reason: "already_resolved", transaction: row };
+    const resolvedAt = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    const newAmount = input.action === "correct" ? input.amount : null;
+    const apply = db.transaction(() => {
+      if (input.action === "correct") {
+        db.prepare("UPDATE transactions SET amount = @amount, source = 'human', needs_review = 0 WHERE id = @id").run({
+          amount: newAmount,
+          id: row.id
+        });
+      } else if (input.action === "discard") {
+        db.prepare("UPDATE transactions SET needs_review = 0, is_discarded = 1 WHERE id = @id").run({ id: row.id });
+      } else {
+        db.prepare("UPDATE transactions SET needs_review = 0 WHERE id = @id").run({ id: row.id });
+      }
+      const inserted = db.prepare(
+        `INSERT INTO review_resolutions (
+             transaction_id, gmail_msg_id, action, previous_amount, new_amount, note, resolved_by, resolved_at
+           ) VALUES (
+             @transaction_id, @gmail_msg_id, @action, @previous_amount, @new_amount, @note, @resolved_by, @resolved_at
+           )`
+      ).run({
+        transaction_id: row.id,
+        gmail_msg_id: row.gmail_msg_id,
+        action: input.action,
+        previous_amount: row.amount,
+        new_amount: newAmount,
+        note: input.note ?? null,
+        resolved_by: input.resolvedBy.trim(),
+        resolved_at: resolvedAt
+      });
+      return Number(inserted.lastInsertRowid);
+    });
+    const resolutionId = apply();
+    emitMetric2("review.resolve.applied", { action: input.action, transaction_id: row.id });
+    return {
+      ok: true,
+      changed: true,
+      action: input.action,
+      transaction: getTransactionById(db, row.id),
+      resolution: db.prepare("SELECT * FROM review_resolutions WHERE id = ?").get(resolutionId)
+    };
+  });
+}
+function listReviewResolutions(db, filter = {}) {
+  const where = filter.transactionId === void 0 ? "" : "WHERE transaction_id = @transaction_id";
+  return db.prepare(`SELECT * FROM review_resolutions ${where} ORDER BY resolved_at DESC, id DESC LIMIT @limit`).all({ transaction_id: filter.transactionId, limit: filter.limit ?? 200 });
+}
+
 // src/api/schemas.ts
 var TRANSACTION_TYPES = [
   "debito",
@@ -49786,7 +49965,8 @@ var transactionsQuerySchema = external_exports.object({
   limit: external_exports.coerce.number().int().positive().max(500).optional(),
   offset: external_exports.coerce.number().int().min(0).optional(),
   include_reversed: boolFlag,
-  include_internal: boolFlag
+  include_internal: boolFlag,
+  include_discarded: boolFlag
 });
 var debtIdParamSchema = external_exports.object({
   id: external_exports.coerce.number().int().positive()
@@ -49796,6 +49976,17 @@ var projectionQuerySchema = external_exports.object({
 });
 var bufferBodySchema = external_exports.object({
   reserved: external_exports.number().finite().nonnegative()
+});
+var reviewIdParamSchema = external_exports.object({
+  id: external_exports.coerce.number().int().positive()
+});
+var reviewResolveBodySchema = external_exports.object({
+  action: external_exports.enum(REVIEW_ACTIONS),
+  amount: external_exports.number().finite().nonnegative().optional(),
+  note: external_exports.string().min(1).optional(),
+  /** Sin valor, el registro de auditoría dice "http": la superficie por la que
+   * entró. Un nombre concreto lo pisa. */
+  resolved_by: external_exports.string().min(1).optional()
 });
 
 // src/api/routes.ts
@@ -50230,95 +50421,6 @@ function extractAmount(body) {
   }
   const prose = PROSE_AMOUNT_RE.exec(normalizeBody(body));
   return prose ? Number(prose[1]) : null;
-}
-
-// src/db/repository.ts
-var UNKNOWN_AMOUNT_PLACEHOLDER = 0;
-function insertTransaction(db, tx) {
-  const amountUnknown = tx.amount === null || tx.amount === void 0;
-  const result = db.prepare(
-    `INSERT INTO transactions (
-        gmail_msg_id, gmail_thread_id, ts, direction, type, amount, currency,
-        counterparty, account, account_holder, category, raw_subject, is_reversed, is_internal, needs_review, source
-      ) VALUES (
-        @gmail_msg_id, @gmail_thread_id, @ts, @direction, @type, @amount, @currency,
-        @counterparty, @account, @account_holder, @category, @raw_subject, @is_reversed, @is_internal, @needs_review, @source
-      )
-      ON CONFLICT(gmail_msg_id) DO NOTHING`
-  ).run({
-    gmail_msg_id: tx.gmail_msg_id,
-    gmail_thread_id: tx.gmail_thread_id ?? null,
-    ts: tx.ts,
-    direction: tx.direction,
-    type: tx.type,
-    amount: amountUnknown ? UNKNOWN_AMOUNT_PLACEHOLDER : tx.amount,
-    currency: tx.currency ?? "USD",
-    counterparty: tx.counterparty ?? null,
-    account: tx.account ?? null,
-    account_holder: tx.account_holder ?? null,
-    category: tx.category ?? null,
-    raw_subject: tx.raw_subject ?? null,
-    is_reversed: tx.is_reversed ? 1 : 0,
-    is_internal: tx.is_internal ? 1 : 0,
-    needs_review: tx.needs_review || amountUnknown ? 1 : 0,
-    source: tx.source ?? "claude"
-  });
-  const row = getTransactionByGmailMsgId(db, tx.gmail_msg_id);
-  if (!row) {
-    throw new Error(`insertTransaction: no row found for gmail_msg_id ${tx.gmail_msg_id}`);
-  }
-  return { inserted: result.changes === 1, row };
-}
-function getTransactionByGmailMsgId(db, gmailMsgId) {
-  return db.prepare("SELECT * FROM transactions WHERE gmail_msg_id = ?").get(gmailMsgId);
-}
-function updateTransactionReviewFlags(db, gmailMsgId, flags) {
-  const sets = [];
-  const params = { gmail_msg_id: gmailMsgId };
-  if (flags.is_reversed !== void 0) {
-    sets.push("is_reversed = @is_reversed");
-    params.is_reversed = flags.is_reversed ? 1 : 0;
-  }
-  if (flags.needs_review !== void 0) {
-    sets.push("needs_review = @needs_review");
-    params.needs_review = flags.needs_review ? 1 : 0;
-  }
-  if (sets.length > 0) {
-    db.prepare(`UPDATE transactions SET ${sets.join(", ")} WHERE gmail_msg_id = @gmail_msg_id`).run(params);
-  }
-  return getTransactionByGmailMsgId(db, gmailMsgId);
-}
-function getSyncState(db) {
-  return db.prepare("SELECT * FROM sync_state WHERE id = 1").get();
-}
-function setSyncState(db, state) {
-  db.prepare(
-    `INSERT INTO sync_state (id, last_sync_ts, last_history) VALUES (1, @last_sync_ts, @last_history)
-     ON CONFLICT(id) DO UPDATE SET last_sync_ts = excluded.last_sync_ts, last_history = excluded.last_history`
-  ).run(state);
-}
-function insertStatement(db, statement) {
-  const gmailMsgId = statement.gmail_msg_id ?? null;
-  if (!gmailMsgId) {
-    throw new Error("insertStatement: gmail_msg_id is required");
-  }
-  const result = db.prepare(
-    `INSERT INTO statements (gmail_msg_id, card_mask, issue_date, balance, min_payment, due_date)
-       VALUES (@gmail_msg_id, @card_mask, @issue_date, @balance, @min_payment, @due_date)
-       ON CONFLICT(gmail_msg_id) DO NOTHING`
-  ).run({
-    gmail_msg_id: gmailMsgId,
-    card_mask: statement.card_mask ?? null,
-    issue_date: statement.issue_date ?? null,
-    balance: statement.balance ?? null,
-    min_payment: statement.min_payment ?? null,
-    due_date: statement.due_date ?? null
-  });
-  const row = db.prepare("SELECT * FROM statements WHERE gmail_msg_id = ?").get(gmailMsgId);
-  if (!row) {
-    throw new Error(`insertStatement: no row found for gmail_msg_id ${gmailMsgId}`);
-  }
-  return { inserted: result.changes === 1, row };
 }
 
 // src/parser/produbanco.ts
@@ -51350,7 +51452,8 @@ function createWalletMcpServer(deps) {
         limit: external_exports.number().int().min(1).max(500).optional().describe("Default 100"),
         offset: external_exports.number().int().min(0).optional(),
         include_reversed: external_exports.boolean().optional().describe("Default false"),
-        include_internal: external_exports.boolean().optional().describe("Default false")
+        include_internal: external_exports.boolean().optional().describe("Default false"),
+        include_discarded: external_exports.boolean().optional().describe("Incluye las filas que un humano descarto al revisarlas. Default false.")
       }
     },
     async (args) => {
@@ -51363,7 +51466,8 @@ function createWalletMcpServer(deps) {
         limit: args.limit,
         offset: args.offset,
         includeReversed: args.include_reversed,
-        includeInternal: args.include_internal
+        includeInternal: args.include_internal,
+        includeDiscarded: args.include_discarded
       });
       return json({ transactions: rows, count: rows.length });
     }
@@ -51373,11 +51477,43 @@ function createWalletMcpServer(deps) {
     {
       title: "Movimientos por revisar",
       description: "Filas con needs_review=1: el parser y Claude no coincidieron en el monto, o no se pudo leer. Estan excluidas de todos los totales hasta que un humano las resuelva.",
-      inputSchema: {}
+      inputSchema: {
+        history: external_exports.boolean().optional().describe("Ademas de la cola, devuelve el historial de resoluciones ya hechas. Default false.")
+      }
     },
-    async () => {
-      const rows = queryReviewTransactions(deps.getDb());
-      return json({ transactions: rows, count: rows.length });
+    async ({ history }) => {
+      const db = deps.getDb();
+      const rows = queryReviewTransactions(db);
+      return json({
+        transactions: rows,
+        count: rows.length,
+        ...history ? { resolutions: listReviewResolutions(db) } : {}
+      });
+    }
+  );
+  server.registerTool(
+    "resolve_review",
+    {
+      title: "Resolver un movimiento de la cola de revision",
+      description: "Saca UNA fila de `needs_review`, que es lo unico que la devuelve a los totales. Tres acciones: `confirm` (el monto del parser esta bien -> la fila entra a los totales tal cual), `correct` (el monto esta mal y el HUMANO afirma otro -> requiere `amount`, y la fila queda marcada `source: human`), y `discard` (no es un movimiento real -> sale de la cola y NO vuelve a los totales). `confirm` y `discard` RECHAZAN un `amount` en vez de ignorarlo. Nunca inventes un monto ni lo deduzcas vos: `correct` es para el numero que dice la persona, leido del correo o del banco. Idempotente: resolver dos veces la misma fila devuelve `changed: false`. Toda resolucion queda auditada con quien y cuando; pasa `resolved_by` con el nombre de la persona si lo sabes.",
+      inputSchema: {
+        id: external_exports.number().int().positive().describe("El `id` de la fila, tal como lo devuelve get_review_queue"),
+        action: external_exports.enum(REVIEW_ACTIONS),
+        amount: external_exports.number().nonnegative().optional().describe("Solo (y siempre) con action='correct'"),
+        note: external_exports.string().min(1).optional().describe("Por que se resolvio asi"),
+        resolved_by: external_exports.string().min(1).optional().describe("Quien resuelve. Sin valor queda 'mcp'.")
+      }
+    },
+    async ({ id, action, amount, note, resolved_by }) => {
+      const result = resolveReview(deps.getDb(), {
+        id,
+        action,
+        amount,
+        note,
+        resolvedBy: resolved_by ?? "mcp"
+      });
+      if (!result.ok) throw new Error(`resolve_review: ${result.error}`);
+      return json(result);
     }
   );
   server.registerTool(

@@ -127,6 +127,7 @@ describe("MCP server del wallet", () => {
         "get_colchon_status",
         "get_overview",
         "get_review_queue",
+        "resolve_review",
         "get_spending_by_category",
         "onboarding_status",
         "query_transactions",
@@ -387,6 +388,96 @@ describe("MCP server del wallet", () => {
     const conFila = parse(await client.callTool({ name: "get_review_queue", arguments: {} }));
     expect(conFila.count).toBe(1);
     expect(conFila.transactions[0].gmail_msg_id).toBe("m5");
+  });
+
+  // La contraparte de `get_review_queue`: sin esta tool la cola es una lista
+  // de la que no se sale. Ver review/resolve.ts.
+  describe("resolve_review", () => {
+    /** Devuelve el id de una fila recien puesta en la cola. */
+    function enRevision(gmailMsgId: string, amount: number | null): number {
+      return insertTransaction(db, {
+        gmail_msg_id: gmailMsgId,
+        ts: "2025-03-13T15:00:00.000Z",
+        direction: "out",
+        type: "debito",
+        amount,
+        needs_review: true,
+        counterparty: "MONTO ILEGIBLE",
+        source: "test",
+      }).row.id;
+    }
+
+    it("confirma una fila y la saca de la cola", async () => {
+      const id = enRevision("r1", 25);
+
+      const result = parse(await client.callTool({ name: "resolve_review", arguments: { id, action: "confirm" } }));
+
+      expect(result.ok).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(result.transaction.needs_review).toBe(0);
+      expect(result.transaction.amount).toBe(25);
+
+      const cola = parse(await client.callTool({ name: "get_review_queue", arguments: {} }));
+      expect(cola.count).toBe(0);
+    });
+
+    it("corrige el monto cuando lo afirma un humano y lo deja anotado", async () => {
+      const id = enRevision("r2", null);
+
+      const result = parse(
+        await client.callTool({
+          name: "resolve_review",
+          arguments: { id, action: "correct", amount: 41.07, resolved_by: "mato", note: "leido del correo" },
+        })
+      );
+
+      expect(result.transaction.amount).toBe(41.07);
+      expect(result.transaction.source).toBe("human");
+      expect(result.resolution).toMatchObject({ action: "correct", resolved_by: "mato", previous_amount: 0 });
+    });
+
+    it("descarta sin devolver la fila a los totales", async () => {
+      const id = enRevision("r3", 25);
+
+      const result = parse(await client.callTool({ name: "resolve_review", arguments: { id, action: "discard" } }));
+
+      expect(result.transaction.is_discarded).toBe(1);
+      expect(result.transaction.needs_review).toBe(0);
+    });
+
+    it("es idempotente", async () => {
+      const id = enRevision("r4", 25);
+      await client.callTool({ name: "resolve_review", arguments: { id, action: "confirm" } });
+
+      const segunda = parse(await client.callTool({ name: "resolve_review", arguments: { id, action: "confirm" } }));
+
+      expect(segunda).toMatchObject({ ok: true, changed: false, reason: "already_resolved" });
+    });
+
+    // El error del motor tiene que llegar como error de la tool, no como un
+    // `ok: true` que el agente lea como exito.
+    it.each([
+      ["una fila que no existe", { id: 9999, action: "confirm" }],
+      ["correct sin monto", { id: -1, action: "correct" }],
+      ["confirm con monto", { id: -1, action: "confirm", amount: 9 }],
+    ])("falla en %s", async (_caso, args) => {
+      const id = args.id === -1 ? enRevision(`err-${_caso}`, 25) : args.id;
+
+      const raw = (await client.callTool({ name: "resolve_review", arguments: { ...args, id } })) as {
+        isError?: boolean;
+      };
+
+      expect(raw.isError).toBe(true);
+    });
+
+    it("registra el historial de resoluciones", async () => {
+      const id = enRevision("r5", 25);
+      await client.callTool({ name: "resolve_review", arguments: { id, action: "confirm", resolved_by: "mato" } });
+
+      const historial = parse(await client.callTool({ name: "get_review_queue", arguments: { history: true } }));
+      expect(historial.resolutions).toHaveLength(1);
+      expect(historial.resolutions[0]).toMatchObject({ transaction_id: id, action: "confirm", resolved_by: "mato" });
+    });
   });
 
   it("get_overview responde el tablero completo del motor", async () => {

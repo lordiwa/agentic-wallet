@@ -13,6 +13,7 @@
     "test": "vitest run",
     "seed": "tsx src/seed/cli.ts",
     "onboard": "tsx src/onboard/cli.ts",
+    "review": "tsx src/review/cli.ts",
     "gmail-auth": "tsx scripts/gmail-auth.ts",
     "reconstruct": "tsx scripts/reconstruct.ts"
   },

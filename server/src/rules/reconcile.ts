@@ -408,6 +408,26 @@ export function isSameHolder(counterparty: string, titular: string): boolean {
 }
 
 /**
+ * Los tipos donde "la contraparte es el titular" significa plata propia
+ * cambiando de cuenta, en cualquiera de los dos sentidos.
+ *
+ * `transferencia` (`direction: 'out'`) era el unico caso hasta que la bandeja
+ * real mostro el otro: la variante 4.4b del formato Produbanco (§4.4b de
+ * docs/formato-correos-produbanco.md) notifica el MISMO movimiento desde el
+ * lado que recibe — `Enviada por: <titular>` y `Cuenta Contacto` apuntando a
+ * otra cuenta del propio titular. El parser lo clasifica `recibido` porque el
+ * correo es, literalmente, una transferencia recibida; el hecho economico es
+ * el mismo y **no es un ingreso**. Sin `recibido` en este conjunto esas filas
+ * sumaban al saldo plata que nunca entro desde afuera.
+ *
+ * `sueldo` NO entra, aunque tambien sea `direction: 'in'`: lo paga un
+ * empleador, no una cuenta propia. Y `debito`/`servicio`/`retiro` tampoco:
+ * ahi la contraparte es un comercio, y un comercio homonimo del titular no
+ * convierte un gasto real en un movimiento interno.
+ */
+const TRANSFER_LIKE_TYPES: ReadonlySet<string> = new Set(["transferencia", "recibido"]);
+
+/**
  * Si una transaccion ya parseada es un movimiento entre cuentas propias.
  * Compartida entre `markInternalTransfers` (durante el sync) y el
  * re-etiquetado del historial ya sincronizado (`category/reclassify.ts`), para
@@ -418,16 +438,18 @@ export function isInternalTransfer(
   titular: string | null
 ): boolean {
   if (titular === null || titular.trim() === "") return false;
-  if (tx.type !== "transferencia" || !tx.counterparty) return false;
+  if (!TRANSFER_LIKE_TYPES.has(tx.type) || !tx.counterparty) return false;
   return isSameHolder(tx.counterparty, titular);
 }
 
 /**
  * Rule 3 (spec 5.3.3 / AC3): a transferencia whose counterparty
- * (Contacto/Beneficiario, already extracted by F1-03) is the account
- * holder itself is an internal movement, not spend — mark
- * `is_internal = true` so it's excluded from the expense totals downstream.
- * Comparison is accent/case/whitespace/orden tolerante — ver `isSameHolder`.
+ * (Contacto/Beneficiario/Enviada por, already extracted by F1-03) is the
+ * account holder itself is an internal movement — mark `is_internal = true`
+ * so it's excluded from the totals downstream. Vale en los dos sentidos: la
+ * enviada no es gasto y la recibida no es ingreso (ver
+ * `TRANSFER_LIKE_TYPES`). Comparison is accent/case/whitespace/orden
+ * tolerante — ver `isSameHolder`.
  *
  * Sin titular configurado (`null` o vacio) la regla no se aplica: no hay
  * nombre contra el cual comparar, y marcar por parecido seria inventar. Las

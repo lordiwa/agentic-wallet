@@ -32,7 +32,15 @@ import {
   queryTransactions,
   type BalanceSnapshot,
 } from "./queries.js";
-import { bufferBodySchema, debtIdParamSchema, projectionQuerySchema, transactionsQuerySchema } from "./schemas.js";
+import { listReviewResolutions, resolveReview } from "../review/resolve.js";
+import {
+  bufferBodySchema,
+  debtIdParamSchema,
+  projectionQuerySchema,
+  reviewIdParamSchema,
+  reviewResolveBodySchema,
+  transactionsQuerySchema,
+} from "./schemas.js";
 import {
   colchonStatus,
   localMonthRange,
@@ -133,6 +141,7 @@ export function createApiRouter(getDb: () => Database.Database): Router {
       offset: q.offset,
       includeReversed: q.include_reversed,
       includeInternal: q.include_internal,
+      includeDiscarded: q.include_discarded,
     });
     res.json({ transactions: rows, count: rows.length });
   });
@@ -140,6 +149,48 @@ export function createApiRouter(getDb: () => Database.Database): Router {
   router.get("/review", (_req, res) => {
     const rows = queryReviewTransactions(getDb());
     res.json({ transactions: rows, count: rows.length });
+  });
+
+  /**
+   * La salida de la cola de revisión. Toda la decisión vive en
+   * `review/resolve.ts`; acá sólo se valida la forma del request y se traduce
+   * el error tipado del motor a un status HTTP.
+   *
+   * `not_found` es el único 404: el resto son afirmaciones del cliente que el
+   * motor rechaza (un monto donde no va, un monto que falta) y ésos son 400.
+   */
+  router.post("/review/:id/resolve", (req, res) => {
+    const params = reviewIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "invalid review id", details: params.error.flatten() });
+      return;
+    }
+    const body = reviewResolveBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "invalid resolve body", details: body.error.flatten() });
+      return;
+    }
+
+    const result = resolveReview(getDb(), {
+      id: params.data.id,
+      action: body.data.action,
+      amount: body.data.amount,
+      note: body.data.note,
+      resolvedBy: body.data.resolved_by ?? "http",
+    });
+
+    if (!result.ok) {
+      res.status(result.error === "not_found" ? 404 : 400).json({ error: result.error });
+      return;
+    }
+    res.json(result);
+  });
+
+  /** El rastro de quién resolvió qué y cuándo — la contraparte auditable de
+   * `POST /review/:id/resolve`. */
+  router.get("/review/resolutions", (_req, res) => {
+    const resolutions = listReviewResolutions(getDb());
+    res.json({ resolutions, count: resolutions.length });
   });
 
   router.get("/overview", (_req, res) => {

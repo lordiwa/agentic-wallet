@@ -9,5 +9,12 @@
  * a single shared clause so every aggregate (balanceActual, tarjetaStatus's
  * new-charges sum, transferenciasMes, spending_by_category, the essential-
  * spend average behind safeToSpendHoy) excludes the same rows the same way.
+ *
+ * `is_discarded = 0` es el quinto y el mas nuevo: una fila que un humano
+ * reviso y declaro "esto no es un movimiento real" sale de `needs_review`
+ * —o sea, sale de la cola— pero NO tiene que volver a los totales. Sin esta
+ * clausula, descartar y confirmar harian exactamente lo mismo. Ver
+ * `review/resolve.ts`.
  */
-export const EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND type != 'reverso'";
+export const EXCLUDE_FROM_TOTALS_SQL =
+  "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND is_discarded = 0 AND type != 'reverso'";

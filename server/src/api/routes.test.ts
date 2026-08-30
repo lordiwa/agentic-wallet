@@ -170,6 +170,106 @@ describe("GET /api/review", () => {
   });
 });
 
+// La salida de la cola: hasta este endpoint, `/api/review` era una lista de
+// solo lectura sobre filas que nada podia desmarcar. Ver review/resolve.ts.
+describe("POST /api/review/:id/resolve", () => {
+  function enRevision(overrides: Partial<NewTransaction> = {}): number {
+    return insertTransaction(db, baseTx({ gmail_msg_id: "flagged", needs_review: true, ...overrides })).row.id;
+  }
+
+  it("confirma la fila: sale de la cola y devuelve la transaccion y la auditoria", () => {
+    const id = enRevision({ amount: 12.5 });
+    return request(app)
+      .post(`/api/review/${id}/resolve`)
+      .send({ action: "confirm", resolved_by: "mato" })
+      .expect(200)
+      .then(async (res) => {
+        expect(res.body.changed).toBe(true);
+        expect(res.body.transaction.needs_review).toBe(0);
+        expect(res.body.transaction.amount).toBe(12.5);
+        expect(res.body.resolution).toMatchObject({ action: "confirm", resolved_by: "mato" });
+        const review = await request(app).get("/api/review").expect(200);
+        expect(review.body.count).toBe(0);
+      });
+  });
+
+  it("corrige el monto cuando lo afirma un humano", () => {
+    const id = enRevision({ amount: null });
+    return request(app)
+      .post(`/api/review/${id}/resolve`)
+      .send({ action: "correct", amount: 41.07, resolved_by: "mato", note: "leido del correo" })
+      .expect(200)
+      .then((res) => {
+        expect(res.body.transaction.amount).toBe(41.07);
+        expect(res.body.transaction.source).toBe("human");
+      });
+  });
+
+  it("descarta la fila sin devolverla a los totales", () => {
+    const id = enRevision({ amount: 12.5 });
+    return request(app)
+      .post(`/api/review/${id}/resolve`)
+      .send({ action: "discard", resolved_by: "mato" })
+      .expect(200)
+      .then((res) => {
+        expect(res.body.transaction.is_discarded).toBe(1);
+      });
+  });
+
+  it("es idempotente: la segunda llamada responde changed:false", async () => {
+    const id = enRevision({ amount: 12.5 });
+    await request(app).post(`/api/review/${id}/resolve`).send({ action: "confirm", resolved_by: "mato" }).expect(200);
+    const second = await request(app)
+      .post(`/api/review/${id}/resolve`)
+      .send({ action: "confirm", resolved_by: "mato" })
+      .expect(200);
+    expect(second.body).toMatchObject({ changed: false, reason: "already_resolved" });
+  });
+
+  it("404 cuando la fila no existe", () => {
+    return request(app)
+      .post("/api/review/9999/resolve")
+      .send({ action: "confirm", resolved_by: "mato" })
+      .expect(404)
+      .then((res) => expect(res.body.error).toBe("not_found"));
+  });
+
+  it.each([
+    ["accion desconocida", { action: "borrar", resolved_by: "mato" }],
+    ["correct sin monto", { action: "correct", resolved_by: "mato" }],
+    ["confirm con monto", { action: "confirm", amount: 9, resolved_by: "mato" }],
+    ["monto negativo", { action: "correct", amount: -1, resolved_by: "mato" }],
+    ["id no numerico", null],
+  ])("400 en %s", (_caso, body) => {
+    const id = enRevision({ amount: 12.5 });
+    const url = body === null ? "/api/review/abc/resolve" : `/api/review/${id}/resolve`;
+    return request(app)
+      .post(url)
+      .send(body ?? { action: "confirm", resolved_by: "mato" })
+      .expect(400);
+  });
+
+  it("una fila descartada desaparece de /api/transactions salvo que se la pida", async () => {
+    const id = enRevision({ gmail_msg_id: "descartada", amount: 12.5 });
+    await request(app).post(`/api/review/${id}/resolve`).send({ action: "discard", resolved_by: "mato" }).expect(200);
+
+    const listado = await request(app).get("/api/transactions").expect(200);
+    expect(listado.body.transactions.map((t: any) => t.gmail_msg_id)).not.toContain("descartada");
+
+    const conDescartadas = await request(app).get("/api/transactions?include_discarded=true").expect(200);
+    expect(conDescartadas.body.transactions.map((t: any) => t.gmail_msg_id)).toContain("descartada");
+  });
+
+  it("registra la resolucion en el historial consultable", async () => {
+    const id = enRevision({ amount: 12.5 });
+    await request(app).post(`/api/review/${id}/resolve`).send({ action: "confirm", resolved_by: "mato" }).expect(200);
+
+    const history = await request(app).get("/api/review/resolutions").expect(200);
+    expect(history.body.count).toBe(1);
+    expect(history.body.resolutions[0]).toMatchObject({ transaction_id: id, action: "confirm", resolved_by: "mato" });
+  });
+});
+
 describe("GET /api/overview", () => {
   it("returns null balance and null card when nothing is seeded yet, without inventing figures", () => {
     return request(app)
