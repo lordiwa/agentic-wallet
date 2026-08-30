@@ -205,6 +205,86 @@ Es la misma familia de trampa que el `server/bolsillo.sqlite` viejo del paso 1.
 
 ---
 
+## Paso 4 — El perfil, propuesto y escrito con datos reales (ítems #5 y #6)
+
+Los ítems #5 y #6 ya eran ✅, pero con un caveat grande: *"con el ledger vacío
+no se pudo ver la forma **poblada**"*. Acá se ve.
+
+### 4a. `--suggest` sobre 1140 transacciones
+
+Las cinco claves documentadas, ahora con contenido:
+
+| Clave | Qué salió |
+|---|---|
+| `titular` | presente (cadena de 29 caracteres) |
+| `salary` | `{fuente, cadencia, montoEstimado, diasPago, sampleSize}` — `cadencia: "quincenal"`, `sampleSize: 9` |
+| `mesesDeHistorial` | `7.3` |
+| `gastoMensualPromedio` | presente |
+| `uncategorized` | 15 entradas de `{counterparty, count, total}` |
+
+Dos afirmaciones de la doc que sólo se podían comprobar con datos, y se
+comprueban:
+
+- **`uncategorized` viene ordenado por plata gastada, descendente.** Los 15
+  totales salen `700 > 612 > 607 > 373 > 205 > … > 80`, estrictamente
+  decreciente. No por cantidad de veces: la tercera entrada tiene **240**
+  apariciones y la primera sólo 7. El orden correcto es ése —lo que más plata
+  mueve va primero—, y es el que efectivamente hace.
+- **`sampleSize: 9`** coincide exactamente con las 9 filas de tipo `sueldo` del
+  ledger. No es un número decorativo.
+
+### 4b. `--suggest | --set`: el flujo real es un pipe
+
+`parseSetPatch` (`cli.ts:125-168`) está hecho para tragarse **la salida entera
+de `--suggest` sin editarla**: ignora las claves que son sólo de sugerencia,
+renombra `salary` → `sueldo`, le saca el `sampleSize` (*"dice qué tan flaca es
+la lectura; no es parte del sueldo"*) y descarta `titular: null`. Así que el
+paso 5 del onboarding es literalmente un pipe:
+
+```bash
+SUG=$(npm run onboard -- --suggest | sed -n '/^{/,$p')
+npm run onboard -- --set "$SUG"     # -> {"ok":true,"written":["titular","sueldo"]}
+```
+
+Salió `{"ok": true, "written": ["titular", "sueldo"]}`, y en la base quedó
+`sueldo` con las cuatro claves buenas — **sin `sampleSize`**, como corresponde.
+
+Con eso, `--status` da **`complete: true`, `next: null`**: los seis pasos en
+verde sobre una instalación real.
+
+### 4c. El calendario de pagos **no** cae en la trampa del `"15"` pelado
+
+Éste era el riesgo concreto del ítem #6: `--set` acepta un día de pago pelado
+(`"15"`), deja `next_payday` en `null` y `safe_to_spend_hoy` en 0, y `--status`
+igual informa `profile: done` — un perfil "configurado" con el calendario mudo.
+
+Lo que `--suggest` propone **no** tiene esa forma: emite rangos,
+`diasPago: ["5-5","20-20"]`. Y el resultado se ve:
+
+```
+next_payday: 2026-09-05      # hoy es 2026-08-30
+safe_to_spend_hoy: número > 0
+```
+
+O sea: **el camino que va a caminar Kevin (`--suggest | --set`) produce un
+calendario que funciona.** La trampa del `"15"` sigue existiendo, pero sólo se
+pisa escribiendo el `diasPago` a mano. La advertencia de onboarding.md §5a
+queda bien puesta y ahora se sabe que no afecta al flujo normal.
+
+### 4d. La capa MCP, contra el bundle versionado
+
+El `get_balance` de arriba salió por el `.cjs` versionado, con un cliente stdio
+real. De paso:
+
+- **`stdout` es JSON-RPC puro**: 0 líneas no-JSON. (S10, revalidado.)
+- **El server expone 14 tools, y `mcp.md` documentaba 12.** La auditoría
+  anterior había anotado esto como S1 con 13 contra 12; el hueco creció al
+  agregarse `resolve_review` (`6759548`). **Corregido en este commit**: la tabla
+  de `mcp.md` lista ahora las 14, con `resolve_review` y `heal_counterparties`
+  en su lugar. S1 pasa a ✅.
+
+---
+
 ## Reproducir los pasos 1 y 2
 
 ```bash

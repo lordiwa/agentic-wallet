@@ -21,6 +21,7 @@ tiene tests. Si un número no cuadra, el bug está en `strategy/` o en
 | `get_overview` | El tablero completo de una llamada | `api/routes.ts` (`buildOverview`) |
 | `query_transactions` | Movimientos con filtros de fecha/tipo/contraparte | `api/queries.ts` (`queryTransactions`) |
 | `get_review_queue` | Filas en `needs_review` | `api/queries.ts` |
+| `resolve_review` | Confirma o descarta una fila de `needs_review` | `review/resolve.ts` (`resolveReview`) |
 | `get_spending_by_category` | Gasto por categoría en un período | `strategy/spending.ts` |
 | `sync` | Lee los correos nuevos de Gmail e incorpora al ledger | `sync/` (`buildProductionSyncRunner`) |
 | `onboarding_status` | En qué punto de la configuración está el usuario | `onboard/status.ts` |
@@ -28,6 +29,7 @@ tiene tests. Si un número no cuadra, el bug está en `strategy/` o en
 | `set_profile` | Guarda los campos de `strategy_config` confirmados | `db/strategy-config.ts` |
 | `set_rule` | Asocia un comercio a una categoría | `category/rules-repository.ts` |
 | `apply_rules` | Aplica las reglas al historial ya sincronizado | `category/backfill.ts` (`backfillCategories`) |
+| `heal_counterparties` | Rellena contrapartes faltantes releyendo el correo original | `ingest/` (`healCounterparties`) |
 
 Todas devuelven JSON. Las de lectura excluyen por defecto reversos,
 transferencias internas y filas en `needs_review` — que es lo correcto para
