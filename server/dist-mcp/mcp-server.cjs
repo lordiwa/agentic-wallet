@@ -49894,6 +49894,9 @@ function resolveReview(db, input, options = {}) {
     const row = getTransactionById(db, input.id);
     if (!row) return { ok: false, error: "not_found" };
     if (row.needs_review !== 1) return { ok: true, changed: false, reason: "already_resolved", transaction: row };
+    if (input.action === "confirm" && row.currency !== getStrategyConfig(db).moneda) {
+      return { ok: false, error: "foreign_currency" };
+    }
     const resolvedAt = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
     const newAmount = input.action === "correct" ? input.amount : null;
     const apply = db.transaction(() => {
