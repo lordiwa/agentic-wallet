@@ -240,7 +240,7 @@ npm run onboard                 <span class="c"># te dice qué falta, paso a pas
         <div>
           <h3>Conectás tu Claude y tu Gmail</h3>
           <p>Abrís un par de enlaces de autorización y le das permiso de <strong>lectura</strong> a tu correo. Es el tramo más largo (~10 minutos) porque hay que pasar por la consola de Google, pero está explicado pantalla por pantalla y no se repite.</p>
-          <p><a href="{{ '/conectar-gmail.html' | relative_url }}">Ver la guía de Gmail →</a></p>
+          <p><a href="{{ '/oauth-para-humanos.html' | relative_url }}">Ver la guía de Gmail, paso a paso →</a></p>
         </div>
       </div>
 
@@ -277,10 +277,16 @@ npm run onboard                 <span class="c"># te dice qué falta, paso a pas
         <span class="more">Leer la guía →</span>
       </a>
 
+      <a class="card" href="{{ '/oauth-para-humanos.html' | relative_url }}">
+        <h3>Darle permiso a tu Gmail — para no técnicos</h3>
+        <p>El único tramo que no se puede automatizar, explicado pantalla por pantalla: qué botón tocar, qué escribir en cada campo y cómo saber en cada paso que lo hiciste bien. Sin jerga.</p>
+        <span class="more">Ver los 46 pasos →</span>
+      </a>
+
       <a class="card" href="{{ '/conectar-gmail.html' | relative_url }}">
         <h3>Conectar Gmail (solo lectura)</h3>
-        <p>El paso a paso para darle permiso de lectura a tu correo, qué ve exactamente y cómo revocarlo cuando quieras.</p>
-        <span class="more">Ver el paso a paso →</span>
+        <p>La misma conexión, en versión corta y técnica: qué ve exactamente el wallet, por qué el cliente es de tipo escritorio y cómo revocarlo cuando quieras.</p>
+        <span class="more">Ver el resumen →</span>
       </a>
 
       <a class="card" href="{{ '/multibanco.html' | relative_url }}">

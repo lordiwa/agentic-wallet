@@ -91,7 +91,9 @@ Resumen de los cinco pasos:
 1. `.env` creado (`npm run onboard -- --init-env`)
 2. Credencial de Claude (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`)
 3. Gmail conectado en solo lectura (`npm run gmail-auth`, ver
-   [docs/conectar-gmail.md](docs/conectar-gmail.md))
+   [docs/conectar-gmail.md](docs/conectar-gmail.md); si quien lo hace no es
+   técnico, [docs/oauth-para-humanos.md](docs/oauth-para-humanos.md) lo lleva
+   pantalla por pantalla)
 4. Primer sync — trae tu historial
 5. Perfil: titular, sueldo, días de pago, colchón, topes
 

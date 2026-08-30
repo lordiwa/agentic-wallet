@@ -5,8 +5,8 @@
 #
 # CÓMO SE PUBLICAN LOS DOCUMENTOS CANÓNICOS
 # -----------------------------------------
-# onboarding-para-humanos.md, conectar-gmail.md, multibanco.md, onboarding.md y
-# mcp.md se publican SIN modificarlos: no llevan front matter ni marcadores de
+# onboarding-para-humanos.md, oauth-para-humanos.md, conectar-gmail.md,
+# multibanco.md, onboarding.md y mcp.md se publican SIN modificarlos: no llevan front matter ni marcadores de
 # Jekyll. Funcionan gracias a plugins que GitHub Pages trae activados de fábrica:
 #
 #   - jekyll-optional-front-matter: convierte los .md sin front matter en
@@ -73,6 +73,13 @@ defaults:
     values:
       title: Conectar Gmail
       kicker: Permiso de solo lectura, una sola vez
+      canonical: true
+
+  - scope:
+      path: "oauth-para-humanos.md"
+    values:
+      title: Darle permiso a tu Gmail
+      kicker: Paso a paso para no técnicos
       canonical: true
 
   - scope:

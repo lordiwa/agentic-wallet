@@ -115,6 +115,12 @@ El paso más largo, porque involucra la consola de Google Cloud. **El paso a
 paso completo está en [conectar-gmail.md](conectar-gmail.md)** — seguilo de
 ahí; acá va sólo el resumen.
 
+> **Si el usuario quiere hacer la consola solo**, mandalo a
+> [oauth-para-humanos.md](oauth-para-humanos.md) — la misma secuencia en 46
+> pasos numerados, sin jerga, con verificación por pantalla. Útil cuando la
+> sesión se corta: el usuario avanza por su cuenta y vuelve con los tres
+> valores.
+
 1. En Google Cloud Console: habilitar **Gmail API**, configurar la pantalla de
    consentimiento, agregar el scope `gmail.readonly`, y crear un cliente OAuth
    de tipo **Desktop app**.

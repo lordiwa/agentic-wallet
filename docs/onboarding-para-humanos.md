@@ -76,6 +76,11 @@ tu Gmail** (te va a mostrar qué exactamente: solo lectura), y listo.
 **Tu parte:** seguir las instrucciones de Google que te da el agente, y
 autorizar cuando el navegador te lo pida.
 
+> **Si querés hacerlo por tu cuenta**, o el agente no está a mano, seguí
+> [oauth-para-humanos.md](oauth-para-humanos.md): son 46 pasos numerados, con
+> el nombre exacto de cada botón y una verificación en cada pantalla. Está
+> escrito para alguien que nunca programó.
+
 > Es **solo lectura** — no puede enviar, modificar ni borrar correos. Y lo
 > podés revocar cuando quieras desde tu cuenta de Google.
 
