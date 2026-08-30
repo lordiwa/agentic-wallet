@@ -35,6 +35,17 @@
  *   sobre cómo se obtuvo el monto; después de una corrección manual no es ni
  *   `hybrid` ni `deterministic`.
  *
+ * ## Moneda extranjera
+ *
+ * `confirm` **se rechaza** (`foreign_currency`) cuando la fila está en una
+ * moneda distinta de `strategy_config.moneda`. Los totales suman `amount` sin
+ * mirar `currency` y no hay conversión en ninguna parte, así que confirmar una
+ * compra en otra moneda la haría pesar su número crudo como si fuera moneda
+ * base. El parser ya marca esas filas a propósito
+ * (`forceReview: true`, `reviewReason: foreign_currency_*`); esto es lo que
+ * evita que la resolución deshaga esa guarda. Quedan `correct` (con el
+ * equivalente convertido, que una persona afirma) y `discard`.
+ *
  * ## Idempotencia
  *
  * Resolver dos veces la misma fila no hace nada la segunda vez: se devuelve
@@ -54,6 +65,7 @@
 import type Database from "better-sqlite3";
 import { emitMetric, withSpanSync } from "../db/telemetry.js";
 import { getTransactionById, type TransactionRow } from "../db/repository.js";
+import { getStrategyConfig } from "../db/strategy-config.js";
 
 export const REVIEW_ACTIONS = ["confirm", "correct", "discard"] as const;
 export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
@@ -93,6 +105,7 @@ export type ResolveReviewError =
   | "amount_required"
   | "amount_not_allowed"
   | "invalid_amount"
+  | "foreign_currency"
   | "resolved_by_required";
 
 export type ResolveReviewResult =
@@ -135,6 +148,19 @@ export function resolveReview(
     const row = getTransactionById(db, input.id);
     if (!row) return { ok: false, error: "not_found" };
     if (row.needs_review !== 1) return { ok: true, changed: false, reason: "already_resolved", transaction: row };
+
+    // El parser marca las compras en otra moneda a proposito
+    // (`forceReview: true, reviewReason: foreign_currency_*`), porque los
+    // totales suman `amount` sin mirar `currency`: no hay conversion en
+    // ningun lado. Un `confirm` sobre una fila en otra moneda desharia esa
+    // guarda y meteria el numero crudo a los totales como si fuera moneda
+    // base -- ARS 16000 pesando como 16000 dolares distorsiona todo el
+    // tablero. Se rechaza el `confirm` y quedan las dos salidas que si son
+    // honestas: `correct` con el equivalente convertido (que ademas deja
+    // `source = 'human'`, porque ese numero lo puso una persona) o `discard`.
+    if (input.action === "confirm" && row.currency !== getStrategyConfig(db).moneda) {
+      return { ok: false, error: "foreign_currency" };
+    }
 
     const resolvedAt = (options.now ?? new Date()).toISOString();
     const newAmount = input.action === "correct" ? (input.amount as number) : null;

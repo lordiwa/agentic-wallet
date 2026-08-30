@@ -76,6 +76,71 @@ describe("resolveReview: confirmar", () => {
   });
 });
 
+describe("resolveReview: moneda extranjera", () => {
+  /**
+   * El caso que motiva la guarda, tal cual aparecio en el ledger real: una
+   * compra de ARS 16000 (~USD 12) marcada por el parser con
+   * `reviewReason: foreign_currency_ars`. Los totales suman `amount` sin
+   * mirar `currency`, asi que confirmarla la haria pesar 16000 dolares.
+   */
+  function enOtraMoneda() {
+    return enRevision({ amount: 16000, currency: "ARS", counterparty: "COMERCIO EXTRANJERO" });
+  }
+
+  it("rechaza confirmar una fila en otra moneda", () => {
+    const row = enOtraMoneda();
+
+    const result = resolveReview(db, { id: row.id, action: "confirm", resolvedBy: "tester" }, { now: NOW });
+
+    expect(result).toEqual({ ok: false, error: "foreign_currency" });
+  });
+
+  it("no escribe nada al rechazar: la fila sigue en la cola y sin auditoria", () => {
+    const row = enOtraMoneda();
+
+    resolveReview(db, { id: row.id, action: "confirm", resolvedBy: "tester" }, { now: NOW });
+
+    expect(queryReviewTransactions(db)).toHaveLength(1);
+    expect(listReviewResolutions(db)).toHaveLength(0);
+  });
+
+  it("el monto crudo no entra a los totales", () => {
+    const row = enOtraMoneda();
+    const antes = balanceActual(db);
+
+    resolveReview(db, { id: row.id, action: "confirm", resolvedBy: "tester" }, { now: NOW });
+
+    expect(balanceActual(db)).toEqual(antes);
+  });
+
+  it("deja pasar `correct`, que es una persona afirmando el equivalente convertido", () => {
+    const row = enOtraMoneda();
+
+    const result = resolveReview(db, { id: row.id, action: "correct", amount: 12.4, resolvedBy: "tester" }, { now: NOW });
+
+    expect(result.ok && result.changed).toBe(true);
+    expect(result.ok && result.changed && result.transaction.amount).toBe(12.4);
+    expect(result.ok && result.changed && result.transaction.source).toBe("human");
+  });
+
+  it("deja pasar `discard`", () => {
+    const row = enOtraMoneda();
+
+    const result = resolveReview(db, { id: row.id, action: "discard", resolvedBy: "tester" }, { now: NOW });
+
+    expect(result.ok && result.changed).toBe(true);
+    expect(result.ok && result.changed && result.transaction.is_discarded).toBe(1);
+  });
+
+  it("no le pone trabas a la moneda base", () => {
+    const row = enRevision({ amount: 12.5, currency: "USD" });
+
+    const result = resolveReview(db, { id: row.id, action: "confirm", resolvedBy: "tester" }, { now: NOW });
+
+    expect(result.ok && result.changed).toBe(true);
+  });
+});
+
 describe("resolveReview: corregir", () => {
   it("escribe el monto que afirma el humano y saca la fila de la cola", () => {
     const row = enRevision(); // amount: null -> placeholder 0 + needs_review
