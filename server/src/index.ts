@@ -6,6 +6,7 @@ import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
 import { createSyncRouter } from "./api/sync-route.js";
 import type { SyncRunner } from "./api/sync-route.js";
+import { classifyClaudeCredential } from "./claude-credential.js";
 import { buildDailyBrief } from "./brief/build-brief.js";
 import { startDailyBriefScheduler } from "./brief/scheduler.js";
 import type { QueryFn } from "./chat/chat-service.js";
@@ -23,10 +24,10 @@ export interface CreateAppOptions {
    */
   syncRunner?: SyncRunner | null;
   /**
-   * Overrides POST /api/chat's Claude-credential gate (same EITHER
-   * ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN check as `syncRunner`'s
-   * production wiring) -- pass `false`/`true` in tests instead of setting
-   * real env vars. Omit to use the real env-derived check.
+   * Overrides POST /api/chat's Claude-credential gate (el mismo
+   * `classifyClaudeCredential` que usa el wiring de produccion de
+   * `syncRunner`: presencia Y forma) -- pass `false`/`true` in tests instead
+   * of setting real env vars. Omit to use the real env-derived check.
    */
   chatCredential?: boolean;
   /**
@@ -73,7 +74,7 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
   const hasChatCredential = (): boolean =>
     "chatCredential" in options
       ? Boolean(options.chatCredential)
-      : Boolean(loadConfig().ANTHROPIC_API_KEY || loadConfig().CLAUDE_CODE_OAUTH_TOKEN);
+      : classifyClaudeCredential(loadConfig()).usable;
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });

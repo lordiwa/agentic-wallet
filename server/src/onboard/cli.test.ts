@@ -94,7 +94,9 @@ describe("--status", () => {
   it("advances to the sync step once .env and both credentials are present", async () => {
     const d = deps({
       env: {
-        CLAUDE_CODE_OAUTH_TOKEN: "tok",
+        // Con la forma real: el paso `claude` ahora mira el prefijo, no solo
+        // que la variable tenga algo (ver claude-credential.ts).
+        CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-ficticio",
         GMAIL_OAUTH_CLIENT_ID: "id",
         GMAIL_OAUTH_CLIENT_SECRET: "secret",
         GMAIL_OAUTH_REFRESH_TOKEN: "refresh",

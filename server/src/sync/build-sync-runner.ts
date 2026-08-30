@@ -4,17 +4,19 @@
  * SDK `EmailExtractor`. Returns `null` -- and never throws -- when required
  * credentials aren't configured, so `POST /api/sync` can report a clean
  * "gmail_not_configured" error (see api/sync-route.ts) instead of the route
- * crashing while constructing a client it can't actually authenticate. This
- * environment has no Gmail/Claude credentials configured, so this always
- * returns `null` here -- exercised for real once those are set.
+ * crashing while constructing a client it can't actually authenticate.
  *
  * The Claude credential gate accepts either a metered `ANTHROPIC_API_KEY` or
  * a Pro/Max subscription `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
- * setup-token`) -- either is sufficient. Neither is passed into the SDK
- * explicitly; `createClaudeEmailExtractor`'s `query()` call reads ambient
- * auth from `process.env` (see ingest/claude-email-extractor.ts).
+ * setup-token`), y ademas exige que el valor TENGA LA FORMA de esa
+ * credencial: ver claude-credential.ts para el modo de falla que motiva el
+ * chequeo. Ninguna de las dos se le pasa al SDK explicitamente;
+ * `createClaudeEmailExtractor`'s `query()` call reads ambient auth from
+ * `process.env` (see ingest/claude-email-extractor.ts) — verificado contra la
+ * API real el 2026-08-30 con un HOME limpio, sin `~/.claude/.credentials.json`.
  */
 import type Database from "better-sqlite3";
+import { classifyClaudeCredential } from "../claude-credential.js";
 import type { Config } from "../config.js";
 import type { SyncRunner } from "../api/sync-route.js";
 import { createClaudeEmailExtractor, createGoogleapisGmailClient } from "../ingest/index.js";
@@ -66,7 +68,13 @@ export function buildProductionSyncRunner(
   getDb: () => Database.Database,
   factories: SyncRunnerFactories = productionFactories
 ): SyncRunner | null {
-  if (!config.ANTHROPIC_API_KEY && !config.CLAUDE_CODE_OAUTH_TOKEN) return null;
+  // Se mira la forma de la credencial, no solo su presencia: un token con el
+  // prefijo equivocado autentica 401 en cada correo y el sync terminaria
+  // marcando el buzon entero `needs_review` sin explicar por que. Mejor no
+  // construir el runner y devolver el mismo error limpio que cuando falta.
+  if (!classifyClaudeCredential(config).usable) {
+    return null;
+  }
   if (!config.GMAIL_OAUTH_CLIENT_ID || !config.GMAIL_OAUTH_CLIENT_SECRET || !config.GMAIL_OAUTH_REFRESH_TOKEN) {
     return null;
   }

@@ -9,6 +9,7 @@
  */
 import { existsSync } from "node:fs";
 import type Database from "better-sqlite3";
+import { classifyClaudeCredential } from "../claude-credential.js";
 import { getStrategyConfig } from "../db/strategy-config.js";
 import { getSyncProgress } from "../db/sync-progress.js";
 
@@ -106,6 +107,28 @@ function syncStep(db: Database.Database | null): OnboardStep {
   };
 }
 
+const CLAUDE_STEP_ACTION =
+  "Corre `claude setup-token` y pega el token en CLAUDE_CODE_OAUTH_TOKEN " +
+  "(suscripcion Pro/Max), o pon una ANTHROPIC_API_KEY de la consola de Anthropic.";
+
+/**
+ * El paso mira la FORMA de la credencial, no solo que la variable tenga algo.
+ * La diferencia no es cosmetica: un valor con la forma equivocada devuelve 401
+ * en cada correo, y como una extraccion fallida es indistinguible de "Claude no
+ * encontro el monto", el sync se traga el buzon entero marcandolo
+ * `needs_review` sin decir nunca que el problema era la credencial. Ver
+ * claude-credential.ts.
+ */
+function claudeStep(env: NodeJS.ProcessEnv): OnboardStep {
+  const credential = classifyClaudeCredential(env);
+  return {
+    id: "claude",
+    title: "Credencial de Claude",
+    done: credential.usable,
+    action: credential.problem === "" ? CLAUDE_STEP_ACTION : `${credential.problem} ${CLAUDE_STEP_ACTION}`,
+  };
+}
+
 export function onboardStatus({ envPath, env, db }: OnboardInputs): OnboardStatus {
   const steps: OnboardStep[] = [
     {
@@ -114,14 +137,7 @@ export function onboardStatus({ envPath, env, db }: OnboardInputs): OnboardStatu
       done: existsSync(envPath),
       action: "Copia .env.example a .env en la raiz del repo (el CLI lo hace por ti).",
     },
-    {
-      id: "claude",
-      title: "Credencial de Claude",
-      done: hasValue(env, "ANTHROPIC_API_KEY") || hasValue(env, "CLAUDE_CODE_OAUTH_TOKEN"),
-      action:
-        "Corre `claude setup-token` y pega el token en CLAUDE_CODE_OAUTH_TOKEN " +
-        "(suscripcion Pro/Max), o pon una ANTHROPIC_API_KEY de la consola de Anthropic.",
-    },
+    claudeStep(env),
     {
       id: "gmail",
       title: "Gmail conectado (solo lectura)",

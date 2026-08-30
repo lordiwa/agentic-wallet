@@ -94,10 +94,30 @@ export function initEnv(deps: OnboardCliDeps): { created: boolean; path: string 
 }
 
 /**
+ * Campos que `--suggest` emite como DIAGNOSTICO, no como configuracion:
+ * describen el ledger para que el agente sepa que preguntar, y no tienen
+ * ningun destino en `strategy_config`. `--set` los descarta en vez de tratarlos
+ * como error, que es lo que hace que la propuesta se pueda devolver entera.
+ */
+const SUGGEST_ONLY_KEYS = new Set(["uncategorized", "gastoMensualPromedio", "mesesDeHistorial"]);
+
+/**
  * Parses `--set`'s JSON into a validated `Partial<StrategyConfig>`. Only the
  * fields onboarding is allowed to write are accepted; an unknown key is a
  * hard error rather than a silent no-op, so a typo'd field name surfaces
  * immediately instead of looking like it was saved.
+ *
+ * Acepta ademas la salida literal de `--suggest`, que es el bucle que la doc
+ * promete ("mostrar la propuesta -> el usuario la edita -> devolverla tal
+ * cual"). Ese bucle estaba roto: `--suggest` emite `salary` y tres campos de
+ * diagnostico, `--set` esperaba `sueldo` y nada mas, asi que devolver la
+ * propuesta entera fallaba con "campo(s) desconocido(s)". El objeto `salary`
+ * ES el objeto `sueldo` mas un `sampleSize` informativo, asi que la traduccion
+ * es un renombre, no una conversion.
+ *
+ * Lo que NO se relaja es la proteccion contra typos: cualquier clave que no
+ * sea ni configuracion ni uno de los tres diagnosticos conocidos sigue siendo
+ * error duro.
  *
  * `setStrategyConfig` does the per-field shape validation -- this only gates
  * *which* fields may be written.
@@ -122,11 +142,36 @@ export function parseSetPatch(json: string): Partial<StrategyConfig> {
     "titular",
     "balanceSnapshot",
   ]);
-  const unknown = Object.keys(parsed).filter((key) => !allowed.has(key));
+  const record = parsed as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((key) => !allowed.has(key) && !SUGGEST_ONLY_KEYS.has(key) && key !== "salary");
   if (unknown.length > 0) {
     throw new Error(`--set: campo(s) desconocido(s): ${unknown.join(", ")}. Validos: ${[...allowed].join(", ")}`);
   }
-  return parsed as Partial<StrategyConfig>;
+
+  const patch: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (SUGGEST_ONLY_KEYS.has(key)) continue;
+    // `salary: null` es como `--suggest` dice "no encontre sueldo en el
+    // ledger". Devolver eso tal cual no debe escribir un sueldo vacio.
+    if (key === "salary") {
+      if (value === null || value === undefined) continue;
+      if ("sueldo" in record) {
+        throw new Error("--set: no pases `salary` y `sueldo` a la vez; `salary` es el nombre que usa --suggest.");
+      }
+      patch.sueldo = stripSampleSize(value);
+      continue;
+    }
+    if (key === "titular" && value === null) continue;
+    patch[key] = value;
+  }
+  return patch as Partial<StrategyConfig>;
+}
+
+/** `sampleSize` dice que tan flaca es la lectura; no es parte del sueldo. */
+function stripSampleSize(salary: unknown): unknown {
+  if (typeof salary !== "object" || salary === null || Array.isArray(salary)) return salary;
+  const { sampleSize: _ignored, ...rest } = salary as Record<string, unknown>;
+  return rest;
 }
 
 /**

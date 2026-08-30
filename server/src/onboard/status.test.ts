@@ -132,7 +132,7 @@ describe("onboardStatus: paso sync", () => {
     const result = onboardStatus({
       envPath,
       env: {
-        ANTHROPIC_API_KEY: "sk-test",
+        ANTHROPIC_API_KEY: `sk-ant-api03-${"x".repeat(90)}`,
         GMAIL_OAUTH_CLIENT_ID: "id",
         GMAIL_OAUTH_CLIENT_SECRET: "secret",
         GMAIL_OAUTH_REFRESH_TOKEN: "refresh",

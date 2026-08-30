@@ -4,11 +4,17 @@ import { migrate } from "../db/schema.js";
 import { buildProductionSyncRunner, type SyncRunnerFactories } from "./build-sync-runner.js";
 import type { Config } from "../config.js";
 
+// El gate ahora mira el prefijo, no solo que haya algo: los placeholders
+// tienen que tener la FORMA de cada credencial. El relleno es basura a
+// proposito — no hay ningun secreto aca.
+const FAKE_API_KEY = `sk-ant-api03-${"x".repeat(90)}`;
+const FAKE_OAUTH_TOKEN = `sk-ant-oat01-${"x".repeat(90)}`;
+
 function baseConfig(overrides: Partial<Config> = {}): Config {
   return {
     PORT: 3000,
     WALLET_DB_PATH: ":memory:",
-    ANTHROPIC_API_KEY: "sk-test",
+    ANTHROPIC_API_KEY: FAKE_API_KEY,
     CLAUDE_CODE_OAUTH_TOKEN: undefined,
     GMAIL_OAUTH_CLIENT_ID: "client-id",
     GMAIL_OAUTH_CLIENT_SECRET: "client-secret",
@@ -45,7 +51,7 @@ describe("buildProductionSyncRunner", () => {
 
   it("returns a runner when only CLAUDE_CODE_OAUTH_TOKEN is set (subscription auth, no API key)", () => {
     const runner = buildProductionSyncRunner(
-      baseConfig({ ANTHROPIC_API_KEY: undefined, CLAUDE_CODE_OAUTH_TOKEN: "oauth-token" }),
+      baseConfig({ ANTHROPIC_API_KEY: undefined, CLAUDE_CODE_OAUTH_TOKEN: FAKE_OAUTH_TOKEN }),
       () => db(),
     );
     expect(runner).not.toBeNull();
@@ -56,10 +62,26 @@ describe("buildProductionSyncRunner", () => {
     expect(runner).not.toBeNull();
   });
 
+  // El modo de falla que motivo `classifyClaudeCredential`: en un `.env` real
+  // habia el refreshToken de ~/.claude/.credentials.json (sk-ant-ort01...)
+  // pegado donde va el token de `claude setup-token` (sk-ant-oat01...). Con el
+  // gate viejo —"la variable tiene algo"— el runner se construia igual y la API
+  // devolvia 401 por correo, hundiendo el buzon entero en needs_review.
+  it("returns null cuando el token de Claude tiene la forma equivocada (refresh token pegado)", () => {
+    const runner = buildProductionSyncRunner(
+      baseConfig({
+        ANTHROPIC_API_KEY: undefined,
+        CLAUDE_CODE_OAUTH_TOKEN: `sk-ant-ort01-${"x".repeat(90)}`,
+      }),
+      () => db(),
+    );
+    expect(runner).toBeNull();
+  });
+
   it("returns null when a Claude credential is set but a Gmail OAuth credential is missing", () => {
     expect(
       buildProductionSyncRunner(
-        baseConfig({ CLAUDE_CODE_OAUTH_TOKEN: "oauth-token", GMAIL_OAUTH_CLIENT_ID: undefined }),
+        baseConfig({ CLAUDE_CODE_OAUTH_TOKEN: FAKE_OAUTH_TOKEN, GMAIL_OAUTH_CLIENT_ID: undefined }),
         () => db(),
       ),
     ).toBeNull();

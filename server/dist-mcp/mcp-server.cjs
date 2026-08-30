@@ -50021,6 +50021,53 @@ var briefQuerySchema = external_exports.object({
 // src/onboard/status.ts
 var import_node_fs2 = require("node:fs");
 
+// src/claude-credential.ts
+var OAUTH_TOKEN_PREFIX = "sk-ant-oat";
+var API_KEY_PREFIX = "sk-ant-api";
+var REFRESH_TOKEN_PREFIX = "sk-ant-ort";
+function trimmed(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function classifyClaudeCredential(env) {
+  const apiKey = trimmed(env.ANTHROPIC_API_KEY);
+  const oauthToken = trimmed(env.CLAUDE_CODE_OAUTH_TOKEN);
+  if (apiKey !== "") {
+    if (apiKey.startsWith(API_KEY_PREFIX)) {
+      return { kind: "api-key", source: "ANTHROPIC_API_KEY", usable: true, problem: "" };
+    }
+    return {
+      kind: "malformed",
+      source: "ANTHROPIC_API_KEY",
+      usable: false,
+      problem: describe(apiKey, "ANTHROPIC_API_KEY", API_KEY_PREFIX)
+    };
+  }
+  if (oauthToken !== "") {
+    if (oauthToken.startsWith(OAUTH_TOKEN_PREFIX)) {
+      return { kind: "oauth-token", source: "CLAUDE_CODE_OAUTH_TOKEN", usable: true, problem: "" };
+    }
+    return {
+      kind: "malformed",
+      source: "CLAUDE_CODE_OAUTH_TOKEN",
+      usable: false,
+      problem: describe(oauthToken, "CLAUDE_CODE_OAUTH_TOKEN", OAUTH_TOKEN_PREFIX)
+    };
+  }
+  return { kind: "missing", source: null, usable: false, problem: "" };
+}
+function describe(value, variable, expectedPrefix) {
+  if (value.startsWith(REFRESH_TOKEN_PREFIX)) {
+    return `${variable} tiene un refresh token (empieza con ${REFRESH_TOKEN_PREFIX}...), no un token de acceso. Es el valor "refreshToken" de ~/.claude/.credentials.json; el que hace falta lo imprime \`claude setup-token\` y empieza con ${expectedPrefix}...`;
+  }
+  if (variable === "ANTHROPIC_API_KEY" && value.startsWith(OAUTH_TOKEN_PREFIX)) {
+    return `ANTHROPIC_API_KEY tiene un token de suscripcion (${OAUTH_TOKEN_PREFIX}...). Ese valor va en CLAUDE_CODE_OAUTH_TOKEN; ANTHROPIC_API_KEY espera una API key ${API_KEY_PREFIX}... de la consola de Anthropic.`;
+  }
+  if (variable === "CLAUDE_CODE_OAUTH_TOKEN" && value.startsWith(API_KEY_PREFIX)) {
+    return `CLAUDE_CODE_OAUTH_TOKEN tiene una API key (${API_KEY_PREFIX}...). Ese valor va en ANTHROPIC_API_KEY; CLAUDE_CODE_OAUTH_TOKEN espera el token que imprime \`claude setup-token\`.`;
+  }
+  return `${variable} no tiene la forma esperada: deberia empezar con ${expectedPrefix}...`;
+}
+
 // src/db/sync-progress.ts
 function parseJson(raw, fallback) {
   try {
@@ -50128,6 +50175,16 @@ function syncStep(db) {
     action: "Levanta el server (`npm run build && npm run dev`) y pulsa 'Sincronizar', o `curl -X POST localhost:3000/api/sync`."
   };
 }
+var CLAUDE_STEP_ACTION = "Corre `claude setup-token` y pega el token en CLAUDE_CODE_OAUTH_TOKEN (suscripcion Pro/Max), o pon una ANTHROPIC_API_KEY de la consola de Anthropic.";
+function claudeStep(env) {
+  const credential = classifyClaudeCredential(env);
+  return {
+    id: "claude",
+    title: "Credencial de Claude",
+    done: credential.usable,
+    action: credential.problem === "" ? CLAUDE_STEP_ACTION : `${credential.problem} ${CLAUDE_STEP_ACTION}`
+  };
+}
 function onboardStatus({ envPath, env, db }) {
   const steps = [
     {
@@ -50136,12 +50193,7 @@ function onboardStatus({ envPath, env, db }) {
       done: (0, import_node_fs2.existsSync)(envPath),
       action: "Copia .env.example a .env en la raiz del repo (el CLI lo hace por ti)."
     },
-    {
-      id: "claude",
-      title: "Credencial de Claude",
-      done: hasValue(env, "ANTHROPIC_API_KEY") || hasValue(env, "CLAUDE_CODE_OAUTH_TOKEN"),
-      action: "Corre `claude setup-token` y pega el token en CLAUDE_CODE_OAUTH_TOKEN (suscripcion Pro/Max), o pon una ANTHROPIC_API_KEY de la consola de Anthropic."
-    },
+    claudeStep(env),
     {
       id: "gmail",
       title: "Gmail conectado (solo lectura)",
@@ -51344,7 +51396,9 @@ var productionFactories = {
   createExtractor: createClaudeEmailExtractor
 };
 function buildProductionSyncRunner(config2, getDb, factories = productionFactories) {
-  if (!config2.ANTHROPIC_API_KEY && !config2.CLAUDE_CODE_OAUTH_TOKEN) return null;
+  if (!classifyClaudeCredential(config2).usable) {
+    return null;
+  }
   if (!config2.GMAIL_OAUTH_CLIENT_ID || !config2.GMAIL_OAUTH_CLIENT_SECRET || !config2.GMAIL_OAUTH_REFRESH_TOKEN) {
     return null;
   }
