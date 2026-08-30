@@ -5,9 +5,9 @@
 #
 # CÓMO SE PUBLICAN LOS DOCUMENTOS CANÓNICOS
 # -----------------------------------------
-# onboarding-para-humanos.md, oauth-para-humanos.md, conectar-gmail.md,
-# multibanco.md, onboarding.md y mcp.md se publican SIN modificarlos: no llevan front matter ni marcadores de
-# Jekyll. Funcionan gracias a plugins que GitHub Pages trae activados de fábrica:
+# instalar-en-windows.md, onboarding-para-humanos.md, oauth-para-humanos.md,
+# conectar-gmail.md, multibanco.md, onboarding.md y mcp.md se publican SIN
+# modificarlos: no llevan front matter ni marcadores de Jekyll. Funcionan gracias a plugins que GitHub Pages trae activados de fábrica:
 #
 #   - jekyll-optional-front-matter: convierte los .md sin front matter en
 #     páginas igual. Por eso existe /onboarding-para-humanos.html.
@@ -60,6 +60,13 @@ defaults:
     values:
       layout: default
       canonical: false
+
+  - scope:
+      path: "instalar-en-windows.md"
+    values:
+      title: Instalar el wallet en Windows
+      kicker: Tres dobles clics, sin escribir un comando
+      canonical: true
 
   - scope:
       path: "onboarding-para-humanos.md"

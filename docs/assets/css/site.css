@@ -343,6 +343,27 @@ a.card .more { display: inline-block; margin-top: .8rem; font-size: .88rem; font
 .install-step p { margin: 0 0 .7rem; color: var(--ink-soft); font-size: .97rem; }
 .install-step p:last-child { margin-bottom: 0; }
 
+/* "Si salió bien, ves esto". Alguien que no es técnico no sabe interpretar una
+   pantalla llena de texto: necesita un ancla concreta que le diga que puede
+   pasar al paso siguiente. Por eso va destacada y no como un renglón más. */
+.install-step .ok {
+  margin: .9rem 0 0; padding: .65rem .85rem;
+  background: var(--brand-soft); border-radius: 10px;
+  color: var(--brand); font-size: .93rem;
+}
+.install-step .ok strong { font-weight: 650; }
+
+/* Los nombres de archivo son LA acción de cada paso ("doble clic en esto"), así
+   que se ven como una etiqueta y no como texto suelto. Sólo acá y en el FAQ:
+   el `code` de la sección de privacidad se deja como estaba. */
+.install-step code, .faq .answer code {
+  background: var(--paper-alt); border: 1px solid var(--line);
+  border-radius: 6px; padding: .08rem .38rem; font-size: .88em; color: var(--ink);
+}
+
+.install-foot { margin: 1.6rem 0 0; font-size: .95rem; color: var(--ink-faint); }
+.install-foot + .install-foot { margin-top: .5rem; }
+
 /* Los comandos se envuelven, no scrollean.
    Un `pre` con `overflow-x: auto` y altura automática no crece para hacerle
    lugar a la barra de scroll horizontal: la barra se dibuja DENTRO de la caja y
@@ -389,6 +410,15 @@ pre.cmd .c { color: var(--ink-faint); }
 /* ---------- FAQ ---------- */
 
 .faq { display: grid; gap: .6rem; max-width: 52rem; }
+
+/* El FAQ es largo a propósito — la idea es que nadie tenga que preguntarle a
+   nadie. Con veinte preguntas seguidas no se encuentra nada, así que van
+   agrupadas por momento: antes de empezar, privacidad, uso diario, problemas. */
+.faq-group {
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-faint); font-weight: 700; margin: 2rem 0 .3rem;
+}
+.faq-group:first-child { margin-top: 0; }
 .faq details {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 0 1.35rem; box-shadow: var(--shadow);

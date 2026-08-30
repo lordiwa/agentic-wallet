@@ -200,8 +200,8 @@ description: >-
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Instalación</p>
-      <h2>Qué necesitás y cómo se pone en marcha</h2>
-      <p>La configuración lleva unos 30-40 minutos y se hace una sola vez. Está pensada para que <strong>un asistente de IA te vaya guiando</strong> paso a paso: tu parte es responder preguntas y autorizar en el navegador cuando te lo pida.</p>
+      <h2>Tres dobles clics, en orden</h2>
+      <p>No hay que escribir comandos ni saber programar. Descargás una carpeta y hacés doble clic en tres archivos, uno después del otro. Se hace <strong>una sola vez</strong>, y de ahí en más usás solo el tercero.</p>
     </div>
 
     <table class="req-table">
@@ -209,56 +209,51 @@ description: >-
         <tr><th>Necesitás</th><th>Para qué</th></tr>
       </thead>
       <tbody>
-        <tr><td>Una cuenta de Gmail</td><td>Es donde llegan los correos de tu banco.</td></tr>
-        <tr><td>Un banco que te avise por correo</td><td>Debe mandarte un mail por cada movimiento. Si tu banco solo avisa dentro de su app, esto no puede funcionar.</td></tr>
-        <tr><td>Una suscripción de Claude (Pro o Max) o una clave de Anthropic</td><td>Para la segunda opinión sobre los correos y para el chat. Con la suscripción no se paga por uso.</td></tr>
-        <tr><td>Node.js 22 o más nuevo</td><td>Es lo que hace correr el programa en tu equipo. Se instala una vez.</td></tr>
+        <tr><td>Una computadora con Windows 10 u 11</td><td>Por ahora la instalación de doble clic es solo para Windows.</td></tr>
+        <tr><td>Internet</td><td>Para descargar el wallet y para que después lea tus correos.</td></tr>
+        <tr><td>Tu cuenta de Gmail</td><td>Es donde llegan los avisos de tu banco.</td></tr>
+        <tr><td>Un banco que te avise por correo</td><td>Tiene que mandarte un mail por cada movimiento. Si solo te avisa dentro de su app, no hay de dónde sacar los datos.</td></tr>
+        <tr><td>Una cuenta de Claude (Pro o Max)</td><td>Es la que revisa los correos y contesta tus preguntas. Con la suscripción que ya pagás alcanza: no se paga nada aparte.</td></tr>
       </tbody>
     </table>
 
     <div class="install-steps">
       <div class="install-step">
         <div>
-          <h3>Traés el proyecto a tu computadora</h3>
-          <p>Se descarga el código y sus piezas. Un par de minutos.</p>
-<pre class="cmd">git clone https://github.com/lordiwa/agentic-wallet.git
-cd agentic-wallet
-npm install</pre>
+          <h3>Descargás la carpeta y hacés doble clic en <code>setup.bat</code></h3>
+          <p><a href="{{ site.repo_url }}/archive/refs/heads/main.zip">Descargá el wallet acá</a>. Te baja un archivo ZIP. Hacele <strong>clic derecho → Extraer todo</strong> y guardalo en <strong>Documentos</strong>. Importante: no abras los archivos desde adentro del ZIP, hay que extraerlo primero.</p>
+          <p>Entrá a la carpeta que quedó y hacé <strong>doble clic en <code>setup.bat</code></strong>. Se abre una ventana negra con letras: <strong>eso es normal, no es un error</strong>. Va contando sola en qué paso va, y tarda entre 5 y 20 minutos según tu internet. Podés dejarla trabajando y hacer otra cosa.</p>
+          <p>Mientras tanto Windows te puede preguntar un par de cosas. Si aparece una ventana azul preguntando si permitís cambios, decile que <strong>sí</strong>. Si dice <em>"Windows protegió tu PC"</em>, tocá <strong>Más información</strong> y después <strong>Ejecutar de todos modos</strong>: sale porque el archivo lo bajaste de internet, no porque tenga algo malo.</p>
+          <p class="ok"><strong>Si salió bien:</strong> la ventana termina diciendo <em>"La instalación terminó bien"</em>. Si dice otra cosa, cerrá la ventana y hacé doble clic en <code>setup.bat</code> de nuevo — no rompe nada y retoma donde había quedado.</p>
         </div>
       </div>
 
       <div class="install-step">
         <div>
-          <h3>Arrancás la configuración guiada</h3>
-          <p>Este comando crea tu archivo de configuración y después te dice, en cada momento, qué falta y cuál es el siguiente paso. Lo podés cortar y retomar cuando quieras.</p>
-<pre class="cmd">npm run onboard -- --init-env   <span class="c"># crea tu archivo de configuración</span>
-npm run onboard                 <span class="c"># te dice qué falta, paso a paso</span></pre>
+          <h3>Doble clic en <code>configurar.bat</code> y contestás lo que te pregunta</h3>
+          <p>Acá el wallet aprende de vos. Se abre un asistente y, cuando aparezca, le escribís (o copiás y pegás) esto:</p>
+<pre class="cmd">Ayudame a terminar de configurar mi wallet.
+Segui docs/onboarding.md paso a paso.</pre>
+          <p>De ahí en adelante él pregunta y vos contestás. Te va a pedir conectar tu cuenta de Claude, darle permiso de <strong>solo lectura</strong> a tu Gmail, tu nombre, cada cuánto cobrás, y a qué categoría va cada comercio donde gastás ("¿el supermercado es comida?"). Esas últimas son las importantes: es <em>tu</em> clasificación, no hay respuestas correctas ni incorrectas.</p>
+          <p>El permiso de Gmail es el tramo más largo (unos 10 minutos) porque hay que pasar por la página de Google. Está explicado pantalla por pantalla, con qué botón tocar en cada una: <a href="{{ '/oauth-para-humanos.html' | relative_url }}">ver la guía del permiso de Gmail →</a></p>
+          <p>Son unos 30 a 40 minutos en total. <strong>Podés cortar cuando quieras y seguir otro día</strong>: volvés a hacer doble clic en <code>configurar.bat</code> y el asistente retoma donde quedó.</p>
+          <p class="ok"><strong>Si salió bien:</strong> el asistente te dice que ya está todo configurado y que abras el wallet. Además ya trajo tus movimientos viejos, así que tu historial arranca lleno, no vacío.</p>
         </div>
       </div>
 
       <div class="install-step">
         <div>
-          <h3>Conectás tu Claude y tu Gmail</h3>
-          <p>Abrís un par de enlaces de autorización y le das permiso de <strong>lectura</strong> a tu correo. Es el tramo más largo (~10 minutos) porque hay que pasar por la consola de Google, pero está explicado pantalla por pantalla y no se repite.</p>
-          <p><a href="{{ '/oauth-para-humanos.html' | relative_url }}">Ver la guía de Gmail, paso a paso →</a></p>
-        </div>
-      </div>
-
-      <div class="install-step">
-        <div>
-          <h3>Traés tu historial y armás tu perfil</h3>
-          <p>La primera sincronización lee tus correos viejos del banco y arma tu historial. Después viene la parte donde ayudás vos: el wallet te muestra tus comercios más frecuentes y te pregunta a qué categoría va cada uno, cuál es tu sueldo y cuánto querés guardar de colchón.</p>
-        </div>
-      </div>
-
-      <div class="install-step">
-        <div>
-          <h3>Lo usás</h3>
-          <p>Levantás el programa y abrís <strong>http://localhost:3000</strong> en tu navegador: ahí está tu tablero y el chat.</p>
-<pre class="cmd">npm run dev</pre>
+          <h3>Doble clic en <code>iniciar.bat</code> — y ya está</h3>
+          <p>A los pocos segundos <strong>se abre solo tu navegador</strong> con el tablero. Si no se abriera, entrá vos a <strong>http://localhost:3000</strong>.</p>
+          <p>Dejá la ventana negra abierta mientras lo usás — es el wallet funcionando. Para cerrarlo, cerrá esa ventana.</p>
+          <p>Para traer los movimientos nuevos de tu banco, tocá el botón <strong>Sincronizar</strong> del tablero. No lo hace solo: lo pedís vos cuando querés.</p>
+          <p class="ok"><strong>Si salió bien:</strong> ves tu saldo, tus gastos por categoría y el chat. De acá en más este es <strong>el único archivo que vas a usar</strong>: doble clic en <code>iniciar.bat</code> cada vez que quieras mirar tu plata.</p>
         </div>
       </div>
     </div>
+
+    <p class="install-foot">¿Querés el detalle de cada pantalla, con la tabla de "si ves esto, hacé esto otro"? Está en <a href="{{ '/instalar-en-windows.html' | relative_url }}">Instalar el wallet en Windows</a>.</p>
+    <p class="install-foot">Si sos una persona técnica o estás en Mac o Linux, la instalación por línea de comandos está en el <a href="{{ site.repo_url }}#readme">README del repositorio</a>.</p>
   </div>
 </section>
 
@@ -267,10 +262,16 @@ npm run onboard                 <span class="c"># te dice qué falta, paso a pas
     <div class="section-head">
       <p class="eyebrow">Guías</p>
       <h2>Para leer antes de empezar</h2>
-      <p>La primera es la que te conviene si vas a ser la persona que usa el wallet. Las otras son para quien te ayude con la parte técnica.</p>
+      <p>Las dos primeras son las que te conviene leer si vas a ser la persona que usa el wallet. Las otras son para quien te ayude con la parte técnica.</p>
     </div>
 
     <div class="grid grid-2">
+      <a class="card" href="{{ '/instalar-en-windows.html' | relative_url }}">
+        <h3>Instalar el wallet en Windows</h3>
+        <p>Los tres dobles clics con todo el detalle: qué ves en cada pantalla, qué te puede preguntar Windows y una tabla de "si aparece esto, hacé esto otro". <strong>Si vas a instalarlo vos, es esta.</strong></p>
+        <span class="more">Ver los tres pasos →</span>
+      </a>
+
       <a class="card" href="{{ '/onboarding-para-humanos.html' | relative_url }}">
         <h3>Configurar tu wallet — guía para humanos</h3>
         <p>Qué va a pasar, qué necesitás tener a mano y qué te van a preguntar, sin un solo tecnicismo. <strong>Si es tu primera vez, empezá por acá.</strong></p>
@@ -308,64 +309,227 @@ npm run onboard                 <span class="c"># te dice qué falta, paso a pas
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Preguntas</p>
-      <h2>Lo que todo el mundo pregunta primero</h2>
+      <h2>Todo lo que te vas a preguntar</h2>
+      <p>Están agrupadas por el momento en que suelen aparecer. La idea es que puedas instalarlo y usarlo sin tener que preguntarle a nadie.</p>
     </div>
 
     <div class="faq">
-      <details open>
-        <summary>¿Se conecta a mi banco? ¿Le tengo que dar mi clave?</summary>
-        <div class="answer"><p>No, y no. Agentic Wallet <strong>nunca</strong> se conecta a tu banco ni te pide tu clave. Lo único que hace es leer los correos de aviso que el banco ya te manda a tu Gmail. Si mañana borrás el programa, tu banco ni se entera de que existió.</p></div>
-      </details>
+      <p class="faq-group">Antes de empezar</p>
 
-      <details>
-        <summary>¿Mis datos van a alguna nube?</summary>
+      <details open>
+        <summary>¿Necesito saber programar?</summary>
         <div class="answer">
-          <p>Tu historial no. Vive en un archivo de base de datos en tu computadora y no se sube a ningún lado.</p>
-          <p>Lo único que sale de tu equipo es el <strong>texto del correo bancario</strong>, que se envía a Claude para la segunda opinión sobre el monto — y va enmascarado: los números de cuenta se reemplazan antes de salir.</p>
+          <p><strong>No.</strong> Son tres dobles clics: <code>setup.bat</code>, <code>configurar.bat</code> e <code>iniciar.bat</code>. No hay que escribir ni un comando ni entender nada de lo que aparece en la ventana negra.</p>
+          <p>Lo único que hacés vos es <em>contestar preguntas</em> en el paso 2 — tu nombre, cada cuánto cobrás, a qué categoría va cada comercio — y darle el permiso a tu Gmail siguiendo <a href="{{ '/oauth-para-humanos.html' | relative_url }}">una guía con capturas de cada pantalla</a>.</p>
         </div>
       </details>
 
       <details>
-        <summary>¿Necesito saber programar?</summary>
+        <summary>¿Cuánto cuesta? ¿Es gratis?</summary>
         <div class="answer">
-          <p>Para <em>usarlo</em>, no: es un tablero en tu navegador y un chat.</p>
-          <p>Para <em>instalarlo</em>, hay que escribir unos comandos. Está diseñado para que un asistente de IA (como Claude Code) haga esa parte y te vaya preguntando lo que hace falta. Si tenés a alguien técnico cerca, también sirve.</p>
+          <p>El wallet es <strong>gratis</strong> y de código abierto. No hay suscripción, no hay versión "pro", no hay nada que pagar por usarlo.</p>
+          <p>Lo único que necesitás es <strong>una cuenta de Claude</strong>, que es la que lee los correos y contesta tus preguntas. Si ya tenés Claude <strong>Pro o Max</strong>, con eso alcanza: el wallet usa esa misma suscripción y <strong>no se te cobra nada aparte</strong>, ni por movimiento ni por pregunta.</p>
+          <p>(Existe otra forma de conectarlo, con una clave de programador de Anthropic, que sí se cobra por uso. No hace falta y no es la recomendada — con tu suscripción normal estás.)</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Cuánto tarda instalarlo?</summary>
+        <div class="answer">
+          <p>Contá una tarde tranquila: entre <strong>40 y 60 minutos</strong> en total, y buena parte es esperar mirando una barra de progreso.</p>
+          <p>El paso 1 (<code>setup.bat</code>) tarda 5 a 20 minutos y no requiere que hagas nada. El paso 2 (<code>configurar.bat</code>) son 30 a 40 minutos de preguntas y respuestas. <strong>Podés cortar el paso 2 y seguir otro día</strong>: retoma exactamente donde quedaste.</p>
+          <p>Se hace una sola vez. Después abrirlo son 10 segundos.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Funciona en Mac? ¿En Linux? ¿En el celular?</summary>
+        <div class="answer">
+          <p><strong>Por ahora, solo Windows 10 y 11.</strong> Los tres archivos de doble clic están hechos para Windows; en Mac o Linux no se abren.</p>
+          <p>En Mac y Linux <em>el wallet en sí funciona</em>, pero hay que instalarlo escribiendo comandos, así que hoy es un camino para alguien técnico. Hacer el instalador fácil para esos sistemas queda para más adelante.</p>
+          <p>En el celular no se instala. Sí podés <em>mirarlo</em> desde el celular si estás en la misma red de tu casa, pero eso ya es una configuración manual.</p>
         </div>
       </details>
 
       <details>
         <summary>¿Funciona con mi banco?</summary>
         <div class="answer">
-          <p>Depende de dos cosas. Primero: tu banco tiene que <strong>mandarte un correo por cada movimiento</strong>. Si solo te avisa dentro de su app, no hay de dónde sacar los datos.</p>
-          <p>Segundo: cada banco escribe sus correos distinto, así que hay que enseñarle a leer los del tuyo. El proyecto trae de ejemplo el lector de Produbanco (Ecuador). Si tu banco es otro, no es que "no funcione": es que <strong>todavía no está hecho</strong>, y es un trabajo acotado que puede hacer alguien técnico o un agente.</p>
+          <p>Depende de dos cosas. Primero: tu banco tiene que <strong>mandarte un correo por cada movimiento</strong>. Si solo te avisa dentro de su app, no hay de dónde sacar los datos y esto no puede funcionar.</p>
+          <p>Segundo: cada banco escribe sus correos distinto, así que hay que enseñarle a leer los del tuyo. Hoy está probado con <strong>Produbanco (Ecuador)</strong>. Si tu banco es otro, no es que "no funcione": es que <strong>todavía no está hecho</strong>. Es un trabajo acotado que puede hacer alguien técnico o un asistente de IA — <a href="{{ '/multibanco.html' | relative_url }}">acá está cómo</a>.</p>
+          <p>Si no sabés si tu banco te manda correos, buscá en tu Gmail el nombre de tu banco. Si aparecen avisos de "consumo", "transferencia" o "retiro", vas bien.</p>
         </div>
       </details>
 
       <details>
-        <summary>¿Cuánto cuesta?</summary>
+        <summary>¿Necesito tener la computadora prendida todo el día?</summary>
         <div class="answer">
-          <p>El proyecto es gratis y de código abierto. Lo que sí necesitás es acceso a Claude: con una suscripción Pro o Max <strong>no se paga por uso</strong>. La alternativa es una clave de API de Anthropic, que sí se cobra por consumo.</p>
+          <p>No. El wallet solo corre cuando vos lo abrís con <code>iniciar.bat</code>. Mientras tanto tus correos se siguen acumulando tranquilos en tu Gmail, y cuando lo abras y toques <strong>Sincronizar</strong>, se pone al día con todo lo que pasó.</p>
+        </div>
+      </details>
+
+      <p class="faq-group">Privacidad y seguridad</p>
+
+      <details>
+        <summary>¿Es seguro? ¿Alguien más ve mis datos?</summary>
+        <div class="answer">
+          <p>Nadie más los ve, y no es una promesa: es que <strong>no hay a dónde mandarlos</strong>. No existe un servidor del otro lado, no existe una cuenta que crear, no existe una base de datos con usuarios. Tu historial es un archivo (<code>wallet.sqlite</code>) dentro de la carpeta del wallet, en tu computadora, igual que un documento de Word.</p>
+          <p>Ni siquiera quien hizo el programa puede ver tus movimientos: no tiene por dónde. El código está abierto para que cualquiera que sepa lo verifique.</p>
         </div>
       </details>
 
       <details>
-        <summary>¿Y si lee mal un movimiento?</summary>
+        <summary>¿Se conecta a mi banco? ¿Le tengo que dar mi clave?</summary>
         <div class="answer">
-          <p>Por diseño, no se lo guarda para sí. Cuando el lector automático y la IA no coinciden en el monto, el movimiento se marca <strong>"para revisar"</strong> y <strong>no entra en ningún total</strong> hasta que vos lo mires. En el tablero tenés una bandeja con esos casos.</p>
+          <p><strong>No, y no.</strong> El wallet nunca se conecta a tu banco y nunca te pide tu clave. Si alguna vez algo te pide la clave del banco, no es esto: cerrá todo y preguntá.</p>
+          <p>Lo único que hace es leer los correos de aviso que el banco ya te manda a tu Gmail. Si mañana borrás el programa, tu banco ni se entera de que existió.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Puede mover mi plata, pagar algo o mandar correos?</summary>
+        <div class="answer">
+          <p>No puede hacer <strong>nada</strong> de eso. El permiso que le das a tu Gmail es de <strong>solo lectura</strong>: no puede enviar, responder, borrar ni modificar un correo. Y como no tiene ninguna conexión con tu banco, no puede transferir ni pagar nada.</p>
+          <p>Es un programa que <em>mira</em> y <em>ordena</em>. Nada más.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Mis correos se suben a la nube de Claude?</summary>
+        <div class="answer">
+          <p>Tu bandeja de entrada no se sube a ningún lado. Tu historial de gastos tampoco.</p>
+          <p>Lo que sí sale de tu computadora es el <strong>texto de cada correo bancario</strong>, que se le manda a Claude para que dé su segunda opinión sobre el monto. Y sale <strong>enmascarado</strong>: los números de cuenta se reemplazan por algo como <code>XXXXXX1234</code> <em>antes</em> de salir.</p>
+          <p>Los correos que no son de tu banco nunca se tocan. La búsqueda en tu Gmail está filtrada por los remitentes de tu banco: el resto de tu bandeja el wallet ni la mira.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Qué pasa si me hackean o me roban la computadora?</summary>
+        <div class="answer">
+          <p>Pasaría lo mismo que con cualquier archivo tuyo: quien tenga tu computadora desbloqueada podría abrir tu historial de gastos, igual que podría abrir tus fotos o tus documentos. Por eso la mejor protección es la de siempre: <strong>contraseña en tu usuario de Windows</strong>.</p>
+          <p>Lo importante es lo que <em>no</em> pasaría: nadie puede sacarte plata, porque el wallet no tiene acceso a tu banco. Y nadie puede leer tus datos "desde afuera", porque el tablero solo escucha dentro de tu propia computadora — desde otra máquina no se llega.</p>
+          <p>Si te preocupa, podés quitarle el permiso a tu Gmail en dos clics desde tu cuenta de Google, cuando quieras, sin pedirle permiso a nadie.</p>
         </div>
       </details>
 
       <details>
         <summary>¿Puedo borrar todo?</summary>
         <div class="answer">
-          <p>Sí, y es tan simple como borrar la carpeta. No queda una copia en ningún servidor porque nunca hubo servidor. Además podés quitarle el permiso a tu Gmail desde tu cuenta de Google cuando quieras.</p>
+          <p>Sí, y es tan simple como <strong>borrar la carpeta</strong>. Listo. No queda una copia en ningún servidor porque nunca hubo servidor.</p>
+          <p>Aparte, si querés cortar el acceso a tu correo: entrá a tu cuenta de Google, buscá las aplicaciones con acceso y quitale el permiso al wallet. Son dos clics.</p>
+        </div>
+      </details>
+
+      <p class="faq-group">Usarlo todos los días</p>
+
+      <details>
+        <summary>¿Cómo le hago una pregunta al wallet?</summary>
+        <div class="answer">
+          <p>En el tablero hay un chat. Escribís como le hablarías a una persona y te contesta <strong>sobre tu historial real</strong>, no en general. Por ejemplo:</p>
+          <p>"¿Cuánto gasté en comida este mes?" · "¿Qué pagué la semana pasada?" · "¿Me alcanza para la cuota de la moto?" · "¿En qué se me está yendo más plata que el mes pasado?" · "¿Cuánto falta para que cobre?" · "Mostrame todo lo que gasté en el supermercado".</p>
+          <p>No hay que aprenderse ninguna fórmula ni escribir de una manera especial. Si no entiende algo, preguntale de nuevo con otras palabras.</p>
         </div>
       </details>
 
       <details>
-        <summary>¿Qué pasa cuando salgan mejoras?</summary>
+        <summary>¿Trae los movimientos nuevos solo?</summary>
         <div class="answer">
-          <p>Actualizás el proyecto con un par de comandos. Tu configuración y tu base de datos están fuera del control de versiones a propósito: una actualización <strong>nunca</strong> toca tus datos ni tus credenciales.</p>
+          <p>No: lo pedís vos. Abrís el wallet y tocás el botón <strong>Sincronizar</strong>. Ahí va a tu Gmail, busca los avisos del banco que todavía no había leído y los agrega.</p>
+          <p>Si hacía mucho que no lo abrías y hay muchos correos, puede decirte que quedan algunos pendientes: tocá <strong>Sincronizar</strong> otra vez hasta que termine. No repite ni duplica nada — lo que ya leyó, ya está.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Qué son los movimientos "en revisión"?</summary>
+        <div class="answer">
+          <p>Son los movimientos que el wallet <strong>no está 100% seguro de haber leído bien</strong>, y por eso prefiere avisarte antes que darte un número inventado.</p>
+          <p>Cada correo lo leen dos: un lector automático (que siempre hace lo mismo) y la IA como segunda opinión. Si los dos coinciden en el monto, entra. Si no coinciden, el movimiento va a la bandeja <strong>"Necesitan revisión"</strong> y <strong>queda fuera de todos los totales</strong> hasta que vos lo mires. Por eso a veces el chat te dice "dejé fuera 3 movimientos que están en revisión": está siendo honesto con vos.</p>
+          <p>Para resolverlos, abrí el asistente (<code>configurar.bat</code>) y pedile: <em>"mostrame los movimientos en revisión y ayudame a resolverlos"</em>. Te los va mostrando de a uno y vos decís si el monto está bien (se confirma y entra a los totales) o si hay que descartarlo. Podés dejarlos ahí todo el tiempo que quieras: no molestan, solo no suman.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Qué pasa si cierro la ventana o se corta la luz?</summary>
+        <div class="answer">
+          <p>No se pierde nada. Todo lo que el wallet ya leyó quedó <strong>guardado en tu computadora</strong> en el momento, no en la memoria. Volvés a hacer doble clic en <code>iniciar.bat</code> y está todo como lo dejaste.</p>
+          <p>Si se corta en la mitad de una sincronización, tampoco pasa nada: la próxima vez retoma desde donde había llegado y sigue. Y si se corta en la mitad de la configuración, <code>configurar.bat</code> retoma en la pregunta donde quedaste.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Puedo usarlo sin internet?</summary>
+        <div class="answer">
+          <p>Casi todo, sí. Tu tablero, tu saldo, tus gastos por categoría, tus movimientos, los filtros: todo eso vive en tu computadora y funciona <strong>sin internet</strong>.</p>
+          <p>Dos cosas sí lo necesitan: <strong>Sincronizar</strong> (porque tiene que ir a buscar los correos a tu Gmail) y el <strong>chat</strong> (porque la respuesta la arma Claude). Sin conexión, esas dos te van a dar error; el resto anda igual.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Puedo tenerlo en dos computadoras?</summary>
+        <div class="answer">
+          <p>Sí, pero cada una es independiente: <strong>los datos viven en cada computadora, no en la nube</strong>, así que no se sincronizan entre sí. Si cargás algo en una, la otra no se entera.</p>
+          <p>Tenés dos formas. Instalarlo de cero en la segunda (los tres dobles clics otra vez) y que arme su propio historial desde tu Gmail — funciona, pero volvés a contestar todas las preguntas. O copiar la carpeta entera en un pendrive y, en la máquina nueva, hacer doble clic en <code>setup.bat</code> una sola vez: así se lleva tu configuración y tu historial tal cual, y <code>setup.bat</code> solo acomoda las piezas de esa computadora sin tocarte los datos.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Cómo hago una copia de respaldo?</summary>
+        <div class="answer">
+          <p>Copiá la carpeta del wallet a un pendrive o a un disco externo. Ahí adentro está todo: tu historial (<code>wallet.sqlite</code>) y tu configuración.</p>
+          <p>Pensalo como un documento: si lo perdés, no hay nadie que tenga otra copia. La contracara de que nadie más vea tus datos es que <strong>el respaldo lo hacés vos</strong>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>¿Qué pasa cuando salgan mejoras? ¿Tengo que actualizar?</summary>
+        <div class="answer">
+          <p>No estás obligado a nada: el que tenés instalado va a seguir funcionando igual.</p>
+          <p>Cuando quieras la versión nueva, lo más fácil es abrir <code>configurar.bat</code> y pedirle al asistente: <em>"actualizá el wallet a la última versión sin tocar mis datos"</em>. Él se encarga.</p>
+          <p><strong>Tu historial y tu configuración están guardados en archivos aparte, a propósito</strong>, justamente para que una actualización no te borre nada. No hay que volver a contestar las preguntas.</p>
+        </div>
+      </details>
+
+      <p class="faq-group">Si algo no sale bien</p>
+
+      <details>
+        <summary>¿Qué hago si algo no funciona?</summary>
+        <div class="answer">
+          <p>Tres cosas, en este orden:</p>
+          <p><strong>1. Volvé a intentar el mismo paso.</strong> Los tres archivos están hechos para poder ejecutarse las veces que quieras: no rompen nada y retoman donde quedaron. La mitad de los problemas se arreglan cerrando la ventana y haciendo doble clic de nuevo.</p>
+          <p><strong>2. Buscá el mensaje en la tabla de problemas.</strong> En <a href="{{ '/instalar-en-windows.html' | relative_url }}">Instalar el wallet en Windows</a> hay una tabla de "si ves esto, hacé esto otro" con los casos más comunes.</p>
+          <p><strong>3. Pedí ayuda, pero con el mensaje exacto.</strong> Sacale una foto o una captura a la ventana, o copiá el texto tal cual aparece. "No me anda" no se puede arreglar; el mensaje exacto casi siempre sí. Cuando el instalador falla también te dice la ruta de un archivo de registro: mandá ese archivo, no tiene datos tuyos, solo mensajes del instalador.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Se abrió una ventana negra llena de letras. ¿Rompí algo?</summary>
+        <div class="answer">
+          <p>No. Esa ventana <strong>es</strong> el programa trabajando — así se ve por dentro. Va escribiendo lo que va haciendo. No hace falta que entiendas nada de lo que dice; solo mirá el final, que te avisa si terminó bien o no.</p>
+          <p>Mientras usás el wallet, esa ventana tiene que quedar abierta. Si la cerrás, el wallet se apaga (y no pasa nada: lo volvés a abrir con <code>iniciar.bat</code>).</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Windows me dice que "protegió mi PC" o que el archivo es peligroso</summary>
+        <div class="answer">
+          <p>Es un aviso automático que Windows le pone a <strong>todo</strong> archivo bajado de internet, no un antivirus que encontró algo. Tocá <strong>Más información</strong> y después <strong>Ejecutar de todos modos</strong>.</p>
+          <p>Si en cambio la ventana se cierra sola al instante, es que Windows bloqueó el archivo: clic derecho en <code>setup.bat</code> → <strong>Propiedades</strong> → tildá <strong>Desbloquear</strong> → <strong>Aceptar</strong>, y probá de nuevo.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Los números no me cuadran con lo que dice mi banco</summary>
+        <div class="answer">
+          <p>Lo más común es que haya movimientos <strong>en revisión</strong>, que a propósito no suman a ningún total. Fijate primero en esa bandeja del tablero.</p>
+          <p>También puede ser que falten movimientos de los que tu banco no te mandó correo (algunos no avisan de ciertas operaciones), o que no hayas tocado <strong>Sincronizar</strong> desde la última compra.</p>
+          <p>El wallet no adivina: solo sabe lo que llegó por correo. Si un movimiento nunca te lo avisaron por mail, para el wallet no existe.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Nunca configuré nada de esto. ¿Y si me equivoco en una respuesta?</summary>
+        <div class="answer">
+          <p>No hay forma de romper nada. En las preguntas de categorías (<em>"¿el supermercado es comida?"</em>) <strong>no hay respuestas incorrectas</strong>: es tu clasificación, la usás vos y la podés cambiar cuando quieras pidiéndoselo al asistente.</p>
+          <p>Y si te equivocaste en algo más grande —el sueldo, los días de cobro— volvés a abrir <code>configurar.bat</code> y le decís qué querés corregir. Nada se escribe sin que vos lo confirmes antes.</p>
         </div>
       </details>
     </div>
@@ -377,8 +541,8 @@ npm run onboard                 <span class="c"># te dice qué falta, paso a pas
     <h2>Tu historial financiero debería ser tuyo</h2>
     <p>No hace falta subir tus movimientos a una aplicación que no conocés para saber en qué se te va la plata. Ya tenés los datos en tu correo — esto solo los ordena, y los deja donde estaban: con vos.</p>
     <p class="cta-row">
-      <a class="btn btn-primary" href="{{ '/onboarding-para-humanos.html' | relative_url }}">Empezar con la guía</a>
-      <a class="btn btn-ghost" href="{{ site.repo_url }}">Ver el código en GitHub</a>
+      <a class="btn btn-primary" href="#instalacion">Instalarlo — son tres dobles clics</a>
+      <a class="btn btn-ghost" href="{{ '/onboarding-para-humanos.html' | relative_url }}">Leer la guía primero</a>
     </p>
   </div>
 </section>
