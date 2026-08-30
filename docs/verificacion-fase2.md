@@ -98,10 +98,72 @@ pero ahí suman 49 correos: la proporción real en la ventana muestreada es
 mucho mayor. Nada de esto entra al ledger, así que **el gasto reportado hoy es
 un piso, no el total**. Es la brecha más grande que queda.
 
+## Drenado completo del buzón — en curso
+
+Segunda pasada, ya con el parser ampliado (commit `9a55b99`) y sobre una base
+recién creada. El objetivo es drenar los **1725** correos del backlog, no una
+muestra. Corre con `server/scripts/fase2-verify.ts drain`: el mismo runner de
+producción en lotes, persistiendo `sync_progress` **antes** de seguir, así que
+matar el proceso en cualquier momento no pierde trabajo y la siguiente llamada
+retoma donde quedó.
+
+Corte de esta medición: **444 / 1725 procesados (25,7 %)**, `255`
+transacciones. Ritmo observado ≈ 17 correos/min (≈ 20 por lote), sin un solo
+lote fallido.
+
+| | |
+|---|---|
+| Ventana cubierta | 2026-07-23 → 2026-08-30 |
+| `amount = 0` | **0** en todo el ledger |
+| `recibido` con monto | **23 / 23** (0 en cero) |
+| Cuentas pobladas | 171 / 255 |
+| `needs_review` | 7 (4 reversos sin aparear, 3 `servicio`) |
+| Mojibake en `counterparty` | **0** — el fix de decodificación aguanta |
+| Reversos apareados | 11 filas con `is_reversed = 1` |
+
+Los tres bugs que motivaron la fase 1 siguen sin reproducirse a esta escala:
+`debito` (73), `credito` (52), `recibido` (23), `retiro` (6), `recarga` (3) y
+`sueldo` (2) entran **todos** con cuenta y con monto distinto de cero.
+
+### Lo que aparece al ampliar la ventana
+
+Las 84 filas sin `account` no están repartidas: se concentran en tres tipos.
+
+- **`transferencia`: 66 de 70 sin cuenta.** Es el hueco nuevo más grande y no
+  estaba en la muestra de la primera pasada. Hay que mirar el asunto real de
+  la transferencia enviada antes de decidir si es bug de parser o si el correo
+  simplemente no trae la cuenta.
+- **`reverso`: 15 de 15 sin cuenta**, 4 en review. Consistente con el hallazgo
+  de la primera pasada: el reverso queda auditable en vez de aparearse mal.
+- **`servicio`: 3 de 11 sin cuenta**, las mismas 3 en review.
+
+Nada de esto se corrigió: esta medición es de observación, sin backfill ni
+heal.
+
+### Cómo continuar
+
+```bash
+env WALLET_TELEMETRY_SILENT=1 ./node_modules/.bin/tsx \
+  server/scripts/fase2-verify.ts drain     # retoma desde el checkpoint
+env WALLET_TELEMETRY_SILENT=1 ./node_modules/.bin/tsx \
+  server/scripts/fase2-verify.ts stats     # foto de la base
+```
+
+**Un solo `drain` a la vez.** Dos procesos contra el mismo SQLite se pisan el
+checkpoint entre ellos: el avance por lote se desploma y los lotes se
+solapan. Si hay que matarlo, matá el PID del proceso `node`, no con `pkill -f`
+sobre el nombre del script — el patrón también matchea el shell que lo
+invoca.
+
+Falta todavía la parte de **cobertura** de esta segunda pasada: el conteo de
+asuntos que siguen cayendo en `ignored` sobre el buzón entero (subcomando
+`classify`). El 50,6 % de la primera pasada es sobre 265 correos, no sobre los
+1725.
+
 ## Lo que quedó pendiente
 
-- **1459 correos sin procesar** (84,6 % del backlog). El checkpoint de
-  `sync_progress` está intacto: la próxima llamada a `sync` sigue donde quedó,
+- **1281 correos sin procesar** del drenado en curso. El checkpoint de
+  `sync_progress` está intacto: la próxima llamada a `drain` sigue donde quedó,
   sin repetir trabajo.
 - **La ventana anterior a 2026-08-07 no se probó.** Si los correos viejos usan
   otra plantilla, este resultado no dice nada sobre ellos.
