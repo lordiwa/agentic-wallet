@@ -134,6 +134,10 @@ const AFTER_ESTABLECIMIENTO = ["Cuenta Débito", "Cuenta", "Fecha y Hora", "Fech
 const AFTER_BENEFICIARIO = [
   "Banco Beneficiario",
   "Cuenta Beneficiario",
+  // La variante `Contacto` de la recibida (4.4b) usa estos dos labels donde
+  // 4.16 usa `Banco Origen` / `Cuenta Beneficiario`.
+  "Banco Contacto",
+  "Cuenta Contacto",
   "Banco Origen",
   "Beneficiario",
   "Monto",
@@ -610,13 +614,21 @@ function classify(email: InboundEmail): ParseResult {
   // El cross-check con el asunto se hace igual: los correos reales no traen el
   // monto ahí, pero si alguno lo trajera serían dos afirmaciones independientes
   // del mismo número y el desacuerdo tiene que marcar, no elegir.
+  // 4.4b: el MISMO asunto llega con un segundo cuerpo, con campos donde 4.4
+  // tiene prosa — `Enviada por` para el remitente y `Banco`/`Cuenta Contacto`
+  // para el destino. `Contacto` acá es el DESTINO y no la contraparte: el
+  // dinero sale de Produbanco y ningún correo real de esta variante trae
+  // Produbanco en `Banco Contacto`; sus valores son los mismos que el `Banco
+  // Destino` / `Cuenta Destino` de 4.4, o sea las cuentas del usuario.
   if (subject.includes("transferencia recibida desde produbanco")) {
     const reading = crossCheckAmount(extractAmount(rawSubject, "either"), extractLabeledAmount(body, "Monto"));
     return transaction({
       type: "recibido",
       direction: "in",
-      counterparty: fromProse(body, REMITENTE_RE),
-      account: maskedAccount(extractField(body, "Cuenta Destino", AFTER_CUENTA)),
+      counterparty: fromProse(body, REMITENTE_RE) ?? extractField(body, "Enviada por", AFTER_BENEFICIARIO),
+      account: maskedAccount(
+        extractField(body, "Cuenta Destino", AFTER_CUENTA) ?? extractField(body, "Cuenta Contacto", AFTER_CUENTA)
+      ),
       raw_subject: rawSubject,
       ...reviewed(reading, "amount_not_found_in_body"),
     });

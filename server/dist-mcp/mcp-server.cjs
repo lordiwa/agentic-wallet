@@ -50159,10 +50159,11 @@ function extractField(body, label, stopLabels = []) {
   return extractFieldValues(body, label, stopLabels)[0] ?? null;
 }
 var VALUE_AMOUNT_RE = /^(?:USD|\$)\s*([0-9]+\.[0-9]{2})(?![0-9])/i;
-function extractLabeledAmount(body, label) {
+var BARE_VALUE_AMOUNT_RE = /^([0-9]+\.[0-9]{2})(?![0-9.,:/-])/;
+function extractLabeledAmount(body, label, { bareAllowed = false } = {}) {
   const readings = /* @__PURE__ */ new Set();
   for (const value of extractFieldValues(body, label, [])) {
-    const match = value.match(VALUE_AMOUNT_RE);
+    const match = value.match(VALUE_AMOUNT_RE) ?? (bareAllowed ? value.match(BARE_VALUE_AMOUNT_RE) : null);
     if (match) readings.add(Number(match[1]));
   }
   if (readings.size === 0) return { amount: null, ambiguous: false };
@@ -50357,6 +50358,21 @@ var AFTER_CUENTA = [
   "Establecimiento"
 ];
 var AFTER_ESTABLECIMIENTO = ["Cuenta D\xE9bito", "Cuenta", "Fecha y Hora", "Fecha", "Referencia", "Valor", "Monto"];
+var AFTER_BENEFICIARIO = [
+  "Banco Beneficiario",
+  "Cuenta Beneficiario",
+  // La variante `Contacto` de la recibida (4.4b) usa estos dos labels donde
+  // 4.16 usa `Banco Origen` / `Cuenta Beneficiario`.
+  "Banco Contacto",
+  "Cuenta Contacto",
+  "Banco Origen",
+  "Beneficiario",
+  "Monto",
+  "Descripci\xF3n",
+  "Canal",
+  "Referencia"
+];
+var AFTER_TRANSACCION = ["Canal", "Monto", "Fecha y Hora", "Fecha", "Detalle"];
 var DEBIT_ACCOUNT_LABEL2 = "Cuenta D\xE9bito";
 var HEADER_HOLDER_RE = /Estimado\/a[:\s]*\n[^\S\n]*([^\n:]{2,60})\n/;
 function accountHolder(body) {
@@ -50377,6 +50393,7 @@ function transaction(params) {
     counterparty: params.counterparty ?? null,
     account: params.account ?? null,
     account_holder: params.account_holder ?? null,
+    ...params.isInternal === true ? { is_internal: true } : {},
     raw_subject: params.raw_subject,
     needs_review: needsReview,
     ...needsReview ? { review_reason: params.reviewReason ?? "amount_not_found" } : {}
@@ -50388,14 +50405,55 @@ function reviewed(reading, reasonWhenMissing) {
 var CREDIT_CARD_RE = new RegExp(`tarjeta de cr[e\xE9]dito[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
 var REMITENTE_RE = /te confirmamos que\s+(.+?)\s+ha realizado una transferencia/i;
 var CUENTA_ACREDITADA_RE = new RegExp(`en tu cuenta\\s+(${MASKED_ACCOUNT_RE.source})`, "i");
-var CUENTA_DEBITADA_RE = new RegExp(`de la cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
+var CUENTA_DEBITADA_RE = new RegExp(`de (?:la|su|tu) cuenta\\s+[^.\\n]*?(${MASKED_ACCOUNT_RE.source})`, "i");
 var VALOR_PROSA_RE = /por un valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+var MONTO_PROSA_RE = /por el monto de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
+var TARJETA_PAGADA_RE = /pago de la tarjeta\s+(.+?)\s+por el monto de/i;
 var VALOR_INTERNACIONAL_RE = /por el valor de\s+USD\s*([0-9]+\.[0-9]{2})\b/i;
 var EMPRESA_INTERNACIONAL_RE = /\bde\s+((?:(?!\bde\s).)+?)\s+por el valor/i;
 var SERVICIO_RE = /Pago de Servicio\s+(.+?)(?=\n|$)/i;
+var COBRANZA_PREFIJO_RE = /^DEBITO\s+/i;
+var RECARGA_SUBJECT_RE = /^compra (?:minutos|recarga)\s+(.+?)\s*$/;
 function amountFromProse(body, re) {
   const match = body.match(re);
   return match ? Number(match[1]) : null;
+}
+function capitalize(text) {
+  return text.replace(/\S+/g, (word) => word[0].toUpperCase() + word.slice(1));
+}
+function cobranzaEmpresa(body) {
+  const transaccion = extractField(body, "Transacci\xF3n", AFTER_TRANSACCION);
+  return transaccion === null ? null : cleanFieldValue(transaccion.replace(COBRANZA_PREFIJO_RE, ""));
+}
+var NON_MOVEMENT_SUBJECTS = [
+  ["retiro de efectivo sin tarjeta", "retiro_code_issued"],
+  ["consumo no procesado", "consumo_no_procesado"],
+  ["estado de cuenta tarjeta de credito", "statement_attachment_only"],
+  // El pago de tarjeta se registra como movimiento interno (excluido de todos
+  // los totales), así que su reverso tampoco cambia ningún número: guardarlo
+  // sólo agregaría una fila que no neteaba nada.
+  ["reverso pago tarjeta de credito", "credit_card_payment_reversal_internal"],
+  ["ingreso exitoso", "login_notification"],
+  ["ingreso fallido", "login_notification"],
+  ["ingreso incorrecto de clave", "login_notification"],
+  ["clave temporal", "security_notice"],
+  ["cambio de clave", "security_notice"],
+  ["clave incorrecta", "security_notice"],
+  ["error en ingreso de cvv", "security_notice"],
+  ["bloqueo", "security_notice"],
+  ["desbloqueo", "security_notice"],
+  ["cancelacion de tu tarjeta", "security_notice"],
+  ["entrega tarjeta", "security_notice"],
+  ["no aceptada", "security_notice"],
+  ["confirmacion transacciones tarjeta", "security_notice"],
+  ["notificacion modificacion de contacto", "contact_modified"],
+  ["consulta y registro de servicios", "bank_service_notice"],
+  ["valora tu opinion", "customer_support"],
+  ["reclamo", "customer_support"],
+  ["respuesta id", "customer_support"]
+];
+function ignoreReason(subject) {
+  return NON_MOVEMENT_SUBJECTS.find(([fragment]) => subject.includes(fragment))?.[1] ?? null;
 }
 function classify(email2) {
   const subject = normalize2(email2.subject);
@@ -50413,11 +50471,15 @@ function classify(email2) {
   if (subject.includes("manten tu flexiahorro en marcha")) {
     return { kind: "ignored", reason: "flexiahorro_reminder" };
   }
-  if (subject.includes("retiro de tu flexiahorro")) {
+  if (subject.includes("retiro de tu flexiahorro") || subject.includes("aportaste a tu flexiahorro")) {
     return { kind: "ignored", reason: "flexiahorro_internal_transfer" };
   }
   if (subject.includes("estado de cuenta produbanco")) {
     return { kind: "statement", raw_subject: rawSubject };
+  }
+  const noEsMovimiento = ignoreReason(subject);
+  if (noEsMovimiento !== null) {
+    return { kind: "ignored", reason: noEsMovimiento };
   }
   const foreign = subject.match(FOREIGN_CONSUMO_RE);
   if (foreign && foreign[2] !== "usd") {
@@ -50477,7 +50539,7 @@ function classify(email2) {
       ...reviewed(reading, "amount_not_found_in_subject")
     });
   }
-  if (subject.includes("retiro sin tarjeta de debito") && subject.includes("cajero automatico")) {
+  if (subject.includes("retiro") && subject.includes("cajero automatico")) {
     const monto = extractLabeledAmount(body, "Monto");
     return transaction({
       type: "retiro",
@@ -50488,15 +50550,73 @@ function classify(email2) {
       reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body"
     });
   }
-  if (subject.includes("compra minutos claro")) {
+  const recarga = subject.match(RECARGA_SUBJECT_RE);
+  if (recarga) {
     return transaction({
       type: "recarga",
       direction: "out",
       amount: amountFromProse(body, VALOR_PROSA_RE),
-      counterparty: "Claro",
+      counterparty: capitalize(recarga[1]),
       account: fromProse(body, CUENTA_DEBITADA_RE),
       raw_subject: rawSubject,
       reviewReason: "amount_not_found_in_body"
+    });
+  }
+  if (subject.includes("cobranza con debito automatico")) {
+    const monto = extractLabeledAmount(body, "Monto", { bareAllowed: true });
+    return transaction({
+      type: "servicio",
+      direction: "out",
+      amount: monto.amount,
+      counterparty: cobranzaEmpresa(body),
+      account: null,
+      raw_subject: rawSubject,
+      reviewReason: monto.ambiguous ? "ambiguous_labeled_amount" : "amount_not_found_in_body"
+    });
+  }
+  if (subject.includes("pago tarjeta de credito")) {
+    return transaction({
+      type: "transferencia",
+      direction: "out",
+      amount: amountFromProse(body, MONTO_PROSA_RE),
+      counterparty: fromProse(body, TARJETA_PAGADA_RE),
+      account: fromProse(body, CUENTA_DEBITADA_RE),
+      isInternal: true,
+      raw_subject: rawSubject,
+      reviewReason: "amount_not_found_in_body"
+    });
+  }
+  if (subject.includes("notificacion pago de servicio")) {
+    return transaction({
+      type: "servicio",
+      direction: "out",
+      amount: amountFromProse(body, VALOR_PROSA_RE),
+      counterparty: fromProse(body, SERVICIO_RE),
+      account: fromProse(body, CUENTA_DEBITADA_RE),
+      raw_subject: rawSubject,
+      reviewReason: "amount_not_found_in_body"
+    });
+  }
+  if (subject.includes("transferencia acreditada")) {
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "dollar"), extractLabeledAmount(body, "Monto"));
+    return transaction({
+      type: "transferencia",
+      direction: "out",
+      counterparty: extractField(body, "Beneficiario", AFTER_BENEFICIARIO),
+      account: null,
+      raw_subject: rawSubject,
+      ...reviewed(reading, "amount_not_found_in_body")
+    });
+  }
+  if (subject.includes("transferencia recibida en produbanco")) {
+    const reading = crossCheckAmount(extractAmount2(rawSubject, "either"), extractLabeledAmount(body, "Monto"));
+    return transaction({
+      type: "recibido",
+      direction: "in",
+      counterparty: extractField(body, "Enviada por", AFTER_BENEFICIARIO),
+      account: maskedAccount(extractField(body, "Cuenta Beneficiario", AFTER_BENEFICIARIO)),
+      raw_subject: rawSubject,
+      ...reviewed(reading, "amount_not_found_in_body")
     });
   }
   if (subject.includes("transferencia internacional recibida")) {
@@ -50515,8 +50635,10 @@ function classify(email2) {
     return transaction({
       type: "recibido",
       direction: "in",
-      counterparty: fromProse(body, REMITENTE_RE),
-      account: maskedAccount(extractField(body, "Cuenta Destino", AFTER_CUENTA)),
+      counterparty: fromProse(body, REMITENTE_RE) ?? extractField(body, "Enviada por", AFTER_BENEFICIARIO),
+      account: maskedAccount(
+        extractField(body, "Cuenta Destino", AFTER_CUENTA) ?? extractField(body, "Cuenta Contacto", AFTER_CUENTA)
+      ),
       raw_subject: rawSubject,
       ...reviewed(reading, "amount_not_found_in_body")
     });
@@ -50811,11 +50933,66 @@ async function runIngest(deps, options) {
   };
 }
 
+// src/ingest/mojibake.ts
+var CP1252_HIGH = [
+  8364,
+  null,
+  8218,
+  402,
+  8222,
+  8230,
+  8224,
+  8225,
+  710,
+  8240,
+  352,
+  8249,
+  338,
+  null,
+  381,
+  null,
+  null,
+  8216,
+  8217,
+  8220,
+  8221,
+  8226,
+  8211,
+  8212,
+  732,
+  8482,
+  353,
+  8250,
+  339,
+  null,
+  382,
+  376
+];
+var BYTE_BY_CP1252_CHAR = new Map(
+  CP1252_HIGH.flatMap(
+    (codePoint, index) => codePoint === null ? [] : [[String.fromCodePoint(codePoint), String.fromCharCode(128 + index)]]
+  )
+);
+var CP1252_CHARS_RE = new RegExp(`[${[...BYTE_BY_CP1252_CHAR.keys()].join("")}]`, "g");
+function foldCp1252(text) {
+  return text.replace(CP1252_CHARS_RE, (char) => BYTE_BY_CP1252_CHAR.get(char) ?? char);
+}
+var MOJIBAKE_RE = /[\u00c3\u00c2][\u0080-\u00bf]/;
+var OUTSIDE_LATIN1_RE = /[^\u0000-\u00ff]/;
+var REPLACEMENT_CHAR = "\uFFFD";
+function repairMojibake(text) {
+  const folded = foldCp1252(text);
+  if (!MOJIBAKE_RE.test(folded)) return text;
+  if (OUTSIDE_LATIN1_RE.test(folded)) return text;
+  const repaired = Buffer.from(folded, "latin1").toString("utf-8");
+  return repaired.includes(REPLACEMENT_CHAR) ? text : repaired;
+}
+
 // src/ingest/googleapis-gmail-client.ts
 var PAGE_SIZE = 50;
 function decodePartData(part) {
   const data = part?.body?.data;
-  return data ? Buffer.from(data, "base64url").toString("utf-8") : "";
+  return data ? repairMojibake(Buffer.from(data, "base64url").toString("utf-8")) : "";
 }
 function findPart(part, mimeType) {
   if (!part) return void 0;

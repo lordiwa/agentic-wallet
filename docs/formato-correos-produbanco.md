@@ -155,6 +155,29 @@ Referencia: 987654321012
   la plata, así que `account` queda `null` — y eso es correcto, no una falla.
 - Existe una variante de asunto sin el sufijo: `Transferencia enviada por $12.34`.
 
+> **Verificado sobre la bandeja real (2026-08-30).** El drenado completo dejó
+> 242 de 250 `transferencia` sin `account`, y la duda razonable era si el
+> parser estaba perdiendo la cuenta de origen. No la está perdiendo: **el
+> correo no la trae.** Sobre 41 correos reales de transferencia enviada (35 de
+> esta plantilla + 6 de la vieja, §4.15):
+>
+> | Qué se buscó | Resultado |
+> |---|---|
+> | Labels presentes en el cuerpo | `Fecha y Hora`, `Transacción`, `Contacto`/`Beneficiario`, `Banco Destino`/`Banco Beneficiario`, `Cuenta Destino`/`Cuenta Beneficiario`, `Monto`, `Descripción`, `Canal`, `Referencia` |
+> | Label `Cuenta Origen` / `Cuenta Débito` | **0 correos** |
+> | Prosa `de (la\|su\|tu) cuenta`, `desde … cuenta`, `Banco Origen` | **0 correos** |
+> | Tokens de cuenta enmascarada distintos por cuerpo | **exactamente 1** (2 correos traen `Cuenta Destino` sin máscara y quedan en 0) |
+> | Ese único token, ¿es el de `Cuenta Destino`/`Cuenta Beneficiario`? | **39 de 39** |
+>
+> No hay ningún segundo número de cuenta en el cuerpo que pudiera ser el del
+> usuario. `account: null` es la lectura correcta del correo, y los 8
+> `transferencia` que **sí** traen cuenta son los `Pago Tarjeta de Crédito`
+> (§4.13), que es otro correo y sí nombra la cuenta debitada.
+>
+> El invariante está fijado por test: `produbanco-formato-real.test.ts` →
+> *"deja account en null: `Cuenta Destino` es la del beneficiario"* (§4.3) y
+> *"NO guarda la cuenta ajena como propia"* (§4.15).
+
 ### 4.4 `Transferencia recibida desde Produbanco`
 
 ```
@@ -180,6 +203,46 @@ Tres cosas, todas distintas de lo que asumía el parser viejo:
 - Acá `Cuenta Destino` **sí** es la cuenta del usuario (el dinero entra), así
   que ésa es la que va en `account`. Es el mismo label que en la transferencia
   enviada y significa lo contrario — depende del sentido del movimiento.
+
+### 4.4b `Transferencia recibida desde Produbanco` — variante `Contacto`
+
+**El mismo asunto de §4.4 llega con dos cuerpos distintos.** En la bandeja real
+son 39 correos de la plantilla §4.4 y 24 de ésta:
+
+```
+Estimado/a
+APELLIDO APELLIDO NOMBRE NOMBRE
+Fecha y Hora: 01/Junio/2026 20:24
+Transacción: Transferencia recibida desde Produbanco
+Detalle
+Enviada por: NOMBRE DEL REMITENTE
+Banco Contacto: BANCO EJEMPLO
+Cuenta Contacto: XXXXX54321
+Monto: $7.50
+Descripción: Pago
+Referencia: 121272020900
+```
+
+- Donde §4.4 tiene prosa, ésta tiene campos: el remitente es `Enviada por` y
+  no `Te confirmamos que <NOMBRE> ha realizado…`, que acá **no existe**.
+- **`Contacto` acá es el DESTINO, no la contraparte.** Es el label más
+  traicionero de todo el formato, porque en la transferencia *enviada* (§4.3)
+  `Contacto` sí es la otra parte. Dos hechos de la bandeja real lo fijan:
+  **ninguno** de los 24 correos trae Produbanco en `Banco Contacto` —y el
+  dinero sale de Produbanco, así que no puede ser el banco del remitente—, y
+  los valores de `Banco`/`Cuenta Contacto` son **los mismos** que el `Banco`/
+  `Cuenta Destino` de §4.4, o sea las cuentas del usuario.
+- Por lo tanto `account` = `Cuenta Contacto` y `counterparty` = `Enviada por`.
+- **Este cuerpo llega como texto plano**, no como HTML: el cliente de Gmail
+  prefiere la parte `text/plain` cuando el correo la trae. Su fixture en
+  `produbanco-formato-real.test.ts` entra sin envoltorio MSHTML, a diferencia
+  de todos los demás.
+
+> **Bug corregido (2026-08-30).** El parser sólo conocía la plantilla §4.4, así
+> que estos 24 correos entraban **sin cuenta y sin contraparte** — 24 de 63
+> `Transferencia recibida desde Produbanco` del buzón completo. Medido contra
+> los correos reales después del fix: **64 de 64 `recibido` con cuenta, con
+> contraparte y con monto** (antes 40 de 64).
 
 ### 4.5 `Pago de servicio por USD 12.34`
 
@@ -272,21 +335,40 @@ El patrón compartido está en `parser/field-extract.ts` (`MASKED_ACCOUNT_RE`).
 
 ## 6. Asuntos que todavía no se catalogan
 
-Verificado sobre la bandeja real: estos correos **son movimientos de plata** y
-hoy caen en `ignored / unrecognized_subject`. Están acá para que quede
-registrado que la omisión es conocida y no un descuido:
+Medido con `classify` sobre el **buzón entero: 1729 correos** (2026-08-30). La
+tabla vieja de esta sección —9 asuntos, 49 correos— ya no aplica: todos ésos se
+catalogaron en §4.11–§4.16.
 
-| Asunto | Correos |
+| | correos | |
+|---|---|---|
+| Catalogados | **1145** | 66,2 % |
+| Ignorados | **584** | 33,8 % |
+| …de ellos, **asuntos desconocidos** | **4** | **0,2 %** |
+
+Los 584 ignorados casi no son cobertura faltante: **580 se descartan a
+propósito**, con su razón nombrada, porque no son movimientos de plata.
+
+| `reason` | Correos |
 |---|---|
-| `Cobranza con débito automático` | 18 |
-| `Retiro de Efectivo sin tarjeta de débito Produbanco` | 10 |
-| `Pago Tarjeta de Crédito Produbanco` | 8 |
-| `Transferencia acreditada Produbanco` | 4 |
-| `Notificación Pago de Servicio <EMPRESA>` | 4 |
-| `Retiro de Efectivo Produbanco en Cajero Automático` | 2 |
-| `COMPRA RECARGA MOVISTAR` | 1 |
-| `Transferencia Recibida en Produbanco` | 1 |
-| `Reverso Pago Tarjeta de Crédito Produbanco` | 1 |
+| `login_notification` | 470 |
+| `flexiahorro_internal_transfer` | 30 |
+| `contact_created` | 27 |
+| `security_notice` | 22 |
+| `retiro_code_issued` | 10 |
+| `customer_support` | 8 |
+| `contact_modified` | 5 |
+| `flexiahorro_reminder` | 4 |
+| `bank_service_notice` / `consumo_no_procesado` / `statement_attachment_only` / `credit_card_payment_reversal_internal` | 1 c/u |
+| **`unrecognized_subject`** | **4** |
+
+Los 4 asuntos desconocidos que quedan, **1 correo cada uno**:
+
+| Asunto | ¿Es un movimiento? |
+|---|---|
+| `Consumo Tarjeta de Débito Produbanco` | **Sí.** Es el consumo de §4.1 pero con el asunto **sin** `por USD x.xx`, que es lo que exige la rama. Único correo con esta forma. |
+| `Vencimiento Depósito a Plazo Fijo Digital Produbanco` | Probablemente sí (acreditación al vencer). Sin catalogar. |
+| `Notificación Envío Detalle de Movimientos` | No: aviso de envío, como los estados de cuenta. |
+| `¡Tu dinero sigue creciendo!…` | No: aviso de rendimiento. |
 
 ## 7. Cómo verificar contra correos reales sin commitear nada
 

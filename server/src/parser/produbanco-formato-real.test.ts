@@ -53,6 +53,21 @@ function parse(subject: string, html: string): ParsedTransaction {
   return result;
 }
 
+/** Los correos que traen parte `text/plain` NO pasan por `htmlToText`: el
+ * cliente de Gmail prefiere esa parte cuando existe. Los fixtures de esas
+ * plantillas entran tal cual, sin envoltorio MSHTML. */
+function parsePlain(subject: string, text: string): ParsedTransaction {
+  const result = produbancoParser.parse({
+    subject,
+    body: text,
+    gmail_msg_id: "msg-1",
+    gmail_thread_id: "thread-1",
+    ts: "2026-06-01T20:24:00Z",
+  });
+  if (result.kind !== "transaction") throw new Error(`esperaba "transaction", vino "${result.kind}"`);
+  return result;
+}
+
 /** El `reason` con el que se descarta un correo que NO es un movimiento de
  * plata. Se afirma el motivo y no sólo el descarte: "no lo catalogo" y "lo
  * catalogué como no-movimiento" se ven igual en el ledger y son cosas
@@ -234,6 +249,53 @@ describe("transferencia recibida (formato real)", () => {
 
   it("no deja needs_review cuando pudo leer el monto", () => {
     expect(parse("Transferencia recibida desde Produbanco", RECIBIDA).needs_review).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4.4b Transferencia recibida — variante `Contacto`
+// ---------------------------------------------------------------------------
+
+// El MISMO asunto que 4.4 llega con dos cuerpos distintos. Esta variante trae
+// `Enviada por` / `Banco Contacto` / `Cuenta Contacto` en vez de la prosa
+// "Te confirmamos que ..." y `Cuenta Destino`, y ademas llega como texto plano
+// (el cliente de Gmail prefiere el `text/plain` cuando el correo lo trae).
+//
+// `Contacto` aca es el DESTINO, no la contraparte: ninguno de los correos
+// reales de esta variante trae Produbanco en `Banco Contacto` — y el dinero
+// sale de Produbanco—, y sus valores son los mismos que el `Banco Destino` /
+// `Cuenta Destino` de la variante 4.4. Ver docs/formato-correos-produbanco.md.
+const RECIBIDA_CONTACTO = `Estimado/a
+PEREZ GOMEZ ANA MARIA
+Fecha y Hora: 01/Junio/2026 20:24
+Transacción: Transferencia recibida desde Produbanco
+Detalle
+Enviada por: ROJAS SILVA CARLOS ANDRES
+Banco Contacto: BANCO EJEMPLO
+Cuenta Contacto: XXXXX54321
+Monto: $7.50
+Descripción: Pago
+Referencia: 121272020900
+Atentamente Produbanco`;
+
+describe("transferencia recibida — variante Contacto (4.4b)", () => {
+  it("lee el monto del campo Monto", () => {
+    expect(parsePlain("Transferencia recibida desde Produbanco", RECIBIDA_CONTACTO)).toMatchObject({
+      type: "recibido",
+      direction: "in",
+      amount: 7.5,
+      needs_review: false,
+    });
+  });
+
+  it("saca la contraparte de `Enviada por`, que en esta variante SI es un campo", () => {
+    expect(parsePlain("Transferencia recibida desde Produbanco", RECIBIDA_CONTACTO).counterparty).toBe(
+      "ROJAS SILVA CARLOS ANDRES"
+    );
+  });
+
+  it("usa `Cuenta Contacto` como account: es la cuenta destino, la del usuario", () => {
+    expect(parsePlain("Transferencia recibida desde Produbanco", RECIBIDA_CONTACTO).account).toBe("XXXXX54321");
   });
 });
 
