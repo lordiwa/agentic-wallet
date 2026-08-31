@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-08-31T01:16:05.000Z",
+  "tasks": [
+    {
+      "key": "TASK-044",
+      "title": "Soporte de Outlook como proveedor de correo (abstracción MailProvider + Microsoft Graph)",
+      "status": "todo",
+      "priority": "medium"
+    }
+  ]
+}

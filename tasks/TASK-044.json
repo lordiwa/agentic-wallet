@@ -1,0 +1,42 @@
+{
+  "key": "TASK-044",
+  "title": "Soporte de Outlook como proveedor de correo (abstracción MailProvider + Microsoft Graph)",
+  "description": "El wallet hoy sólo lee Gmail: server/src/ingest/googleapis-gmail-client.ts es la única implementación de la interfaz `GmailClient`, y las credenciales, el onboarding y la sintaxis de búsqueda (`from:X after:YYYY/MM/DD`) asumen Google. Un usuario real que probó la instalación usa Outlook y se quedó afuera en el primer paso del onboarding — no por el banco ni por el parser, sino por el buzón.\n\nEl scoping completo (capa actual, comparación Graph vs IMAP, diseño de la abstracción, riesgo del mojibake y del HTML, costo honesto y orden de ejecución) está en docs/scoping-outlook.md. Resumen de lo decidido ahí:\n\n- VÍA RECOMENDADA: Microsoft Graph (`GET /me/messages`), NO IMAP. IMAP ya no ofrece autenticación básica contra Outlook (exige el mismo registro en Azure y el mismo OAuth 2.0), así que se paga su costo caro sin ninguna de sus ventajas, y encima devuelve MIME crudo — justo la zona donde vive nuestro bug más sutil (el mojibake de mojibake.ts). Graph devuelve el cuerpo ya decodificado y permite filtrar por `receivedDateTime` exacto, lo que hace innecesario el truco de restar un día del fix de TASK-017. IMAP queda anotado como plan B explícito para proveedores misceláneos (Yahoo, correo corporativo), no para éste.\n- ABSTRACCIÓN: no se inventa nada nuevo. `GmailClient`/`GmailMessage` (ingest/types.ts) YA son la frontera correcta — el pipeline nunca importa `googleapis`. Se renombran a `MailProvider`/`MailMessage` (con alias @deprecated), la implementación de Gmail se mueve a `ingest/providers/gmail-provider.ts` absorbiendo `buildSearchQuery`, y se agrega `ingest/providers/outlook-provider.ts`. `searchMessageIds` cambia de firma: recibe `{senders, sinceTs}` (intención) en vez de un string de query (sintaxis de Gmail), de modo que cada proveedor traduzca a la suya.\n- EL PARSER NO CAMBIA. `parser/produbanco.ts` es agnóstico del proveedor (verificado: `canParse` sólo mira subject/body). El único acoplamiento nominal es `BankEmailParser.gmailSenders`, que se renombra a `senders`.\n- NO se renombra la columna `transactions.gmail_msg_id`: es la clave de idempotencia de todo el sistema y los ids de Outlook entran ahí sin colisionar. El costo de ese renombre no lo paga esta feature.\n\nRiesgo principal identificado: los ids de mensaje de Graph CAMBIAN al mover el correo de carpeta salvo que se pidan ids inmutables (`Prefer: IdType=\"ImmutableId\"`). Sin eso, archivar un correo lo re-ingiere como transacción nueva = gasto duplicado en el ledger.\n\nPRERREQUISITO: no empezar hasta que el wallet esté estabilizado (meta ≥ 9/10 en docs/reliability.md + primer piloto humano completado). Los pasos 1–3 del plan (renombre + mudanza + `createMailProvider`) son valiosos aunque Outlook nunca se construya y podrían adelantarse por separado.\n\nAVISO: el scoping se hizo SIN acceso a la web. Los puntos marcados [VERIFICAR] en el doc (autoridad OAuth para cuentas personales, límites de throttling, disponibilidad de ids inmutables en cuentas personales, estado actual de IMAP/POP en Outlook.com) deben confirmarse contra learn.microsoft.com ANTES de escribir código. Ninguno cambia la recomendación; sí pueden cambiar detalles del plan.",
+  "acceptance_criteria": [
+    "`MailProvider`/`MailMessage` reemplazan a `GmailClient`/`GmailMessage` en ingest/types.ts, con alias @deprecated para no romper llamadores; `searchMessageIds` recibe `{senders, sinceTs}` en vez de un string de query.",
+    "La implementación de Gmail vive en ingest/providers/gmail-provider.ts con `buildSearchQuery` adentro, y sus tests actuales pasan SIN cambiar ninguna aserción — en particular el fix del '-1 día' de TASK-017 (ventana por huso horario) sigue cubierto y verde.",
+    "Existe ingest/providers/outlook-provider.ts contra Microsoft Graph: paginación por `@odata.nextLink`, filtro por `receivedDateTime`, e ids inmutables (`Prefer: IdType=\"ImmutableId\"`) para que mover un correo de carpeta NO produzca una transacción duplicada.",
+    "El proveedor de Outlook pide el cuerpo en HTML y lo convierte con NUESTRO `parser/html-text.ts` (no con la conversión de Exchange), y aplica `repairMojibake` en la capa de lectura igual que el cliente de Gmail.",
+    "`createMailProvider(config)` elige por `WALLET_MAIL_PROVIDER` (default 'gmail'); ni `sync/build-sync-runner.ts` ni `mcp/server.ts` eligen proveedor, sólo piden el configurado.",
+    "Ni pipeline.ts, ni reconstruct.ts, ni heal-counterparty.ts, ni parser/, category/, rules/, strategy/, chat/, api/ o web/ contienen lógica específica de proveedor (sólo cambios de tipo/nombre).",
+    "El pipeline sigue siendo 100% testeable con un proveedor fake en memoria: los tests del OutlookProvider mockean `fetch`. Ningún test nuevo requiere red ni credenciales reales.",
+    "Existe `server/scripts/outlook-auth.ts` (flujo OAuth de escritorio con loopback + PKCE, calcado de gmail-auth.ts) y las variables `OUTLOOK_OAUTH_*` están en config.ts y .env.example.",
+    "El paso 'gmail' de onboard/status.ts pasa a ser 'correo' y su `action` depende del proveedor configurado; existe docs/conectar-outlook.md al mismo nivel de detalle que docs/conectar-gmail.md (registro de app en Entra ID paso a paso).",
+    "VERIFICACIÓN EMPÍRICA con un buzón de Outlook real: para el mismo correo del banco recibido en Gmail y en Outlook, `parseEmail` produce campos idénticos (monto, tipo, contraparte, cuenta) y los caracteres acentuados/eñes coinciden byte a byte. Sin esto el ticket NO se cierra.",
+    "`npm run build` y `npm test` en verde; el bundle MCP regenerado en el mismo commit si se tocó server/src/mcp/."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "ingest",
+    "outlook",
+    "proveedor-correo",
+    "scoping-listo",
+    "bloqueado-por-estabilizacion"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Scoping completado en docs/scoping-outlook.md. Motivación: un amigo que probó el wallet usa Outlook. Decisión de Mato: es must-do para cuando el wallet se estabilice, no se pierde de vista. Este ticket NO es para arrancar ya — el prerrequisito es ≥ 9/10 de confiabilidad + primer piloto humano.",
+      "created_at": "2026-08-31T01:16:05.000Z"
+    }
+  ],
+  "created_at": "2026-08-31T01:16:05.000Z",
+  "updated_at": "2026-08-31T01:16:05.000Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
