@@ -13,7 +13,11 @@ node_modules/
 *.sqlite-journal
 
 dist/
+dist-demo/
 build/
+
+# Cache de deploys de Firebase Hosting (hashes de archivos ya subidos).
+.firebase/
 .DS_Store
 
 .claude/worktrees/

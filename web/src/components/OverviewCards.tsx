@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchOverview } from "../api/client";
 import type { OverviewResponse } from "../api/types";
+import { useRefreshTick } from "../lib/refresh";
 
 /**
  * Saldo/tarjeta/conteos snapshot (AC3). Renders only figures that come back
@@ -8,6 +9,7 @@ import type { OverviewResponse } from "../api/types";
  * rather than a guessed number when the API returns null (unseeded state).
  */
 export function OverviewCards() {
+  const tick = useRefreshTick();
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,7 +18,9 @@ export function OverviewCards() {
     let cancelled = false;
     fetchOverview()
       .then((res) => {
-        if (!cancelled) setOverview(res);
+        if (cancelled) return;
+        setOverview(res);
+        setError(null);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar el resumen");
@@ -27,7 +31,7 @@ export function OverviewCards() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tick]);
 
   if (loading) return <p>Cargando resumen...</p>;
   if (error) return <p role="alert">{error}</p>;

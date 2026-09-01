@@ -116,6 +116,26 @@ Tu `.env` y tu `wallet.sqlite` están en `.gitignore`: un `git pull` nunca
 toca tus datos ni tus credenciales. Las migraciones de esquema corren solas al
 arrancar (`CREATE TABLE IF NOT EXISTS`), así que no hay paso manual.
 
+## El dashboard publicado
+
+Hay una copia del dashboard en **<https://agentic-wallet-71314.web.app>**
+(Firebase Hosting). Arranca en **modo demostración**: los números son
+inventados y el sitio lo dice en un cartel arriba de todo. No lleva ningún
+dato tuyo adentro — es la interfaz, no el ledger.
+
+Se publica así a propósito: la API no tiene autenticación, y exponerla para
+que una página pública la lea equivaldría a publicar tu historial bancario.
+El sitio sabe apuntarse a tu propio server (`?api=https://...`) sin
+recompilar nada, y ahí sí muestra tus datos.
+
+El paso a paso —cómo conectarlo a datos reales con `tailscale serve`, cómo se
+actualiza el sitio, y qué hace el auto-refresco— está en
+[docs/frontend-desplegado.md](docs/frontend-desplegado.md).
+
+```bash
+npm run deploy:hosting    # rebuild + firebase deploy --only hosting
+```
+
 ## Arquitectura multibanco
 
 El repo trae **un parser de ejemplo, Produbanco** (Ecuador). No es el único
@@ -165,6 +185,8 @@ adaptación. Todo lo demás (categorías, estrategia, chat, web) es agnóstico.
 | `npm run gmail-auth` | Genera el refresh token de Gmail |
 | `npm run seed` | Siembra la config inicial (idempotente) |
 | `npm run build:mcp` | Regenera el bundle del servidor MCP |
+| `npm run build:hosting` | Build del sitio público (`web/dist-demo`) |
+| `npm run deploy:hosting` | Ese build + `firebase deploy --only hosting` |
 
 ## Como herramientas de un agente (MCP)
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchOverview } from "../api/client";
 import type { OverviewResponse } from "../api/types";
+import { useRefreshTick } from "../lib/refresh";
 import { SpendingCharts } from "./SpendingCharts";
 import { StrategyCards } from "./StrategyCards";
 
@@ -15,6 +16,7 @@ import { StrategyCards } from "./StrategyCards";
  * scope.
  */
 export function StrategySection() {
+  const tick = useRefreshTick();
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +25,9 @@ export function StrategySection() {
     let cancelled = false;
     fetchOverview()
       .then((res) => {
-        if (!cancelled) setOverview(res);
+        if (cancelled) return;
+        setOverview(res);
+        setError(null);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar indicadores");
@@ -34,7 +38,7 @@ export function StrategySection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tick]);
 
   if (loading) return <p>Cargando indicadores...</p>;
   if (error) return <p role="alert">{error}</p>;

@@ -10,11 +10,13 @@
  * local-only, single-user dashboard. Each call instead emits a structured
  * console log (operation name, outcome, duration) as a proportionate stand-in.
  */
+import { apiFetch } from "./base";
 import type {
   ConversationDetailResponse,
   ConversationsResponse,
   OverviewResponse,
   SyncResponse,
+  SyncStatusResponse,
   TransactionsFilter,
   TransactionsResponse,
 } from "./types";
@@ -31,7 +33,7 @@ function logOutcome(op: string, startedAt: number, outcome: "ok" | "error", extr
 async function getJSON<T>(op: string, path: string): Promise<T> {
   const startedAt = performance.now();
   try {
-    const res = await fetch(path);
+    const res = await apiFetch(path);
     if (!res.ok) {
       throw new Error(`${op} failed: ${res.status} ${res.statusText}`);
     }
@@ -65,6 +67,24 @@ export function fetchOverview(): Promise<OverviewResponse> {
   return getJSON<OverviewResponse>("overview.get", "/api/overview");
 }
 
+/** Estado del sync EN FRIO (cuando fue el ultimo, que quedo a medias) — a
+ * diferencia de `postSync`, no dispara nada: se puede pedir en cada refresco
+ * sin tocar Gmail ni gastar credito de Claude. */
+export function fetchSyncStatus(): Promise<SyncStatusResponse> {
+  return getJSON<SyncStatusResponse>("sync.status", "/api/sync/status");
+}
+
+/** Sonda de conectividad para el cartel de conexion: no lanza, responde si
+ * el backend configurado contesta. */
+export async function pingBackend(): Promise<boolean> {
+  try {
+    const res = await apiFetch("/api/health");
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Triggers a sync (F1-08, not yet built as of this ticket). The response
  * shape isn't known yet, so this returns whatever JSON body comes back
@@ -75,7 +95,7 @@ export async function postSync(): Promise<SyncResponse> {
   const op = "sync.trigger";
   const startedAt = performance.now();
   try {
-    const res = await fetch("/api/sync", { method: "POST" });
+    const res = await apiFetch("/api/sync", { method: "POST" });
     const body = (await res.json().catch(() => null)) as (SyncResponse & { error?: string }) | null;
     if (!res.ok) {
       const message = body?.error ?? `Sync failed: ${res.status} ${res.statusText}`;
@@ -173,7 +193,7 @@ export async function streamChat(
 
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await apiFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),

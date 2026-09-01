@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { postSync } from "../api/client";
 import type { SyncResponse } from "../api/types";
+import { useRefresh } from "../lib/refresh";
 
 type Status = "idle" | "loading" | "done" | "error";
 
@@ -15,6 +16,7 @@ type Status = "idle" | "loading" | "done" | "error";
  * primer sync (miles de correos) seria directamente mentira.
  */
 export function SyncButton() {
+  const { refreshNow } = useRefresh();
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<SyncResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +28,9 @@ export function SyncButton() {
       const res = await postSync();
       setResult(res);
       setStatus("done");
+      // El sync acaba de escribir en la base: esperar al proximo tick del
+      // reloj dejaria el resumen nuevo al lado de cifras viejas.
+      refreshNow();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al sincronizar");
       setStatus("error");

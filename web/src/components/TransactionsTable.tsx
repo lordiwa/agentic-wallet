@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { fetchTransactions } from "../api/client";
 import type { TransactionRow, TransactionsFilter } from "../api/types";
 import { endOfDayIso } from "../lib/dates";
+import { useRefreshTick } from "../lib/refresh";
 
 // Mirrors server/src/api/schemas.ts TRANSACTION_TYPES.
 const TRANSACTION_TYPES = [
@@ -46,20 +47,35 @@ function cleanFilter(draft: TransactionsFilter): TransactionsFilter {
  * signal that more rows may exist beyond it.
  */
 export function TransactionsTable() {
+  const tick = useRefreshTick();
   const [draft, setDraft] = useState<TransactionsFilter>({});
   const [filter, setFilter] = useState<TransactionsFilter>({});
   const [offset, setOffset] = useState(0);
   const [transactions, setTransactions] = useState<TransactionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Ultimo filtro/pagina pedido. Sirve para distinguir "el usuario cambio
+   * algo" de "paso un tick del auto-refresco": lo primero merece spinner (lo
+   * que hay en pantalla ya no corresponde a lo pedido), lo segundo no —
+   * vaciar la tabla cada 30 segundos para volver a llenarla con casi las
+   * mismas filas es parpadeo, no informacion. */
+  const lastQuery = useRef<string | null>(null);
 
   useEffect(() => {
+    const query = JSON.stringify([filter, offset]);
+    const isBackgroundRefresh = lastQuery.current === query;
+    lastQuery.current = query;
+
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    if (!isBackgroundRefresh) {
+      setLoading(true);
+      setError(null);
+    }
     fetchTransactions({ ...filter, limit: PAGE_SIZE, offset })
       .then((res) => {
-        if (!cancelled) setTransactions(res.transactions);
+        if (cancelled) return;
+        setTransactions(res.transactions);
+        setError(null);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar transacciones");
@@ -70,7 +86,7 @@ export function TransactionsTable() {
     return () => {
       cancelled = true;
     };
-  }, [filter, offset]);
+  }, [filter, offset, tick]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

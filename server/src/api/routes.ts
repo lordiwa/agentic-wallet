@@ -32,6 +32,8 @@ import {
   queryTransactions,
   type BalanceSnapshot,
 } from "./queries.js";
+import { getSyncState } from "../db/repository.js";
+import { getSyncProgress } from "../db/sync-progress.js";
 import { listReviewResolutions, resolveReview } from "../review/resolve.js";
 import {
   bufferBodySchema,
@@ -195,6 +197,34 @@ export function createApiRouter(getDb: () => Database.Database): Router {
 
   router.get("/overview", (_req, res) => {
     res.json(buildOverview(getDb(), new Date()));
+  });
+
+  /**
+   * "Cuando fue la ultima vez que leimos el buzon, y quedo algo a medias?"
+   * — lo unico que `POST /sync` no puede contestar, porque su respuesta solo
+   * existe mientras corre la llamada. Un dashboard que se refresca solo
+   * necesita poder preguntarlo en frio, sin disparar un sync.
+   *
+   * `last_sync_ts` sale de `sync_state` (hasta cuando ya leimos) y `backlog`
+   * de `sync_progress` (el drenado a medias); ver db/schema.ts para por que
+   * son dos tablas. Sin fila en `sync_progress` el backlog es `null`: no hay
+   * nada pendiente, no es que valga cero.
+   */
+  router.get("/sync/status", (_req, res) => {
+    const db = getDb();
+    const state = getSyncState(db);
+    const progress = getSyncProgress(db);
+    res.json({
+      last_sync_ts: state?.last_sync_ts ?? null,
+      backlog: progress
+        ? {
+            processed: progress.processed,
+            total: progress.total,
+            remaining: Math.max(0, progress.total - progress.processed),
+            updated_at: progress.updatedAt,
+          }
+        : null,
+    });
   });
 
   router.get("/transfers", (_req, res) => {

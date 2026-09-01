@@ -144,6 +144,16 @@ export interface SyncProgress {
 export type SyncResponse = Record<string, unknown> & { progress?: SyncProgress };
 
 /**
+ * GET /api/sync/status (server/src/api/routes.ts). `last_sync_ts` en null es
+ * "nunca se sincronizo", no "hoy"; `backlog` en null es "no quedo nada a
+ * medias", no "cero correos pendientes".
+ */
+export interface SyncStatusResponse {
+  last_sync_ts: string | null;
+  backlog: { processed: number; total: number; remaining: number; updated_at: string } | null;
+}
+
+/**
  * F3-C chat shapes, mirrored (as read from
  * server/src/chat/conversation-repository.ts and server/src/api/chat-route.ts)
  * rather than imported, per this ticket's web/-only file boundary.

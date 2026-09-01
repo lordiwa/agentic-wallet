@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { fetchReview } from "../api/client";
 import type { TransactionRow } from "../api/types";
+import { useRefreshTick } from "../lib/refresh";
 
 /** needs_review tray (AC2): lists /api/review, most recent first (server-sorted). */
 export function ReviewTray() {
+  const tick = useRefreshTick();
   const [transactions, setTransactions] = useState<TransactionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -12,7 +14,9 @@ export function ReviewTray() {
     let cancelled = false;
     fetchReview()
       .then((res) => {
-        if (!cancelled) setTransactions(res.transactions);
+        if (cancelled) return;
+        setTransactions(res.transactions);
+        setError(null);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar la bandeja de revision");
@@ -23,7 +27,7 @@ export function ReviewTray() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tick]);
 
   return (
     <section aria-labelledby="review-heading">

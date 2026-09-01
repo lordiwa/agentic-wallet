@@ -42,6 +42,14 @@ const envSchema = z.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: z.string().default("127.0.0.1"),
+  /**
+   * Origenes que pueden leer la API desde un navegador (lista blanca
+   * coma-separada, ver api/cors.ts). Va vacia por defecto: sin esto no se
+   * emite ninguna cabecera CORS y solo funciona el dashboard servido por el
+   * propio server. Se setea cuando el frontend vive en otro origen (Firebase
+   * Hosting, ver docs/frontend-desplegado.md).
+   */
+  WALLET_ALLOWED_ORIGINS: z.string().optional(),
   /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
    * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
    * nombre viejo no se leeria nunca. */

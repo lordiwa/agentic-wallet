@@ -48723,6 +48723,14 @@ var envSchema = external_exports.object({
    * un accidente de configuracion.
    */
   WALLET_BIND_HOST: external_exports.string().default("127.0.0.1"),
+  /**
+   * Origenes que pueden leer la API desde un navegador (lista blanca
+   * coma-separada, ver api/cors.ts). Va vacia por defecto: sin esto no se
+   * emite ninguna cabecera CORS y solo funciona el dashboard servido por el
+   * propio server. Se setea cuando el frontend vive en otro origen (Firebase
+   * Hosting, ver docs/frontend-desplegado.md).
+   */
+  WALLET_ALLOWED_ORIGINS: external_exports.string().optional(),
   /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
    * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
    * nombre viejo no se leeria nunca. */
@@ -49877,6 +49885,79 @@ function insertStatement(db, statement) {
   return { inserted: result.changes === 1, row };
 }
 
+// src/db/sync-progress.ts
+function parseJson(raw, fallback) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+function toProgress(row) {
+  return {
+    sinceTs: row.since_ts,
+    startedAt: row.started_at,
+    total: row.total,
+    processed: row.processed,
+    pendingIds: parseJson(row.pending_ids, []),
+    totals: parseJson(row.totals, {}),
+    updatedAt: row.updated_at
+  };
+}
+function getSyncProgress(db) {
+  const row = db.prepare("SELECT * FROM sync_progress WHERE id = 1").get();
+  return row ? toProgress(row) : void 0;
+}
+function startSyncProgress(db, input) {
+  const progress = {
+    sinceTs: input.sinceTs,
+    startedAt: input.startedAt,
+    total: input.pendingIds.length,
+    processed: 0,
+    pendingIds: [...input.pendingIds],
+    totals: {},
+    updatedAt: input.startedAt
+  };
+  write(db, progress);
+  return progress;
+}
+function advanceSyncProgress(db, input) {
+  const current = getSyncProgress(db);
+  if (!current) return;
+  write(db, {
+    ...current,
+    processed: input.processed,
+    pendingIds: [...input.pendingIds],
+    totals: input.totals,
+    updatedAt: input.updatedAt
+  });
+}
+function clearSyncProgress(db) {
+  db.prepare("DELETE FROM sync_progress WHERE id = 1").run();
+}
+function write(db, progress) {
+  db.prepare(
+    `INSERT INTO sync_progress (id, since_ts, started_at, total, processed, pending_ids, totals, updated_at)
+     VALUES (1, @since_ts, @started_at, @total, @processed, @pending_ids, @totals, @updated_at)
+     ON CONFLICT(id) DO UPDATE SET
+       since_ts = excluded.since_ts,
+       started_at = excluded.started_at,
+       total = excluded.total,
+       processed = excluded.processed,
+       pending_ids = excluded.pending_ids,
+       totals = excluded.totals,
+       updated_at = excluded.updated_at`
+  ).run({
+    since_ts: progress.sinceTs,
+    started_at: progress.startedAt,
+    total: progress.total,
+    processed: progress.processed,
+    pending_ids: JSON.stringify(progress.pendingIds),
+    totals: JSON.stringify(progress.totals),
+    updated_at: progress.updatedAt
+  });
+}
+
 // src/review/resolve.ts
 var REVIEW_ACTIONS = ["confirm", "correct", "discard"];
 function isWritableAmount(amount) {
@@ -50069,79 +50150,6 @@ function describe(value, variable, expectedPrefix) {
     return `CLAUDE_CODE_OAUTH_TOKEN tiene una API key (${API_KEY_PREFIX}...). Ese valor va en ANTHROPIC_API_KEY; CLAUDE_CODE_OAUTH_TOKEN espera el token que imprime \`claude setup-token\`.`;
   }
   return `${variable} no tiene la forma esperada: deberia empezar con ${expectedPrefix}...`;
-}
-
-// src/db/sync-progress.ts
-function parseJson(raw, fallback) {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-function toProgress(row) {
-  return {
-    sinceTs: row.since_ts,
-    startedAt: row.started_at,
-    total: row.total,
-    processed: row.processed,
-    pendingIds: parseJson(row.pending_ids, []),
-    totals: parseJson(row.totals, {}),
-    updatedAt: row.updated_at
-  };
-}
-function getSyncProgress(db) {
-  const row = db.prepare("SELECT * FROM sync_progress WHERE id = 1").get();
-  return row ? toProgress(row) : void 0;
-}
-function startSyncProgress(db, input) {
-  const progress = {
-    sinceTs: input.sinceTs,
-    startedAt: input.startedAt,
-    total: input.pendingIds.length,
-    processed: 0,
-    pendingIds: [...input.pendingIds],
-    totals: {},
-    updatedAt: input.startedAt
-  };
-  write(db, progress);
-  return progress;
-}
-function advanceSyncProgress(db, input) {
-  const current = getSyncProgress(db);
-  if (!current) return;
-  write(db, {
-    ...current,
-    processed: input.processed,
-    pendingIds: [...input.pendingIds],
-    totals: input.totals,
-    updatedAt: input.updatedAt
-  });
-}
-function clearSyncProgress(db) {
-  db.prepare("DELETE FROM sync_progress WHERE id = 1").run();
-}
-function write(db, progress) {
-  db.prepare(
-    `INSERT INTO sync_progress (id, since_ts, started_at, total, processed, pending_ids, totals, updated_at)
-     VALUES (1, @since_ts, @started_at, @total, @processed, @pending_ids, @totals, @updated_at)
-     ON CONFLICT(id) DO UPDATE SET
-       since_ts = excluded.since_ts,
-       started_at = excluded.started_at,
-       total = excluded.total,
-       processed = excluded.processed,
-       pending_ids = excluded.pending_ids,
-       totals = excluded.totals,
-       updated_at = excluded.updated_at`
-  ).run({
-    since_ts: progress.sinceTs,
-    started_at: progress.startedAt,
-    total: progress.total,
-    processed: progress.processed,
-    pending_ids: JSON.stringify(progress.pendingIds),
-    totals: JSON.stringify(progress.totals),
-    updated_at: progress.updatedAt
-  });
 }
 
 // src/onboard/status.ts

@@ -1,0 +1,174 @@
+/**
+ * Hoja de estilos minima. No es un diseno: es lo justo para que el dashboard
+ * publicado se pueda leer (ancho de linea, separacion entre secciones, y el
+ * cartel de modo demostracion visible de lejos). El marcado sigue siendo HTML
+ * semantico sin clases, salvo las dos del cartel.
+ */
+
+:root {
+  color-scheme: light dark;
+  --fg: #17202a;
+  --muted: #5b6b7c;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --line: #dde3ea;
+  --warn-bg: #fff4d6;
+  --warn-line: #e0b73a;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 0.35rem;
+}
+
+main > section,
+main > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.banner-demo {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+}
+
+section[aria-label="Resumen"] {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+section[aria-label="Resumen"] .card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+
+/* El estado del sync se lee de un vistazo por color, no leyendo la frase. */
+[data-freshness="al-dia"] {
+  color: #1c7a45;
+}
+[data-freshness="atrasado"],
+[data-freshness="nunca"] {
+  color: #a3341a;
+}
+[data-freshness="en-progreso"] {
+  color: #8a6100;
+}
+
+button {
+  font: inherit;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  margin-left: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+}
+
+form label {
+  display: inline-block;
+  margin: 0 0.75rem 0.5rem 0;
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+code {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+
+[role="alert"] {
+  color: #a3341a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8edf3;
+    --muted: #9aa9b8;
+    --bg: #12171d;
+    --panel: #1a2029;
+    --line: #2b333d;
+    --warn-bg: #3a2f10;
+    --warn-line: #a3801f;
+  }
+  [data-freshness="al-dia"] {
+    color: #6ede9f;
+  }
+  [data-freshness="atrasado"],
+  [data-freshness="nunca"],
+  [role="alert"] {
+    color: #ff9377;
+  }
+  [data-freshness="en-progreso"] {
+    color: #f0c65e;
+  }
+}

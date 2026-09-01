@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import express from "express";
+import { createCorsMiddleware, parseAllowedOrigins } from "./api/cors.js";
 import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
 import { createSyncRouter } from "./api/sync-route.js";
@@ -58,6 +59,10 @@ export interface CreateAppOptions {
 export function createApp(db?: Database.Database, options: CreateAppOptions = {}) {
   const app = express();
   app.use(express.json());
+
+  // Antes de cualquier ruta para que el preflight OPTIONS tambien lo vea.
+  // Sin `WALLET_ALLOWED_ORIGINS` la lista queda vacia y esto es un no-op.
+  app.use(createCorsMiddleware(parseAllowedOrigins(loadConfig().WALLET_ALLOWED_ORIGINS)));
 
   let lazyDb = db;
   const getDb = (): Database.Database => {
