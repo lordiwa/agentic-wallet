@@ -524,7 +524,7 @@ Sólo los que puedo sostener con evidencia:
 ---
 
 Ver también: `docs/panel-roadmap-implementacion.md` (lo que este doc ataca),
-`docs/panel-viabilidad.md` (H1..H26), `docs/panel-manejo-flujo.md` (el plan
+`docs/panel-viabilidad.md` (H1..H31), `docs/panel-manejo-flujo.md` (el plan
 funcional), `docs/flujo-app-prototipo.md` (el recorrido clickeable),
 `docs/investigacion-riesgos.md` (el forense del cross-check de Claude),
 `docs/frontend-desplegado.md` (por qué el sitio actual está en modo demo),

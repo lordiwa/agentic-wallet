@@ -1302,5 +1302,5 @@ Las dos tarjetas que **no son pantallas ni componentes**:
 
 Ver también: `docs/panel-manejo-flujo.md` (el plan de producto y las once
 pantallas en detalle), `docs/panel-viabilidad.md` (la auditoría pantalla por
-pantalla, el veredicto por pieza y los 26 huecos), `tasks/TASK-045.json` (el
+pantalla, el veredicto por pieza y los 31 huecos), `tasks/TASK-045.json` (el
 ticket), `docs/mcp.md` (las tools del agente).

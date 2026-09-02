@@ -145,12 +145,39 @@ recorrido. El veredicto de viabilidad y sus huecos salen de
   `POST /api/onboarding/suggest`, `POST /api/onboarding/profile`).
 - **Muestra:** el checklist con lo que falta, y al lado la sugerencia leída
   del ledger real.
-- **Acciones:** *Sugerir desde mi historial*, *Guardar*, *Saltar por ahora*.
+- **Acciones:** *Analizar mi historial*, *Guardar*, *Saltar por ahora*.
+- **Lo que el análisis del historial produce — el Escenario 2 de Mato**
+  (*"entro por primera vez ---> analiza 3-6 meses anteriores ---> crea patrón
+  de gastos fijos ---> pregunta gastos particulares"*). Tres bloques, en este
+  orden, y **nada se guarda hasta que Mato lo confirma**:
+  1. **Sueldo y días de pago** — lo que `suggestSalary` ya lee hoy, con su
+     mediana y su tamaño de muestra dicho en voz alta.
+  2. **Patrón de gastos fijos** — lo que se repite mes a mes (servicio,
+     suscripción, renta, cuota), con la mediana del monto y el día típico.
+     Cada uno se confirma o se descarta: *"sí, es fijo"* / *"no, fue casual"*.
+     **Esto no existe en el motor** (**H30**): hay que escribir
+     `suggestRecurringExpenses` en `onboard/suggest.ts` con sus tests.
+  3. **Los gastos particulares** — los que **no** se repiten y el motor no sabe
+     qué son. La pantalla los cuenta y ofrece pasar a responderlos: es la cola
+     de clasificación de P5 (**H27**, **H28**) con otro punto de entrada.
+- **Dónde va lo que Mato confirma, y dónde no va:** los gastos fijos
+  confirmados se guardan como **reglas de categoría** y alimentan el colchón
+  sugerido. La **lista** de gastos fijos no se persiste en la v1 (**H31**):
+  `strategy_config` valida con un esquema zod cerrado y no tiene esa clave, así
+  que `setStrategyConfig` rechazaría el patch. Una tabla nueva es su propio
+  ticket.
+- **Cuando no hay historial que analizar** — el caso de todo usuario nuevo en
+  el Modelo D, donde el filtro de Gmail actúa sobre lo que llega y el ledger
+  arranca vacío: *Analizar mi historial* se dibuja **deshabilitado con su
+  motivo**, la pantalla dice cuántos meses lleva acumulados
+  (`mesesDeHistorial`, que el motor ya devuelve) y desde cuántos se activa el
+  análisis. **El análisis no desaparece: se pospone.** Ver
+  `docs/flujo-wargaming.md` R33.
 - **Navegación.** *Entra desde:* P0 (checklist incompleto), P10 (*Completar
   perfil*), una `OverviewCard` en estado *sin leer* de P2, y el mapa de flujo.
   *Sale a:* **P2**, tanto con *Guardar* como con *Saltar por ahora* — **P1 no
   bloquea a nadie**.
-- **Viabilidad: NO VIABLE (H2, H3, H4).** Las tres funciones que necesita
+- **Viabilidad: NO VIABLE (H2, H3, H4, H30, H31).** Las tres funciones que necesita
   existen y están testeadas, pero sólo se alcanzan por MCP o CLI: no hay una
   sola ruta HTTP de onboarding. Además el checklist se renderiza con **los
   pasos que devuelva el motor** (H4) y el paso dibujado como *"Cuentas"* se
@@ -171,17 +198,27 @@ recorrido. El veredicto de viabilidad y sus huecos salen de
 - **Muestra:** saldo y fecha del corte, safe-to-spend de hoy, colchón,
   tarjeta, gasto por categoría del mes, conteo de pendientes de revisión.
 - **Acciones:** *Sincronizar ahora* (mismo botón que P3), *Ver los N
-  pendientes* (lleva a P5), *Preguntarle al agente* (lleva a P7 con el
-  contexto de la tarjeta que se tocó).
+  pendientes* (lleva a P5), ***Decime qué son los M movimientos que no sé***
+  (lleva a P5, pestaña *Sin clasificar* — la entrada del Escenario 1 desde el
+  hogar), *Preguntarle al agente* (lleva a P7 con el contexto de la tarjeta que
+  se tocó).
+- **Dos contadores, no uno.** *N pendientes* (monto sin confirmar) y *M sin
+  clasificar* (no se sabe qué son) se muestran **por separado**: son dos
+  preguntas distintas y mezclarlas haría que responder una parezca haber
+  respondido la otra. El primero sale de `counts.needs_review`, que ya existe;
+  **el segundo no existe todavía** y se sirve con **H27**.
 - **Navegación.** *Entra desde:* P0, P1, el ítem *Resumen* de la barra, y toda
   vuelta de un flujo (P5 con la cola vacía, P6 tras aplicar reglas, P9 tras
   fijar el objetivo). *Sale a:* **P3** (chip de sync), **P5** (badge de
   pendientes), **P4** (tarjeta de saldo y barras del gráfico de categorías),
   **P8** (tarjeta de la tarjeta de crédito), **P9** (tarjeta de colchón),
   **P1** (*Completar perfil* desde una tarjeta sin dato) y al cajón de chat.
-- **Viabilidad: VIABLE, sin huecos.** Cada elemento del diseño se verificó
-  contra un campo real de `/api/overview`. Es una de las **dos únicas
-  pantallas** que se construyen hoy sin tocar el server (la otra es P7).
+- **Viabilidad: VIABLE salvo el contador nuevo (H27).** Cada elemento del
+  diseño original se verificó contra un campo real de `/api/overview`. El
+  contador *"M sin clasificar"* que agrega el Escenario 1 es el único elemento
+  de esta pantalla sin respaldo: mientras H27 no exista, **no se dibuja** —ni
+  con un número inventado ni deshabilitado con cara de dato— y el Escenario 1
+  se entra desde el aviso posterior al sync o desde P4.
 - **Detalle que importa:** `amount: null` se muestra como "sin leer", no como
   cero. Cero es un monto válido; lo desconocido es otra cosa.
 
@@ -215,19 +252,28 @@ recorrido. El veredicto de viabilidad y sus huecos salen de
 - **Muestra:** fecha, contraparte, monto, tipo, dirección, categoría, y las
   marcas de `needs_review` / reverso / transferencia interna.
 - **Acciones:** filtrar por rango, tipo, dirección y contraparte; mostrar u
-  ocultar reversados/internos/descartados; *Crear regla para este comercio*
-  (abre P6 precargado); *Preguntar sobre este movimiento* (abre P7 con la fila
-  como contexto); *Resolver* en una fila marcada en revisión (lleva a P5).
+  ocultar reversados/internos/descartados; ***¿Qué es esto?*** en una fila sin
+  clasificar (responde la categoría sin salir del detalle — la segunda puerta
+  del Escenario 1, mismo escritor que la cola de P5, **H28**); *Crear regla
+  para este comercio* (abre P6 precargado); *Preguntar sobre este movimiento*
+  (abre P7 con la fila como contexto); *Resolver* en una fila marcada en
+  revisión (lleva a P5).
 - **Navegación.** *Entra desde:* la tarjeta de saldo de P2, una barra del
   gráfico de categorías (con el filtro puesto), el ítem *Movimientos* de la
   barra, y el cierre del cajón de chat (que devuelve al **mismo scroll y los
   mismos filtros**). *Sale a:* **P6** (crear regla, precargado), **P5**
   (resolver una fila), **P3** (estado sin ledger) y al cajón de chat.
-- **Viabilidad: PARCIAL (H20, H21, H24).** La tabla y sus marcas son viables
-  hoy: vienen como columnas de la fila y no se recalculan. Faltan el **total**
-  de coincidencias —sin él no hay *"Mostrando 8 de N"* ni paginador (**H20**)—,
-  el **filtro por categoría** (**H21**) y el *"Ver por qué"* de una fila
-  descartada (**H24**).
+- **Viabilidad: PARCIAL (H20, H21, H24, H28).** La tabla y sus marcas son
+  viables hoy: vienen como columnas de la fila y no se recalculan. Faltan el
+  **total** de coincidencias —sin él no hay *"Mostrando 8 de N"* ni paginador
+  (**H20**)—, el **filtro por categoría** (**H21**), el *"Ver por qué"* de una
+  fila descartada (**H24**) y el escritor de *"¿Qué es esto?"* (**H28**).
+- **Cuidado con H21, y vale para toda la pantalla:** el filtro por categoría
+  **no puede ser una cláusula sobre la columna `category`**. El gráfico del
+  Resumen recalcula con `categorize()`, así que tocar una barra y caer acá con
+  un filtro sobre la columna devolvería **un conjunto distinto del que la barra
+  contó**. Se filtra por la categoría recalculada, igual que
+  `spendingByCategory`.
 - **Acción que se saca del diseño:** *Mandar a revisión* (**H26**). `needs_review`
   es una afirmación del pipeline sobre una discrepancia entre dos lecturas del
   correo, no una etiqueta que un humano pone a gusto; ponerla a mano crea una
@@ -250,13 +296,46 @@ recorrido. El veredicto de viabilidad y sus huecos salen de
 - **Acciones:** *Confirmar monto*, *Corregir monto*, *Descartar*, con nota
   opcional. El error del motor se traduce tal cual: `not_found` es 404, el
   resto son 400 y se muestran como "el motor rechazó esto, y por qué".
+- **Dos colas, dos preguntas — el Escenario 1 de Mato.** La pantalla tiene
+  **dos pestañas**, y no son dos vistas de lo mismo:
+
+  | Pestaña | Población | Qué se pregunta | Qué se responde |
+  |---|---|---|---|
+  | **Sin confirmar el monto** | `needs_review = 1` (hoy 4 filas) | *"no pude leer cuánto fue"* | un **monto** |
+  | **Sin clasificar** | categoría **recalculada** `otros` o `transferencia_persona` (hoy ~206 filas) | *"no sé qué es esto"* | una **categoría** |
+
+  La primera está fuera de todos los totales; la segunda ya suma en el saldo y
+  lo único que falta es saber qué es. Una fila puede estar en las dos, y
+  entonces **se pregunta el monto primero**: sin monto afirmado la fila no
+  entra a ningún total, así que su categoría no movería ningún gráfico.
+- **Cómo se guarda la respuesta de categoría, y por qué así.** Se escribe una
+  **regla** sobre la contraparte normalizada (`upsertCategoryRule` vía
+  `toRulePattern`), **no** la columna `category` de la fila. El motivo es
+  verificable: `spendingByCategory` **ignora la columna** y recalcula con
+  `categorize()` + `category_rules` (`strategy/spending.ts`). Pintar la fila
+  dejaría el gráfico del Resumen exactamente igual — que es justo el error que
+  ya costó una ronda entera de trabajo en este proyecto. Cuando la contraparte
+  tiene más movimientos, la pantalla lo dice y ofrece aplicar la respuesta a
+  todos: *"hay 6 más de <Persona 1>, ¿son todos salud?"*.
+- **Los tres lugares donde Mato puede responder** ("en alguna parte", como lo
+  puso él) — tres puertas, **un solo escritor**: esta cola, el detalle de un
+  movimiento en P4, y el chat, que **propone y navega** sin escribir.
+- **`resolveReview` no se toca.** Sus tres acciones son sobre el monto y dejan
+  rastro auditable; la categoría es otra pregunta con otra población y otro
+  escritor. Meterla como cuarta acción mezclaría el rastro de montos con una
+  preferencia de clasificación.
 - **Navegación.** *Entra desde:* el badge de pendientes de P2, el aviso
   persistente que deja un sync con filas en la cola (P3), una fila en revisión
   de P4, y el ítem *Revisión (N)* de la barra. *Sale a:* **P2** al vaciar la
   cola —y el total de P2 tiene que verse cambiado, ése es el punto de la
   pantalla— y al cajón de chat.
-- **Viabilidad: PARCIAL (H9, H10, H24), y el hueco es el corazón de la
-  pantalla.** La cola, el conteo, las tres acciones, la traducción del error y
+- **Viabilidad: PARCIAL (H9, H10, H24, H27, H28, H29), y el hueco es el corazón
+  de la pantalla.** La pestaña *Sin clasificar* **no tiene endpoint** (**H27**:
+  no hay ninguna función que liste las filas cuya categoría *recalculada* es
+  `otros`/`transferencia_persona`; `topUncategorizedCounterparties` agrupa por
+  contraparte y filtra la **columna**, así que las transferencias a
+  desconocidos se le escapan) y **la respuesta no tiene escritor** (**H28**).
+  La excepción por fila queda **fuera de la v1** (**H29**). La cola, el conteo, las tres acciones, la traducción del error y
   el rastro auditable están completos y testeados. Pero **el motivo por el que
   cayó cada fila no se persiste** (**H9**: `review_reason` se calcula en
   `ingest/pipeline.ts` y se pierde) y **el monto que leyó Claude tampoco**
@@ -292,12 +371,27 @@ recorrido. El veredicto de viabilidad y sus huecos salen de
   (**H6**), no se puede borrar una regla (**H7**), `backfillCategories` no
   tiene modo dry-run, así que la previsualización no existe (**H8**), y
   *Recuperar* es por lote, no por fila elegida (**H25**).
+- **P6 es el editor; P5 y P4 son el atajo.** Responder *"¿qué es esto?"* desde
+  la cola de clasificación o desde el detalle de una fila escribe **la misma
+  regla** que se escribiría acá a mano, con el patrón ya normalizado a partir
+  de la contraparte real. P6 sigue siendo el único lugar donde se ve la lista
+  completa, se edita un patrón y se borra una regla.
 - **Trampa conocida, documentada en memoria del proyecto:** un patrón de
   regla **más largo que la contraparte real nunca matchea**. El editor tiene
   que mostrar en vivo cuántas filas matchea el patrón que se está escribiendo
-  — antes de guardarlo, no después. Y hay que decir que reclasificar no mueve
-  el gasto por categoría cuando `categorize()` corta en
-  `type = 'transferencia'`.
+  — antes de guardarlo, no después.
+- **Corrección verificada contra el código, y es la que habilita el Escenario
+  1:** circulaba en las notas del proyecto que `categorize()` "corta" en
+  `type = 'transferencia'` y que por eso ninguna regla podía reclasificar una
+  transferencia. **Ya no es cierto:** el branch de `transferencia` consulta
+  `matchEstablishment` **antes** de caer en `transferencia_persona`
+  (`category/categorize.ts:169-176`), con el motivo escrito ahí mismo — donde
+  el comercio cobra por transferencia inmediata, la clínica y el restaurante
+  llegan con `type: 'transferencia'`. Que una regla sobre el nombre de un
+  desconocido **sí** matchee es lo que hace que responder *"¿qué es esto?"*
+  sirva para algo. Lo que sigue siendo cierto es lo otro: `spendingByCategory`
+  no lee la columna `category`, la recalcula — y por eso la respuesta se guarda
+  como regla y no como etiqueta de la fila.
 
 ### P7 — Chat
 
@@ -718,7 +812,12 @@ server.
 ## 9. Orden de construcción sugerido
 
 1. **Server primero:** las rutas HTTP faltantes (onboarding, reglas,
-   ahorro). Sin esto, tres pantallas no existen.
+   ahorro). Sin esto, tres pantallas no existen. **Y con los dos escenarios de
+   Mato se suman tres piezas más de motor, que van antes que su pantalla**: la
+   cola de clasificación (H27) y su escritor (H28) antes de P5, y la detección
+   de gastos fijos (H30) antes de P1. La regla es la misma de siempre, dicha al
+   revés: **una pregunta no se dibuja antes de que exista la función que la
+   responde.**
 2. **Esqueleto del panel:** workspace `panel/`, router, capa `api/`
    portada, modo demo, `vitest.config.ts` actualizado.
 3. **P2 + P3 + P5** — el núcleo operativo: ver, sincronizar, revisar. Con
@@ -747,7 +846,7 @@ server.
 Ver también: `docs/flujo-app-prototipo.md` (el recorrido clickeable y la ficha
 completa de cada una de las 19 tarjetas — §5 páginas, §6 componentes),
 `docs/panel-viabilidad.md` (la auditoría pantalla por pantalla
-contra el backend real — los 26 huecos con su endpoint propuesto),
+contra el backend real — los 31 huecos con su endpoint propuesto),
 `docs/frontend-desplegado.md` (por qué el sitio actual está en modo demo),
 `docs/onboarding.md` (el diseño no interactivo del onboarding),
 `docs/mcp.md` (las tools del agente), `docs/reliability.md`.

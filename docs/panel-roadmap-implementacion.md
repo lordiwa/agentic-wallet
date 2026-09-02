@@ -10,7 +10,7 @@ qué orden, cuánto cuesta, qué se puede recortar y qué tickets salen de ahí.
 
 Se apoya en tres docs que ya existen y no se repiten acá:
 `docs/panel-manejo-flujo.md` (el plan funcional),
-`docs/panel-viabilidad.md` (la auditoría, 26 huecos H1..H26),
+`docs/panel-viabilidad.md` (la auditoría, 31 huecos H1..H31),
 `docs/flujo-app-prototipo.md` (el recorrido clickeable de las 19 tarjetas).
 
 ---
@@ -607,7 +607,7 @@ descartado por escrito, igual que en `docs/panel-manejo-flujo.md` §8.
 ---
 
 Ver también: `docs/panel-manejo-flujo.md` (el plan funcional),
-`docs/panel-viabilidad.md` (la auditoría, H1..H26),
+`docs/panel-viabilidad.md` (la auditoría, H1..H31),
 `docs/flujo-app-prototipo.md` (el recorrido clickeable),
 `docs/mcp.md` (las 14 tools), `docs/frontend-desplegado.md` (por qué el sitio
 actual está en modo demo), `tasks/TASK-045.json` (el ticket paraguas).

@@ -4,6 +4,12 @@
 — primero, **los caminos de uso dibujados de forma simple**; después, que se
 **intente romperlos**. Este doc entrega las dos, en ese orden.
 
+**Y desde la última pasada hay dos escenarios más, escritos por Mato**, que son
+especificación y no sugerencia: el panel tiene que **preguntarle qué son sus
+movimientos** y **leerle el historial para armar su patrón de gastos fijos**.
+Están textuales al principio de la Parte 1, desarrollados en CU-2b y CU-5b, y
+atacados en R31, R32 y R33.
+
 **La Parte 1 es para leer de un vistazo.** Cada caso de uso es una fila de
 pasos: paso 1 ---> paso 2 ---> paso 3. Sin jerga, sin nombres de endpoint, sin
 números de hueco. Si sólo vas a leer una parte, leé ésa.
@@ -31,7 +37,45 @@ final y acá se ataca **en concepto**, no como entregable.
 
 # PARTE 1 — Los caminos de uso, en diagramas simples
 
-Doce caminos. Cada uno es lo que Mato hace, no lo que el software ejecuta.
+Quince caminos. Cada uno es lo que Mato hace, no lo que el software ejecuta.
+Los dos que llevan el nombre de Mato —CU-2b y CU-5b— son sus dos escenarios.
+
+## Los dos escenarios de Mato — la especificación, textual
+
+Mato escribió dos escenarios y pidió que se cumplan **exactamente como los
+describe**. Van acá arriba, sin reescribir, porque son la especificación; los
+caminos de abajo son su desarrollo, no su reemplazo.
+
+**Escenario 1** — *"Entro al sitio ---> hay transferencias mias a desconocidos
+---> se actualiza movimientos ---> me pregunta que son los movimientos --->
+respondo en alguna parte que categoria son"*
+
+**Escenario 2** — *"entro por primera vez ---> analiza 3-6 meses anteriores
+---> crea patron de gastos fijos ---> pregunta gastos particulares?"*
+
+Dónde vive cada uno: el **Escenario 1 es CU-5**, que hasta ahora sólo preguntaba
+por el monto; el **Escenario 2 es CU-2**, que hasta ahora sólo sugería sueldo y
+días de pago. Los dos se atacan en la Parte 2 (R31 y R32).
+
+**La distinción que sostiene los dos, y hay que leerla antes que los
+diagramas:** el panel tiene **dos colas distintas**, y confundirlas rompe las
+dos pantallas.
+
+```
+Cola de REVISIÓN     --->  "no pude leer cuánto fue"  --->  se responde un MONTO
+   (needs_review = 1)      la fila está fuera de todos los totales
+                           hoy: 4 filas de 1.159
+
+Cola de CLASIFICACIÓN --->  "no sé qué es esto"       --->  se responde una CATEGORÍA
+   (categoría recalculada     el monto está bien y ya suma en el saldo
+    = otros o                 hoy: ~206 filas
+    transferencia_persona)
+```
+
+Una fila puede estar en las dos. Cuando lo está, **se pregunta el monto
+primero**: sin monto afirmado la fila no entra a ningún total, así que su
+categoría no movería ningún gráfico y la pregunta llegaría antes de servir para
+algo.
 
 ## CU-1 · Entrar al panel
 
@@ -60,6 +104,59 @@ Salida alterna, siempre disponible:
 ```
 Pantalla de Alta  --->  Toco "Saltar por ahora"  --->  Vuelvo al Resumen
 ```
+
+### CU-2b · Entro por primera vez y el agente lee mi historial — **Escenario 2 de Mato**
+
+Es el mismo *Sugerir desde mi historial* de arriba, ampliado a lo que Mato
+pidió: no sólo sueldo y días de pago, sino **el patrón de gastos fijos** y,
+después, **la pregunta por los gastos particulares**.
+
+El camino completo, cuando **sí** hay historial:
+
+```
+Entro por primera vez  --->  ¿hay historial leído?  --->  SÍ, N meses
+     --->  Pantalla de Alta: "leí N meses de tus correos"
+     --->  Toco "Analizar mi historial"
+     --->  El agente lee los últimos 3 a 6 meses y propone, sin guardar nada:
+              1. sueldo y días de pago
+              2. GASTOS FIJOS: lo que se repite todos los meses
+                 (servicio, suscripción, renta, cuota)
+              3. colchón sugerido, a partir de esos dos
+     --->  Reviso los gastos fijos uno por uno:
+              "Sí, es fijo"     --->  queda como gasto fijo
+              "No, fue casual"  --->  sale de la lista, pasa a particulares
+     --->  Toco "Guardar"
+     --->  "Y quedan M gastos que NO se repiten. ¿Qué son?"
+     --->  Toco "Decime cuáles"  --->  Cola de clasificación (CU-5b)
+     --->  Vuelvo al Resumen  --->  el gasto por categoría ya está armado
+```
+
+Las dos salidas alternas, siempre disponibles:
+
+```
+Pantalla de Alta  --->  "Saltar por ahora"  --->  Resumen (el análisis queda ahí)
+"¿Qué son los M gastos?"  --->  "Ahora no"  --->  Resumen
+     --->  el Resumen sigue diciendo "M movimientos sin clasificar"
+```
+
+**Y el camino cuando NO hay historial** — que es el caso de todo usuario nuevo
+en el Modelo D (ingesta por reenvío: el filtro de Gmail actúa sobre lo que
+llega, no sobre lo que ya llegó, así que el ledger arranca vacío):
+
+```
+Entro por primera vez  --->  ¿hay historial leído?  --->  NO / menos de 1 mes
+     --->  "Todavía no tengo suficiente historial para leer tus gastos fijos"
+     --->  "Llevo 0,4 meses acumulados; el análisis se activa a los 3"
+     --->  Toco "Sincronizar por primera vez"  --->  Sincronización
+     --->  vuelvo cuando haya  --->  el análisis se ofrece solo
+```
+
+**El análisis no desaparece: se pospone.** El botón *Analizar mi historial* no
+se dibuja activo sobre un ledger vacío (sería un botón que no hace nada), y la
+pantalla dice **cuántos meses lleva acumulados y a partir de cuántos se
+activa**. Las dos únicas formas de que un usuario del Modelo D llegue antes al
+análisis son esperar, o importar historial — y la importación es el Modelo A
+como camino opcional, que no está construido.
 
 ## CU-3 · Ver cómo estoy hoy (el hogar)
 
@@ -107,7 +204,26 @@ Terminó  --->  ¿quedó algo que el agente no pudo afirmar?
                                               Revisión
 ```
 
-## CU-5 · Confirmar lo que el agente no pudo leer (revisión)
+Y la segunda pregunta del lote, que es la del Escenario 1 — **son dos avisos
+distintos porque son dos preguntas distintas**, y mezclarlas haría que
+responder una parezca haber respondido la otra:
+
+```
+Terminó  --->  ¿entró algo que el agente no sabe qué es?
+                     |                              |
+                    NO                             SÍ
+                     |                              |
+                     v                              v
+        no se dice nada                  Aviso: "N movimientos nuevos que
+                                          no sé qué son"
+                                                    |
+                                          Toco "Decime qué son"
+                                                    |
+                                                    v
+                                       Revisión, pestaña "Sin clasificar"
+```
+
+## CU-5 · Confirmar lo que el agente no pudo leer (revisión del monto)
 
 ```
 Resumen  --->  Toco "3 pendientes"  --->  Revisión: 3 tarjetas
@@ -120,6 +236,76 @@ Resumen  --->  Toco "3 pendientes"  --->  Revisión: 3 tarjetas
      --->  Vuelvo al Resumen  --->  el saldo cambió
 ```
 
+Si la fila que acabo de confirmar además **no se sabe qué es**, la pregunta
+sigue de largo — el monto primero, la categoría después:
+
+```
+"Confirmar monto"  --->  la fila entra a los totales
+     --->  "¿y qué es? Es una transferencia a <Persona 1>"
+     --->  respondo la categoría (CU-5b)  --->  quedan 2
+```
+
+## CU-5b · Decirle al agente qué son mis movimientos — **Escenario 1 de Mato**
+
+El camino tal como Mato lo dibujó, desarrollado paso a paso:
+
+```
+Entro al sitio  --->  Resumen: "12 movimientos que no sé qué son"
+     --->  Toco "Sincronizar"  --->  termina el lote: movimientos actualizados
+     --->  Aviso: "3 movimientos nuevos que no sé qué son"
+     --->  Toco "Decime qué son"  --->  Revisión, pestaña "Sin clasificar"
+     --->  Leo la primera: "Transferencia a <Persona 1>, −45,00, 12 sep"
+     --->  El agente pregunta: "¿qué es esto?"
+     --->  Elijo la categoría de la lista  --->  "Guardar"
+     --->  Queda 11  --->  ... hasta que no queda ninguna
+     --->  Vuelvo al Resumen  --->  el gasto por categoría cambió
+```
+
+**Qué pasa exactamente cuando respondo**, porque acá está la decisión que hace
+que la respuesta sirva más de una vez:
+
+```
+Respondo "salud" sobre <Persona 1>
+     --->  se guarda una REGLA: "lo que se llame <Persona 1> es salud"
+     --->  ¿hay más movimientos de <Persona 1>?
+                |                                 |
+               NO                                SÍ, 6 más
+                |                                 |
+                v                                 v
+      la cola baja en 1              "hay 6 más de <Persona 1>.
+                                      ¿son todos salud?"
+                                                  |
+                                    Sí   --->  la cola baja en 7
+                                    No   --->  se guarda sólo esta y se dice:
+                                               "sin regla te lo voy a volver
+                                                a preguntar"
+```
+
+**Por qué la respuesta se guarda como regla y no como etiqueta de esa fila.**
+El gasto por categoría **no lee la columna `category`**: la recalcula en vivo
+con `categorize()` y las reglas del usuario
+(`server/src/strategy/spending.ts:32-58`). Pintar una fila a mano dejaría el
+número del Resumen exactamente igual — que es el error que ya costó una ronda
+entera de trabajo en este proyecto. La regla es el único lugar desde donde una
+respuesta del usuario llega al gráfico.
+
+Los **tres lugares** donde Mato puede responder ("en alguna parte", como lo
+puso él) — tres puertas, **un solo escritor**:
+
+```
+Revisión, pestaña "Sin clasificar"  --->  responder de a una, en cola
+Detalle de un movimiento (P4)       --->  "¿qué es esto?" sobre la fila abierta
+Chat                                --->  el agente propone y NAVEGA a la
+                                          pantalla que confirma; no escribe
+```
+
+Y el estado vacío, que es el estado normal y hay que poder confiar en él:
+
+```
+Resumen  --->  "Sin clasificar"  --->  "Nada que preguntarte:
+     sé qué es cada uno de tus movimientos"  --->  Vuelvo al Resumen
+```
+
 ## CU-6 · Buscar un movimiento
 
 ```
@@ -127,10 +313,16 @@ Resumen  --->  Toco la tarjeta "Saldo"  --->  Movimientos: la lista
      --->  Filtro por fecha, tipo, entrada/salida o comercio
      --->  Toco una fila  --->  Se abre el detalle
      --->  Desde el detalle elijo:
+              "¿Qué es esto?" (si no se sabe)   --->  respondo la categoría acá
               "Crear regla para este comercio"  --->  Reglas
               "Preguntar sobre este movimiento" --->  Chat
               "Resolver" (si está en revisión)  --->  Revisión
 ```
+
+*"¿Qué es esto?"* en el detalle y la cola de clasificación de CU-5b son **la
+misma pregunta con el mismo escritor**: una respuesta acá guarda la misma regla
+y baja el mismo contador. Lo único que cambia es que en el detalle Mato eligió
+la fila, y en la cola la eligió el agente (por plata, la más cara primero).
 
 ## CU-7 · Enseñarle al agente a clasificar (reglas)
 
@@ -153,6 +345,16 @@ Cualquier pantalla  --->  Toco el ícono de chat
      --->  Si el agente propone algo, NO lo hace solo:
               me lleva a la pantalla donde eso se confirma
      --->  Cierro el cajón  --->  Vuelvo exactamente a donde estaba
+```
+
+Y es la tercera puerta del Escenario 1: le puedo decir por chat qué es un
+movimiento, y el agente **no lo escribe** — me lleva a confirmarlo.
+
+```
+Chat: "esa transferencia a <Persona 1> es del veterinario"
+     --->  el agente propone la categoría, NO la guarda
+     --->  "Revisar y guardar"  --->  la fila, con la categoría precargada
+     --->  confirmo  --->  ahí sí se escribe la regla
 ```
 
 ## CU-9 · Ver el plan (estrategia)
@@ -185,16 +387,29 @@ Cualquier pantalla  --->  Toco el engranaje  --->  Configuración
      --->  "Completar perfil"  --->  Alta
 ```
 
-## CU-12 · Los tres retornos al hogar
+## CU-12 · Los cuatro retornos al hogar
 
 El flujo aprobado promete que **cada vuelta al Resumen muestra el efecto de lo
-que acabo de hacer**. Son tres:
+que acabo de hacer**. Eran tres, y con el Escenario 1 son cuatro:
 
 ```
 Vacío la cola de revisión   --->  Resumen  --->  el saldo cambió
 Aplico una regla nueva      --->  Resumen  --->  el gráfico de categorías cambió
 Fijo un objetivo de colchón --->  Resumen  --->  la tarjeta del colchón cambió
 ```
+
+Con el Escenario 1 son **cuatro**, y el cuarto es el que Mato pidió:
+
+```
+Digo qué son mis movimientos --->  Resumen  --->  el gráfico de categorías
+                                                  cambió, y el contador
+                                                  "sin clasificar" bajó
+```
+
+Este cuarto retorno tiene la misma trampa que el segundo (R19) y la misma
+corrección: el gráfico del Resumen es **del mes en curso**. Si respondí sobre
+una transferencia de hace cuatro meses, el gráfico no se mueve — y la pantalla
+tiene que decirlo en vez de prometer un cambio que no va a ocurrir.
 
 ## CU-13 · Los caminos alternos (lo que pasa cuando algo no sale)
 
@@ -266,8 +481,10 @@ Abro el chat  --->  "Falta configurar Claude"
   barato de sobrellevar. Se documenta, se rotula en pantalla, y se sigue.
 - **SÓLIDO** — se atacó y aguantó.
 
-**Resultado del ataque: 13 ROMPE, 12 limitaciones aceptables y 5 caminos
-sólidos.** El detalle, camino por camino.
+**Resultado del ataque: 15 ROMPE, 13 limitaciones aceptables y 5 caminos
+sólidos.** El detalle, camino por camino. Los dos ROMPE más recientes —**R31**
+y **R32**— son los de los dos escenarios que Mato pidió, y son los dos del
+mismo tipo: **la pantalla pregunta algo que el motor no sabe contestar todavía.**
 
 ---
 
@@ -401,6 +618,74 @@ que va a estar en ese estado es Próximo pago**.
 **Se acepta**, con la precisión escrita: el camino de vuelta al perfil cuelga
 de Próximo pago, no de "cualquier tarjeta". (Con R9 corregido, Safe-to-spend
 se le suma.)
+
+### R32 · El Escenario 2 no tiene motor: nada en el repo detecta un gasto fijo · **ROMPE** · severidad **alta**
+
+**Escenario.** Mato entra por primera vez, toca *Analizar mi historial* y espera
+la lista de sus gastos que se repiten todos los meses. El agente **no tiene con
+qué armarla.**
+
+**Por qué se rompe.** `buildSuggestions()`
+(`server/src/onboard/suggest.ts:187-197`) devuelve exactamente cinco cosas:
+`titular`, `salary`, `uncategorized`, `gastoMensualPromedio` y
+`mesesDeHistorial`. **Ninguna es un patrón de gastos fijos.** No existe en todo
+el repo una función que agrupe salidas por contraparte y cadencia: se buscó
+"recurren", "gasto fijo" y "suscripcion" en `strategy/`, `onboard/`,
+`category/` y `chat/`, y lo único que aparece es la categoría `suscripcion` del
+glosario — un rótulo, no una detección. Y `suggestSpendBaseline` sólo divide el
+total de salidas por los meses cubiertos (`suggest.ts:162-186`): un promedio,
+que no distingue la renta de una compra de una sola vez.
+
+Segundo frente, más silencioso: **aunque la lista existiera, no hay dónde
+guardarla.** `strategy_config` valida con zod contra un esquema cerrado —
+`colchonObjetivo`, `sueldo`, `titular`, `diasPago`
+(`server/src/db/strategy-config.ts:12-20`) — y no tiene ninguna clave de gastos
+fijos. `setStrategyConfig` rechazaría el patch.
+
+**Corrección, en dos piezas separadas a propósito.** La detección es motor con
+sus tests (**H30**); la persistencia de la lista **no entra a la v1** (**H31**),
+porque lo que el análisis produce sí tiene dónde vivir: reglas de categoría
+confirmadas y un colchón sugerido.
+
+```
+"Analizar mi historial"  --->  el agente lee 3 a 6 meses
+     --->  propone los gastos fijos que ENCONTRÓ, con su mediana y su día
+     --->  confirmo cuáles son fijos  --->  se guardan como reglas + colchón
+     --->  la LISTA de gastos fijos no se persiste en la v1, y se dice
+```
+
+```
+Mediana y no promedio  --->  un mes con dos pagos del mismo servicio
+     --->  no infla la propuesta   (misma disciplina que suggestSalary)
+```
+
+### R33 · En el Modelo D el Escenario 2 no se puede cumplir nunca el primer día · **LIMITACIÓN ACEPTABLE**
+
+El Escenario 2 empieza con *"entro por primera vez"* y sigue con *"analiza 3-6
+meses anteriores"*. En el **Modelo D** —ingesta por reenvío, el modelo objetivo
+de `panel-prep-implementacion.md` §3.2— esas dos frases se contradicen: el
+filtro de Gmail actúa sobre lo que llega, no sobre lo que ya llegó, así que un
+usuario nuevo tiene **cero meses de historial** en su primer día. El caso de
+Mato (ocho meses ya sincronizados, Modelo C) es la excepción, no la regla.
+
+**Se acepta**, con el comportamiento escrito y verificable: el motor ya devuelve
+`mesesDeHistorial` (`suggest.ts:162-186`), que es el dato del que cuelga toda la
+decisión. Con menos de tres meses, *Analizar mi historial* **no se dibuja
+activo** —sería el botón que no hace nada que este ticket prohíbe— y la pantalla
+dice cuánto lleva acumulado y desde cuándo se activa.
+
+```
+Usuario nuevo, Modelo D  --->  Alta: "llevo 0,4 meses de tus correos"
+     --->  "Analizar mi historial" deshabilitado, con su motivo
+     --->  "el análisis se activa a los 3 meses"
+     --->  cuando llega, el análisis se ofrece solo desde el Resumen
+```
+
+Las dos únicas salidas que acortan la espera están fuera del MVP y hay que
+nombrarlas para no prometerlas: **importar historial** (el Modelo A como
+importador opcional, detrás de la verificación de Google, no construido) o
+**arrancar en Modelo C**, con el usuario corriendo el sync sobre su propio
+buzón, que es lo que Mato ya hace.
 
 ---
 
@@ -644,6 +929,58 @@ revisión y la narrativa del día del Resumen no funcionan.
 
 **Se acepta** porque es agregar objetos literales a un archivo que existe —
 pero hay que **decirlo en el plan de B1/B2 como trabajo**, no darlo por hecho.
+
+### R31 · El Escenario 1 no tiene ni cola ni escritor, y el filtro por categoría que sí está propuesto mira la columna equivocada · **ROMPE** · severidad **alta**
+
+**Escenario.** Mato entra, sincroniza, y espera que el panel le pregunte qué
+son sus transferencias a desconocidos. **No hay ninguna pantalla que sepa
+cuáles son**, y si respondiera, no hay ninguna ruta que guarde la respuesta.
+
+**Por qué se rompe, en tres capas.**
+
+1. **No existe la cola.** `POST /api/review/:id/resolve` acepta tres acciones y
+   nada más: `REVIEW_ACTIONS = ["confirm", "correct", "discard"]`
+   (`server/src/review/resolve.ts:70`), y `ResolveReviewInput`
+   (`resolve.ts:86-97`) tiene `amount` y `note` — **no tiene categoría**. La
+   cola de revisión es de montos, y la pregunta de Mato es de categorías.
+2. **Lo más parecido que existe agrupa, y filtra por el dato equivocado.**
+   `topUncategorizedCounterparties` (`category/rules-repository.ts:157+`)
+   devuelve **contrapartes**, no movimientos, y filtra con
+   `category IS NULL OR category = '' OR category = 'otros'` — o sea **la
+   columna**. Una transferencia a un desconocido tiene la columna en
+   `transferencia_persona`, así que **no aparece en esa lista**: justo las filas
+   del Escenario 1 son las que se escapan.
+3. **Y el hueco ya propuesto arrastra el mismo error.** H21 propone el filtro
+   por categoría de la tabla de movimientos como una cláusula sobre
+   `category`. Pero el gráfico del Resumen **no lee la columna**: recalcula con
+   `categorize()` y las reglas (`strategy/spending.ts:32-58`). Tocar una barra
+   del gráfico y caer en una lista filtrada por la columna devuelve **un
+   conjunto distinto del que la barra contó**, y el camino "barra del gráfico
+   ---> Movimientos filtrado" de CU-3 muestra un total que no cierra con el que
+   lo originó.
+
+**Corrección.** La cola y el filtro se derivan de **la categoría que el motor
+calcula**, no de la columna (**H27**), y la respuesta se escribe como **regla**
+(**H28**), que es el único escritor que el gráfico lee. H21 se corrige para
+recalcular en vez de filtrar la columna.
+
+```
+Cola de clasificación  --->  filas cuya categoría RECALCULADA es
+     'otros' o 'transferencia_persona'  --->  ordenadas por plata
+```
+
+```
+Respondo la categoría  --->  se guarda una regla sobre la contraparte
+     --->  el gráfico del Resumen la lee en el próximo cálculo
+     --->  escribir la columna de la fila NO habría cambiado nada
+```
+
+**Y una cuarta capa que hay que decidir antes de dibujar:** una contraparte con
+**dos verdades** (la misma persona que un mes es "salud" y otro es un préstamo)
+no tiene solución por regla, porque la regla es por nombre. La excepción por
+fila es **H29**, y la recomendación es **no construirla en la v1**: la salida
+honesta es *"no preguntarme más por esta"*, no una etiqueta que el gráfico no
+va a leer.
 
 ---
 
@@ -927,6 +1264,8 @@ bloque que las contiene no puede darse por terminado.
 | **R25** | El colchón sin objetivo se dibuja "financiado" | (post-MVP) | tratar objetivo 0 como sin fijar |
 | **R30** | B1 promete el teléfono y el diseño es de escritorio | **B1** | diseñar chico el Resumen y el chip |
 | **R22** | El chip de contexto del chat no es removible después de enviar | (fase chat) | removible antes, visible después |
+| **R31** | El Escenario 1 no tiene cola ni escritor, y H21 filtra por la columna que el gráfico no lee | **B2, B3** | H27 + H28, y corregir H21 |
+| **R32** | El Escenario 2 no tiene motor: nada detecta un gasto fijo | (fase de perfil) | H30 en `strategy/` con tests; la lista no se persiste (H31) |
 
 **Ninguna de estas correcciones necesita tocar el pipeline de ingesta.** Diez
 de las trece son de diseño o de cliente y no tocan el server. Las dos
@@ -948,10 +1287,12 @@ bloqueantes de B0 son dos líneas de CORS y una lista blanca en el cliente.
 - **R27** — tres fallos distintos se ven iguales; se distinguen con
   *Probar conexión*.
 - **R29** — el foco del cajón de chat sin definir; se define al construirlo.
+- **R33** — en el Modelo D el Escenario 2 no se puede cumplir el primer día; el
+  análisis se pospone hasta los 3 meses de historial y la pantalla lo dice.
 
 ## El principio que resume todo el ataque
 
-Los trece ROMPE caen en **tres familias**, y las tres se corrigen con la
+Los quince ROMPE caen en **cuatro familias**, y las cuatro se corrigen con la
 misma disciplina:
 
 1. **La pantalla promete un efecto que a veces es cero** (R12, R19, R25, R7).
@@ -963,6 +1304,11 @@ misma disciplina:
    R14, R22). Corrección: los estados se derivan del dato que el motor sí
    devuelve —`needs_review`, `changed`, `currency`, `running`— y no de uno que
    sería cómodo que devolviera.
+4. **La pantalla pregunta algo que el motor no sabe contestar** (R31, R32) —
+   la familia que abren los dos escenarios de Mato. Corrección: la pregunta se
+   construye **después** de la función que la responde, y la respuesta se
+   escribe **donde el motor la va a leer** (una regla, no una columna que
+   `spendingByCategory` ignora).
 
 **R30 queda aparte**: no es una familia, es un criterio de terminado que hoy no
 se puede verificar. Hay que elegir cuál de las dos opciones vale antes de
@@ -972,6 +1318,6 @@ empezar B1, no después.
 
 Ver también: `docs/flujo-app-prototipo.md` (el recorrido clickeable que este
 doc ataca), `docs/panel-manejo-flujo.md` (el plan funcional),
-`docs/panel-viabilidad.md` (los 26 huecos H1..H26),
+`docs/panel-viabilidad.md` (los 31 huecos H1..H31),
 `docs/panel-prep-implementacion.md` (el wargaming del roadmap y el plan
 B0..B3), `docs/panel-roadmap-implementacion.md` (el roadmap de seis fases).

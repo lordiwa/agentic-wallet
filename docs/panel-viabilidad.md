@@ -50,11 +50,11 @@ en la ficha correspondiente de `docs/flujo-app-prototipo.md` §5 y §6.
 | Pieza | Veredicto | Huecos | Se alimenta con |
 |---|---|---|---|
 | P0 Acceso | **NO VIABLE** | H1 | `GET /api/health` (sonda). La sesión de Google **no existe** |
-| P1 Alta y perfil | **NO VIABLE** | H2, H3, H4 | `onboardStatus`, `buildSuggestions`, `setStrategyConfig` — **sólo por MCP/CLI** |
+| P1 Alta y perfil | **NO VIABLE** | H2, H3, H4, H30, H31 | `onboardStatus`, `buildSuggestions`, `setStrategyConfig` — **sólo por MCP/CLI**; el patrón de gastos fijos **no existe** |
 | P2 Resumen | **VIABLE** | — | `GET /api/overview`, `GET /api/brief`, `GET /api/sync/status` |
 | P3 Sincronización | **PARCIAL** | H17, H18, H19 | `POST /api/sync`, `GET /api/sync/status` |
-| P4 Movimientos | **PARCIAL** | H20, H21, H24, H26 | `GET /api/transactions` |
-| P5 Revisión | **PARCIAL** | H9, H10, H24 | `GET /api/review`, `POST /api/review/:id/resolve`, `GET /api/review/resolutions` |
+| P4 Movimientos | **PARCIAL** | H20, H21, H24, H26, H28 | `GET /api/transactions` |
+| P5 Revisión | **PARCIAL** | H9, H10, H24, H27, H28, H29 | `GET /api/review`, `POST /api/review/:id/resolve`, `GET /api/review/resolutions`; la pestaña *Sin clasificar* **no tiene endpoint** |
 | P6 Categorías y reglas | **NO VIABLE** | H5, H6, H7, H8, H25 | `listCategoryRules`, `upsertCategoryRule`, `backfillCategories` — **sólo por MCP/CLI** |
 | P7 Chat | **VIABLE** | — | `POST /api/chat/:conversationId?` (SSE), `GET /api/conversations` |
 | P8 Estrategia | **PARCIAL** | H11, H12, H13 | `GET /api/overview` (`card_status`), `GET /api/strategy/projection?abono=`, `POST /api/debts/:id/paid` |
@@ -70,11 +70,19 @@ en la ficha correspondiente de `docs/flujo-app-prototipo.md` §5 y §6.
 | Mapa de flujo | n/a | — | índice navegable del prototipo; no consume datos |
 
 Diecisiete piezas evaluadas (11 páginas + 6 componentes). **Cuatro se pueden
-construir hoy tal cual.** Las otras trece necesitan, entre todas, **26 huecos**
-resueltos (§3): 22 pasan por una ruta HTTP nueva — 8 de ellas se resuelven
-llamando a una función que ya existe y ya está testeada, las otras 14 necesitan
+construir hoy tal cual.** Las otras trece necesitan, entre todas, **31 huecos**
+resueltos (§3): 25 pasan por una ruta HTTP nueva — 9 de ellas se resuelven
+llamando a una función que ya existe y ya está testeada, las otras 16 necesitan
 además una función o una columna nueva en el motor —, 1 es el middleware de
-acceso, y 3 se arreglan **sólo cambiando el diseño**, sin escribir backend.
+acceso, y 5 se arreglan **sólo cambiando el diseño**, sin escribir backend.
+
+**Los cinco últimos (H27..H31) salen de los dos escenarios que Mato escribió** y
+no estaban en la auditoría original, porque la auditoría preguntaba *"¿la
+pantalla tiene endpoint?"* y los escenarios preguntan otra cosa: *"¿el motor
+sabe contestar lo que la pantalla va a preguntar?"*. La respuesta es no en los
+dos casos — no hay cola de clasificación ni escritor de categoría por fila
+(H27, H28), y no hay ninguna detección de gastos recurrentes en todo el repo
+(H30). El detalle está en `docs/flujo-wargaming.md` R31, R32 y R33.
 
 El hallazgo que más cambia el alcance respecto de `panel-manejo-flujo.md`: la
 **ReviewCard** — la pieza que el propio diseño declara "donde la invariante del
@@ -157,7 +165,29 @@ habla MCP por stdio: para el panel, esas seis habilidades **no existen**.
     `strategy_config` no tiene una clave `cuentas`, y el motor no mira cuentas
     sino el **titular** (`titular`, que `rules/reconcile.ts` compara contra el
     contacto de cada transferencia para marcarla interna).
-- **Huecos:** H2, H3, H4.
+- **Y lo que el Escenario 2 de Mato le agrega a esta pantalla:** *"analiza 3-6
+  meses anteriores ---> crea patrón de gastos fijos ---> pregunta gastos
+  particulares"*. Tres piezas, y sólo la última existe:
+  - **Analizar el historial:** `buildSuggestions()` ya lo hace, y ya devuelve
+    `mesesDeHistorial` — el dato del que cuelga toda la decisión de si el
+    análisis se puede ofrecer o no.
+  - **El patrón de gastos fijos: no existe** (**H30**). `buildSuggestions`
+    devuelve `titular`, `salary`, `uncategorized`, `gastoMensualPromedio` y
+    `mesesDeHistorial`. Ninguna función del repo agrupa salidas por contraparte
+    y cadencia mensual; `suggestSpendBaseline` sólo divide el total por los
+    meses cubiertos, que es un promedio y no distingue la renta de una compra
+    de una sola vez. Y aunque existiera, **no hay dónde guardarla** (**H31**):
+    el esquema zod de `strategy_config` es cerrado y `setStrategyConfig`
+    rechazaría el patch.
+  - **Preguntar por los gastos particulares:** es la cola de clasificación del
+    Escenario 1 (**H27**, **H28**) acotada al historial analizado. No es un
+    hueco nuevo, es el mismo con otro punto de entrada.
+- **La limitación que hay que escribir en la pantalla:** en el **Modelo D** un
+  usuario nuevo arranca con el ledger vacío, así que el análisis **no se puede
+  ofrecer el primer día**. Con `mesesDeHistorial < 3`, *Analizar mi historial*
+  va deshabilitado con su motivo y la pantalla dice cuánto lleva acumulado —
+  ver `docs/flujo-wargaming.md` R33.
+- **Huecos:** H2, H3, H4, H30, H31.
 
 ### P2 — Resumen · **VIABLE**
 
@@ -225,7 +255,15 @@ habla MCP por stdio: para el panel, esas seis habilidades **no existen**.
   - **"Ver por qué"** de una fila descartada: el rastro existe
     (`review_resolutions`) y el motor sabe filtrar por transacción, pero la ruta
     HTTP no expone el filtro.
-- **Huecos:** H20, H21, H24, y el "mandar a revisión" queda como H26 (se
+  - **"¿Qué es esto?"** en el detalle de una fila sin clasificar — la segunda
+    puerta del Escenario 1: no hay ruta que escriba la respuesta (**H28**). Es
+    la misma pregunta y el mismo escritor que la pestaña *Sin clasificar* de
+    P5; lo único que cambia es quién eligió la fila.
+  - **Y una corrección sobre H21:** el filtro por categoría **no puede ser una
+    cláusula sobre la columna**. El gráfico del Resumen recalcula, así que
+    tocar una barra y caer en una lista filtrada por `category` devolvería un
+    conjunto distinto del que la barra contó.
+- **Huecos:** H20, H21, H24, H28, y el "mandar a revisión" queda como H26 (se
   recomienda **no** construirlo — ver §4).
 
 ### P5 — Revisión · **PARCIAL**
@@ -250,7 +288,31 @@ habla MCP por stdio: para el panel, esas seis habilidades **no existen**.
     tiene de dónde salir.
   - **El correo original.** Sólo se guarda `raw_subject`. El cuerpo no, y con
     buen criterio: es dato personal.
-- **Huecos:** H9, H10, H24.
+- **Y una segunda cola que esta pantalla ahora tiene que alojar** — el
+  Escenario 1 de Mato: *"me pregunta qué son los movimientos ---> respondo en
+  alguna parte qué categoría son"*. P5 pasa a tener **dos pestañas**, y no son
+  dos vistas de lo mismo:
+  - **Sin confirmar el monto** (`needs_review = 1`): la cola de siempre. Hoy 4
+    filas. El monto está en duda y la fila está fuera de todos los totales.
+  - **Sin clasificar** (categoría **recalculada** `otros` o
+    `transferencia_persona`): el monto está bien y ya suma; lo que falta es
+    **qué es**. Hoy ~206 filas. **No tiene endpoint** (**H27**), y el escritor
+    de la respuesta tampoco existe (**H28**).
+  - Una fila puede estar en las dos. Cuando lo está, **se pregunta el monto
+    primero**: sin monto afirmado la fila no entra a ningún total, así que su
+    categoría no movería ningún gráfico.
+- **Por qué la respuesta se guarda como regla y no en la fila.**
+  `spendingByCategory` **ignora la columna `category`** y recalcula con
+  `categorize()` + `category_rules` (`strategy/spending.ts:32-58`). Escribir la
+  columna de una fila no cambiaría un solo número de los que Mato ve. El
+  escritor correcto es `upsertCategoryRule` sobre la contraparte normalizada, y
+  la excepción por fila queda fuera de la v1 (**H29**, §4).
+- **Nota sobre `resolveReview`:** no se toca. `REVIEW_ACTIONS` son
+  `confirm`/`correct`/`discard` y `ResolveReviewInput` lleva `amount` y `note`;
+  la categoría es otra pregunta, con otra población y otro escritor. Meterla
+  como cuarta acción mezclaría el rastro auditable de montos con una
+  preferencia de clasificación.
+- **Huecos:** H9, H10, H24, H27, H28, H29.
 
 ### P6 — Categorías y reglas · **NO VIABLE**
 
@@ -461,12 +523,17 @@ propio test, nunca en la ruta.
 | H18 | No se puede detener un sync (P3, SyncButton) | `POST /api/sync/stop` que levante una bandera que el runner consulte entre correos (no aborta el correo en curso). Alternativa v1: "Detener" corta sólo el auto-encadenado y el rótulo lo dice — *"se detiene al terminar este lote"* | `run-sync.ts` | motor + ruta |
 | H19 | `batch_size` no expuesto por HTTP (P3) | `POST /api/sync` acepta `{batch_size?}` validado con zod y lo pasa al runner — la tool MCP ya lo hace | `SyncRunner` | ruta |
 | H20 | No hay total de coincidencias (P4, tabla, FilterBar) | `GET /api/transactions` devuelve `total` (COUNT con los mismos filtros) y `needs_review_in_range`, además del `count` de la página | `queryTransactions` | motor + ruta |
-| H21 | No hay filtro por categoría (P4, FilterBar) | `category` en `TransactionsListFilter` y en `transactionsQuerySchema` (enum de `CATEGORIES` + `sin_categoria`) | `queryTransactions` | motor + ruta |
+| H21 | No hay filtro por categoría (P4, FilterBar) — **corregido, ver nota** | `category` en `TransactionsListFilter` y en `transactionsQuerySchema` (enum de `CATEGORIES` + `sin_categoria`). **El filtro NO puede ser una cláusula `WHERE category = ?`**: el gráfico del Resumen recalcula con `categorize()` y no lee la columna, así que filtrar por ella devuelve un conjunto distinto del que la barra contó. Se filtra por la categoría **recalculada**, igual que `spendingByCategory` | `queryTransactions`, `categorize`, `listCategoryRules` | motor + ruta |
 | H22 | Tipo multi-selección e "Interna" como dirección (FilterBar) | `type` repetible (array) en el schema, o el diseño baja a selección simple. "Interna" **sale** del selector de dirección y pasa al toggle `include_internal` | `queryTransactions` | ruta + diseño |
 | H23 | No hay lista de contrapartes (FilterBar) | `GET /api/counterparties?q=&limit=` (DISTINCT con conteo) para el autocompletar | — (query nueva) | motor + ruta |
 | H24 | `GET /api/review/resolutions` ignora los filtros (P5, tabla) | La ruta acepta `?transaction_id=` y `?limit=` — el motor ya los soporta, sólo hay que pasarlos | `listReviewResolutions` | ruta |
 | H25 | "Recuperar" es por lote, no por fila (P6, tabla) | `healCounterparties` acepta `ids?: number[]` además de `limit`; `POST /api/counterparties/heal` lo pasa | `healCounterparties` | motor + ruta |
 | H26 | Acciones que se recomienda **no** construir | "Mandar a revisión" desde P4 y "Rehacer el ledger desde cero" en la zona de riesgo de P10 — ver §4 | — | diseño |
+| H27 | **No existe la cola de clasificación** (P5 pestaña *Sin clasificar*, P2, P4) — Escenario 1 | `GET /api/classify/queue?limit=&offset=`: las filas de salida, no internas y no en revisión, cuya **categoría recalculada** es `otros` o `transferencia_persona`, ordenadas por monto. Función nueva `unclassifiedTransactions(db)` en `category/`, que recalcula con `categorize()` + reglas — **no** filtra la columna `category`. `topUncategorizedCounterparties` no sirve: agrupa por contraparte y filtra la columna, así que una transferencia a un desconocido (columna `transferencia_persona`) nunca aparece | `categorize`, `listCategoryRules`, `queryTransactions` | motor + ruta |
+| H28 | **Responder "qué es" no tiene escritor desde una fila** (P5, P4, P7) — Escenario 1 | `POST /api/classify {transaction_id, category}`: toma la contraparte de la fila, la normaliza con `toRulePattern` y llama a `upsertCategoryRule`. Devuelve **cuántas filas quedan reclasificadas** (H6) para poder decir "también los otros 6 de <Persona 1>". `resolveReview` **no** se toca: sus tres acciones son sobre el monto y la categoría es otra pregunta con otro escritor | `upsertCategoryRule`, `toRulePattern`, `countMatchingTransactions` (H6) | ruta |
+| H29 | Excepción de categoría **por fila** (la misma contraparte con dos verdades) | **No se construye en la v1** — ver §4. Escribir `transactions.category` no cambiaría nada visible: `spendingByCategory` recalcula e ignora la columna. Hacerlo de verdad exige que `categorize()` consulte una tabla de excepciones, o sea tocar la función más pura del motor. La salida de v1 es *"no preguntarme más por esta"* | — | diseño (motor, si algún día) |
+| H30 | **No existe la detección de gastos fijos** (P1) — Escenario 2 | `suggestRecurringExpenses(db, {meses})` en `onboard/suggest.ts`: agrupa salidas por contraparte normalizada sobre los últimos 3-6 meses y devuelve las que aparecen en ≥3 de esos meses, con **mediana** del monto (no promedio, igual que `suggestSalary`), día típico y `sampleSize`. Se suma al payload de `buildSuggestions` y sale por `GET /api/onboarding/suggestions` (H2). Nada en el repo hace esto hoy | `buildSuggestions`, `listCategoryRules` | motor + ruta |
+| H31 | **El perfil no tiene dónde guardar los gastos fijos** (P1) — Escenario 2 | `strategy_config` valida con un esquema zod cerrado (`colchonObjetivo`, `sueldo`, `titular`, `diasPago`) y no tiene clave de gastos fijos: `setStrategyConfig` rechazaría el patch. **La v1 no persiste la lista**: lo que el análisis produce se guarda donde ya hay lugar — reglas de categoría confirmadas (H28) y `colchonObjetivo`. Persistir la lista es una tabla nueva y su propio ticket | `setStrategyConfig` | diseño (motor, después) |
 
 ---
 
@@ -490,6 +557,16 @@ sacarlos de la pantalla que dejarlos dibujados sin respaldo:
    camino: la fila que **está** en la cola se corrige con `correct`, que deja
    rastro. Si aparece la necesidad real, es un ticket con su propia discusión.
 
+3. **La excepción de categoría por fila** (H29). Que la misma contraparte sea
+   "salud" un mes y un préstamo al siguiente es real, pero la respuesta no cabe
+   en una regla —que es por nombre— y **escribir `transactions.category` no
+   cambiaría nada visible**: `spendingByCategory` recalcula e ignora la
+   columna. Construirlo de verdad exige que `categorize()` consulte una tabla
+   de excepciones, o sea tocar la función más pura y más testeada del motor
+   para un caso que todavía nadie contó cuántas veces ocurre. La salida de la
+   v1 es honesta y barata: *"no preguntarme más por esta"*. Si aparece la
+   necesidad real, es un ticket con su propia discusión y su propio conteo.
+
 Y una que no es "no construir" sino "no ahora": **el simulador multi-variable de
 P8** (H13). Proyectar con gasto mensual y aporte al colchón como perillas es
 aritmética financiera nueva. Va en `strategy/` con sus tests, en su ticket. Lo
@@ -511,6 +588,12 @@ orden y **agrega tres bloques de server que no estaban en la cuenta**:
   id y ninguna forma de conocer los ids.
 - **La tabla de movimientos necesita `total` y filtro por categoría** (H20,
   H21), o el paginador y la FilterBar del diseño no se pueden armar.
+- **Los dos escenarios de Mato agregan un cuarto bloque de motor** (H27, H28,
+  H30). Ninguno de los tres es caro —una query que recalcula, una ruta que
+  llama a `upsertCategoryRule`, y una función de recurrencia con sus tests—
+  pero los tres son **motor antes que pantalla**: la pregunta no se puede
+  dibujar antes de que exista la función que la responde. H27 y H28 caben en el
+  mismo bloque que P5; H30 va con P1.
 
 Con eso, el bloque 3 del orden sugerido (**P2 + P3 + P5**, "el núcleo operativo
 que ya reemplaza a la web actual") deja de ser gratis: P2 sí lo es, P3 llega con
