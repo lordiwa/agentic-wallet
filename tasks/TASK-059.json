@@ -1,0 +1,48 @@
+{
+  "key": "TASK-059",
+  "title": "N5 del plan final — Movimientos: la tabla sobre la ruta que ya existe, dos filtros, cargar más y '¿Qué es esto?'",
+  "description": "Fase N5 de docs/plan-final-mvp.md (1 día). Qué entrega: la tercera puerta del Escenario 1, y el ledger navegable.\n\nEs la fase más barata del MVP porque se construye sobre GET /api/transactions, que ya funciona, y sobre el escritor de TASK-055, que ya existe.\n\nLos recortes que la hacen barata:\n- La FilterBar completa NO se construye. De sus seis controles, cuatro no tienen respaldo: categoría (H21, que además estaba mal planteado), tipo multi-selección e 'Interna' como dirección (H22) y el autocompletar de contrapartes (H23). Con dos filtros no hace falta una barra: son dos controles arriba de la tabla.\n- El detalle tiene UNA acción nueva, no cuatro. Crear regla llevaba a P6 (eliminada, M4); Preguntar al agente al chat (diferido, M2); Resolver a la pestaña Monto de TASK-057. Queda '¿Qué es esto?', que usa el MISMO escritor que la cola.\n\nCabos que cierra: H21, H28 (segunda puerta), H20 (con cargar más), R17, R18, H26 (confirmado sin construir).",
+  "acceptance_criteria": [
+    "Lista de movimientos sobre GET /api/transactions, que ya existe y ya se usa.",
+    "Dos filtros: rango de fechas y entrada/salida. Nada más.",
+    "Filtro por categoría RECALCULADA cuando se llega desde una barra del gráfico del Resumen, usando la función de TASK-055. El conteo de la lista coincide con el que contó la barra — que es exactamente lo que un WHERE category = ? NO daría, porque el gráfico recalcula (server/src/strategy/spending.ts:32-58).",
+    "'Cargar más' al final de la lista, sin total ni paginador (H20). offset ya existe y ya se pasa (server/src/api/queries.ts:19,74); lo que falta es el total, y con cargar más no hace falta. Cuando el número importe, es un COUNT.",
+    "Detalle de una fila con UNA sola acción nueva: '¿Qué es esto?', que elige categoría y llama a POST /api/classify — el mismo escritor que la cola (H28, segunda puerta del Escenario 1).",
+    "Después de responder, el detalle dice qué cambió con el número y, si no cambió nada en el gráfico del mes, por qué (F13/R19).",
+    "'Mandar a revisión' NO se construye (H26). Es una decisión escrita del roadmap y se sostiene sin cambios.",
+    "'Recuperar contraparte' NO se construye: es por lote, no por fila (H25).",
+    "UI EXACTA: replica p4-movimientos.html y c4-tabla-transacciones.html (TransactionsTable) del design system 'Agentic Wallet Panel - Design System' (proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2, referencia canónica home.html): misma tabla, mismas columnas, mismas etiquetas de estado, cifras tabulares alineadas a la derecha.",
+    "UI EXACTA: los dos filtros se dibujan con el estilo de los controles de c6-selector-filtros.html (radio 6, borde #DDE3EA, tipografía 13px), pero SIN la barra completa. FilterBar.vue no se construye.",
+    "UI EXACTA: tokens de docs/plan-final-mvp.md §2.1 sin excepción; ningún hex fuera de panel/src/styles/tokens.css (grep en verde); componente nombrado TransactionsTable.vue.",
+    "UI EXACTA: la pantalla se compara lado a lado con p4-movimientos.html y cada diferencia se justifica por escrito en el ticket como recorte del MVP, nunca como diferencia de estilo.",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tests-after",
+  "depends_on": [
+    "TASK-055",
+    "TASK-056"
+  ],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n5",
+    "movimientos",
+    "escenario-1",
+    "design-system"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N5). Absorbe la parte de P4 de TASK-049.\n\nSe puede hacer en paralelo con TASK-057 y TASK-058: sus tres dependencias reales (la ruta de transacciones, el filtro por categoría recalculada y POST /api/classify) están todas en TASK-055 y TASK-056.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}

@@ -1,0 +1,56 @@
+{
+  "key": "TASK-057",
+  "title": "N3 del plan final — La cola de preguntas: pestaña 'Qué es esto' (151 contrapartes) y pestaña 'Monto' (4 filas)",
+  "description": "Fase N3 de docs/plan-final-mvp.md (1,5 días). Qué entrega: el ESCENARIO 1 DE MATO, de punta a punta.\n\n  'Entro al sitio ---> hay transferencias mías a desconocidos ---> se actualiza\n   movimientos ---> me pregunta qué son los movimientos ---> respondo en alguna\n   parte qué categoría son'\n\nUna pantalla, dos pestañas, dos preguntas distintas. La de clasificación es la grande (151 grupos); la de monto es la chica (4 filas). Si una fila está en las dos, se pregunta el MONTO PRIMERO: sin monto afirmado la fila no entra a ningún total y su categoría no movería ningún gráfico.\n\nDecisiones de Mato que se implementan acá:\n- M1: el criterio de terminado es 30 respuestas que cubren el 80 % de la plata, NO cero filas. Con 151 preguntas, 'quedan 118' no le dice nada a nadie.\n- M5: la cola pregunta por contraparte, con silenciador.\n- M4: no hay pantalla de editor de reglas; responder acá ES crear la regla.\n\nCabos que cierra: R12, R13, R14, R19, R31, M1 (D11), M5 (D7, D10), D7-b, F13.\n\nNO se construye la excepción de categoría por fila (H29): su salida honesta es el silenciador. NO se dibuja el panel 'lo que leyó Claude' (H10: cero discrepancias en 8 meses de datos reales). NO se dibuja el motivo de revisión (H9, no se persiste).",
+  "acceptance_criteria": [
+    "Pestaña 'Qué es esto': 151 grupos ordenados por plata descendente. Cada tarjeta muestra contraparte, cuántos movimientos, cuánta plata y en cuántos meses. Elegir una categoría llama a POST /api/classify y bajan TODAS las filas de esa contraparte.",
+    "Desaparece el paso 'hay 6 más de esta persona, ¿son todos salud?'. Preguntando por contraparte esa pregunta no existe y la respuesta es la misma: era una pregunta sobre la mecánica interna, no sobre la plata.",
+    "Acción 'Saltar': la tarjeta vuelve al final de la cola y no se pierde.",
+    "Acción 'No preguntarme más por esta' (M5): silencia la contraparte con el escritor de TASK-055 y sale de la cola. Es la salida honesta para la contraparte con dos verdades.",
+    "Progreso por plata SIEMPRE visible: 'te queda el 47 % de tu plata sin clasificar · 30 respuestas más'. La pantalla celebra al 80 % de la plata cubierta (M1), no al vacío.",
+    "El estado vacío sigue existiendo y sigue siendo confiable, pero NO es el criterio de terminado.",
+    "Pestaña 'Monto': las filas con needs_review=1, con Confirmar, Corregir y Descartar, sobre las tres rutas que ya existen.",
+    "R12: la pantalla dice qué hace cada acción con el total. server/src/strategy/totals.ts:19-20 excluye needs_review=1 Y is_discarded=1, y server/src/review/resolve.ts:177 marca is_discarded=1 al descartar. Descartar NO mueve el saldo, y el texto lo dice.",
+    "R13: se ramifica por changed. server/src/review/resolve.ts:150 devuelve {ok:true, changed:false} para una fila ya resuelta y sale antes del INSERT; la ruta lo serializa como 200 (api/routes.ts:184-188). changed:false NO es éxito: se dice 'esto ya lo resolviste en otro lado' y se refresca la cola.",
+    "R14: fila en otra moneda. server/src/review/resolve.ts:161-163 rechaza confirm cuando la moneda no es la del perfil: Confirmar queda deshabilitado CON SU MOTIVO, y la salida es Corregir o Descartar. La moneda ya viene en la respuesta: cero backend.",
+    "Orden entre pestañas: si una fila está en las dos, la de monto se pregunta primero, y la pantalla lo explica.",
+    "F13/R19 en las dos pestañas: al terminar cualquier acción la pantalla dice QUÉ cambió con el número ('reclasificaste 14 movimientos, 2 de ellos de este mes'), y si no cambió nada dice POR QUÉ. El gráfico del Resumen es sólo del mes en curso.",
+    "W5/R15: la cola se pagina desde el día 1. La condición aceptada ('el día que pase de ~200 filas') ya se cumplió: son 334.",
+    "El aviso post-sync entra a esta pantalla FILTRADA por lo que entró en el lote (D7-b), sin perder el orden por plata como modo por defecto.",
+    "UI EXACTA: la pestaña 'Monto' replica p5-revision.html y c2-tarjeta-revision.html (ReviewCard) del design system 'Agentic Wallet Panel - Design System' (proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2, referencia canónica home.html), en su VERSIÓN HONESTA: se elimina el panel 'Lo que leyó Claude' y la línea de motivo. Quedan contraparte, monto del ledger, asunto del correo y las tres acciones.",
+    "UI EXACTA: la pestaña 'Qué es esto' no tiene tarjeta en el sistema y se CREA siguiendo el mismo sistema: 'P5-b — Preguntas · Qué es esto' (grupo Páginas) y 'ClassifyCard — tarjeta de contraparte' (grupo Componentes), heredando el armazón de c2-tarjeta-revision.html y el selector de categoría de p6-reglas.html, y agregando conteo de movimientos, total en plata, barra de progreso por plata y las acciones Saltar y No preguntarme más. Sin colores, tipografías ni radios nuevos.",
+    "UI EXACTA: las dos tarjetas nuevas se suben al proyecto de Claude Design con su marcador @dsCard antes de dar la fase por terminada.",
+    "UI EXACTA: tokens de docs/plan-final-mvp.md §2.1 sin excepción; cifras tabulares; ningún hex fuera de panel/src/styles/tokens.css (grep en verde); componentes nombrados ReviewCard.vue y ClassifyCard.vue.",
+    "P6 (editor de reglas) NO se construye como pantalla (M4).",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tests-after",
+  "depends_on": [
+    "TASK-055",
+    "TASK-056"
+  ],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n3",
+    "escenario-1",
+    "clasificacion",
+    "revision",
+    "design-system"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N3). Es la fase que cumple el Escenario 1, que es sagrado y no se recorta.\n\nRiesgo principal del MVP entero (docs/plan-final-mvp.md §4, riesgo 1): son 151 preguntas y nadie midió cuánto tarda una respuesta. La mitigación está adentro de los criterios — orden por plata, progreso por plata, y el criterio de terminado M1.\n\nAbsorbe la parte de P5 de TASK-049 y todo el escritor que TASK-051 planificaba para P6.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}

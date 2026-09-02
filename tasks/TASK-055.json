@@ -1,0 +1,47 @@
+{
+  "key": "TASK-055",
+  "title": "N1 del plan final — El motor de la pregunta: cola agrupada por contraparte, POST /api/classify, silenciador y progreso por plata",
+  "description": "Fase N1 de docs/plan-final-mvp.md (1,5 días). Sin pantalla: es motor puro.\n\nLa regla de orden del plan: la pregunta se construye DESPUÉS de la función que la responde. Al terminar esta fase, todo lo que la cola de N3 va a preguntar se puede contestar ya desde la terminal y desde MCP.\n\nEl forense del ledger real (docs/wargaming-simplificacion.md §0) manda: la cola de clasificación son 334 filas (28,8 % del ledger) pero sólo 151 contrapartes, y el top 30 cubre el 80 % de la plata. Preguntar por fila es 334 preguntas; preguntar por contraparte son 151, y 30 respuestas cubren el 80 %. Ese desajuste es lo que hace larga la pantalla, y se corrige acá.\n\nDos decisiones de Mato viven en esta fase:\n- M5: la cola pregunta por CONTRAPARTE y se construye el silenciador (H33). Sin él la cola nunca llega a cero y la pantalla miente cada vez que celebra el vacío.\n- M4: el editor de reglas se elimina porque POST /api/classify escribe exactamente la misma regla que el editor escribiría a mano, con el patrón derivado de la contraparte real por toRulePattern. Esa derivación es lo que hace IMPOSIBLE la trampa conocida del proyecto (un patrón más largo que la contraparte nunca matchea).\n\nCabos que cierra: H32, H27, H28, H33, H35, H21, W3, W5, T10, M1, M4, M5.",
+  "acceptance_criteria": [
+    "Existe la cola de clasificación AGRUPADA POR CONTRAPARTE (H32): devuelve grupos, no filas. Cada grupo trae contraparte normalizada, cuántos movimientos, cuánta plata y en cuántos meses distintos aparece.",
+    "La cola usa la categoría RECALCULADA (categorize() + reglas), la misma que lee el gráfico del Resumen en server/src/strategy/spending.ts:32-58 — NO la columna category. Test que lo fije: una fila con category='otros' en la columna pero con regla que la clasifica NO aparece en la cola.",
+    "La cola se ordena por plata de forma descendente por defecto, y acepta filtrarse por un conjunto de transacciones (el lote de un sync) para el aviso post-sync (D7-b).",
+    "POST /api/classify (H28) escribe UNA regla con upsertCategoryRule + toRulePattern derivado de la contraparte real. Test que fije que el patrón NUNCA se toma de una entrada libre más larga que la contraparte — es la trampa que M4 elimina por construcción.",
+    "POST /api/classify devuelve cuántos movimientos quedaron reclasificados Y cuántos de ellos son del mes en curso, para que la pantalla pueda ser honesta (R19): el gráfico del Resumen es sólo del mes en curso (server/src/api/routes.ts:91,111).",
+    "Silenciador de contraparte (H33, decisión M5): una contraparte silenciada sale de la cola y no vuelve. Con su escritor, su lectura y su test. Es lo único que permite que la cola cierre cuando una contraparte tiene dos verdades.",
+    "Progreso por plata (H35, decisión M1): el motor responde qué porcentaje de la plata sin clasificar está cubierto y cuántas respuestas más hacen falta para llegar al 80 %. El criterio de terminado es el 80 % de la plata, NO cero filas.",
+    "Filtro por categoría RECALCULADA para la lista de movimientos (H21 bien planteado). H21 estaba mal escrito en panel-viabilidad.md: no puede ser WHERE category = ?, porque el gráfico recalcula y la lista devolvería un conjunto distinto del que la barra contó. Test que compare el conteo de la barra contra el de la lista.",
+    "Las tres funciones nuevas (cola agrupada, silenciador, progreso) tienen tests propios sobre un fixture con nombres ficticios. Ningún dato personal entra al repo (CLAUDE.md regla 2).",
+    "Cero lógica financiera nueva en la capa HTTP: la ruta valida, llama a la función del motor y serializa (CLAUDE.md, regla del MCP aplicada a api/).",
+    "Si se expone como tool MCP, el bundle server/dist-mcp/mcp-server.cjs se regenera y entra en el mismo commit.",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tdd",
+  "depends_on": [
+    "TASK-054"
+  ],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n1",
+    "motor",
+    "categorias",
+    "api",
+    "escenario-1"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N1). Es la fase de más riesgo de datos del MVP — una regla mal derivada reclasifica plata real — y por eso el tier es tdd.\n\nDependencia de orden, no técnica: N1 puede escribirse sin N0, pero el plan las ordena así para que nada se exponga sin puerta.\n\nAbsorbe el escritor que TASK-051 planificaba para el editor de reglas (P6). Con la decisión M4, P6 no se construye.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}

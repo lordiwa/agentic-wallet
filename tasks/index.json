@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-02T12:00:00.000Z",
+  "generated_at": "2026-09-02T23:00:00.000Z",
   "tasks": [
     {
       "key": "TASK-044",
@@ -60,6 +60,42 @@
       "title": "Investigación: el modelo 'todo web' — cuenta de usuario, ingesta del correo sin instalar nada, y qué implica para el multi-tenant",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-054",
+      "title": "N0 del plan final — La puerta mínima: WALLET_ACCESS_TOKEN, CORS, lista blanca de orígenes y chip de backend",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-055",
+      "title": "N1 del plan final — El motor de la pregunta: cola agrupada por contraparte, POST /api/classify, silenciador y progreso por plata",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-056",
+      "title": "N2 del plan final — Andamio panel/ (Vue 3) y el hogar con el sync adentro, sobre el design system exacto",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-057",
+      "title": "N3 del plan final — La cola de preguntas: pestaña 'Qué es esto' (151 contrapartes) y pestaña 'Monto' (4 filas)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-058",
+      "title": "N4 del plan final — El análisis del historial: gastos fijos con mediana acotados al top 10, y dos campos de perfil",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-059",
+      "title": "N5 del plan final — Movimientos: la tabla sobre la ruta que ya existe, dos filtros, cargar más y '¿Qué es esto?'",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

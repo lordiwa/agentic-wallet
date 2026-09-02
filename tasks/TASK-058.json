@@ -1,0 +1,49 @@
+{
+  "key": "TASK-058",
+  "title": "N4 del plan final — El análisis del historial: gastos fijos con mediana acotados al top 10, y dos campos de perfil",
+  "description": "Fase N4 de docs/plan-final-mvp.md (1,5 días). Qué entrega: el ESCENARIO 2 DE MATO, y el Resumen deja de mostrar 0,00 como si fuera un dato.\n\n  'entro por primera vez ---> analiza 3-6 meses anteriores ---> crea patrón de\n   gastos fijos ---> pregunta gastos particulares?'\n\nLa pantalla P1 completa NO se construye. El Escenario 2 se cumple entero con una tarjeta del Resumen y una lista de 10, y TERMINA EN LA COLA de TASK-057 — el paso 'pregunta gastos particulares' deja de ser una promesa y pasa a ser la misma cola del Escenario 1.\n\nEl forense manda el recorte: con la regla propuesta (aparece en >=3 meses distintos) salen 37 candidatas sobre el ledger real, y sólo 2 aparecen en 6 meses o más. Treinta y siete tarjetas de sí/no en una pantalla de alta no es una pantalla de alta: es otra cola (H34, W8). Se muestran las 10 que más plata mueven; el resto cae en la cola, que es donde iban a caer de todos modos.\n\nCabos que cierra: H30, H34, H2 (mínimo), H31, R25, R32, R33, D8, W8.\n\nNO entra el checklist de 6 pasos de onboarding_status: cinco de sus seis pasos (env, claude, gmail, sync, huso) se resuelven en la terminal de la máquina del server, donde el panel no llega. NO se persiste la lista de gastos fijos como tal (H31): se guarda como reglas de categoría más el colchón.",
+  "acceptance_criteria": [
+    "suggestRecurringExpenses (H30) existe en server/src/onboard/ con sus tests. Usa MEDIANA, no promedio, igual que suggestSalary: un mes con dos pagos del mismo servicio no puede inflar la propuesta.",
+    "La propuesta viene acotada al TOP 10 por plata (H34). Las candidatas restantes NO se muestran: caen en la cola de clasificación de TASK-057.",
+    "Cada propuesta dice su día típico y el TAMAÑO DE LA MUESTRA en voz alta (en cuántos meses apareció), como ya hace suggestSalary. No se promete más de lo que hay: sobre este ledger sólo 2 contrapartes aparecen en 6 meses o más (riesgo 3 del plan).",
+    "Nada se guarda sin confirmación explícita: el análisis PROPONE y el usuario confirma o descarta cada ítem (CLAUDE.md regla 3).",
+    "El freno de los 3 meses (R33): con menos de 3 meses de historial el análisis no se dibuja activo, y la pantalla dice cuánto lleva acumulado. mesesDeHistorial ya lo devuelve el motor en server/src/onboard/suggest.ts:180-183.",
+    "GET/POST /api/onboarding/profile (H2, mínimo) escribe exactamente DOS claves de strategy_config: diasPago y colchonObjetivo. Sin diasPago no hay safe-to-spend (R7) ni próximo cobro; sin colchonObjetivo el anillo miente. titular lo propone el motor y sueldo viene con los días: no se editan desde la UI en el MVP.",
+    "R25: el panel trata colchonObjetivo en cero como SIN FIJAR, no como cumplido. server/src/strategy/balance.ts:66-83 calcula financiado como reservado >= objetivo, y 0 >= 0 es verdadero: hoy un usuario nuevo ve el anillo completo, en verde, 'financiado'. La respuesta de 'no fijé objetivo' es idéntica campo por campo a la de 'cumplí mi objetivo', y el panel las distingue por el objetivo en cero.",
+    "El flujo TERMINA en la cola de clasificación: un solo botón 'Guardar y seguir'. No hay una pantalla intermedia que ofrezca ir a la cola (fusión de los pasos 5 y 7 del flujo original).",
+    "Se entra por una tarjeta del Resumen ('Todavía no leí tus gastos fijos'), NO por una bifurcación de onboarding antes del hogar: P1 nunca bloqueó a nadie, así que no va antes del hogar.",
+    "UI EXACTA: replica p1-alta-perfil.html del design system 'Agentic Wallet Panel - Design System' (proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2, referencia canónica home.html), RECORTADA: sin el checklist de 6 pasos, con dos campos en vez de cuatro, y con la lista de 10 propuestas. Toda diferencia con el preview es un recorte del MVP y se justifica por escrito en el ticket.",
+    "UI EXACTA: la tarjeta de entrada en el Resumen es una OverviewCard (c3-tarjeta-overview.html), con los tokens de docs/plan-final-mvp.md §2.1. Ningún hex fuera de panel/src/styles/tokens.css (grep en verde); cifras tabulares.",
+    "Si el recorte hace que la pantalla se aleje visiblemente de p1-alta-perfil.html, se sube al proyecto de Claude Design la variante recortada con su marcador @dsCard, siguiendo el mismo sistema visual.",
+    "Los tests del motor usan fixtures con nombres ficticios. Ningún dato personal en el repo.",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tdd",
+  "depends_on": [
+    "TASK-056"
+  ],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n4",
+    "escenario-2",
+    "onboarding",
+    "motor",
+    "design-system"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N4). Cumple el Escenario 2, que es sagrado y no se recorta — lo que se recorta es la PANTALLA, no el escenario.\n\nTier tdd por suggestRecurringExpenses: es motor financiero nuevo, y la elección mediana/promedio cambia lo que se le propone al usuario.\n\nDepende de TASK-056 (el Resumen, que es por donde se entra) pero no de TASK-057: se puede desarrollar en paralelo con la cola. El enlace 'Guardar y seguir' apunta a la cola y se prueba cuando las dos estén.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}

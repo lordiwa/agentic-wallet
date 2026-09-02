@@ -1,0 +1,56 @@
+{
+  "key": "TASK-056",
+  "title": "N2 del plan final — Andamio panel/ (Vue 3) y el hogar con el sync adentro, sobre el design system exacto",
+  "description": "Fase N2 de docs/plan-final-mvp.md (2 días). Qué entrega: Mato ve su saldo real y sincroniza, desde el teléfono.\n\nDos fusiones definen esta fase:\n- La pantalla P3 de Sincronización NO se construye. El ciclo entero (disparar, ver el avance, Seguir, terminar) cabe en el chip del Resumen. P3 sólo agregaba el registro de lotes (H17, que no se persiste: sync_progress es una fila única) y Detener (H18, que no detiene: server/src/sync/run-sync.ts:163 escribe el progreso una vez por lote, al final).\n- El andamio y el hogar van juntos porque el hogar es lo que valida el andamio.\n\nD6 queda sellada en la opción A: el teléfono se atiende con un diseño chico del RESUMEN solamente.\n\nCabos que cierra: R6, R7, R9, R30/D6, H19, T4, T5, T6, W6.\n\nNO se construye P3 como pantalla. NO se dibuja el brief (el modo demo no lo cubre, R16). NO se dibuja el contador de sin clasificar hasta que exista el motor de TASK-055 — una pregunta no se dibuja antes de la función que la responde.",
+  "acceptance_criteria": [
+    "Workspace panel/ en Vue 3, integrado a npm run build y npm test desde la raíz.",
+    "T5 resuelto ANTES de la primera prueba del panel: vitest.config.ts incluye panel/ y usa jsdom donde hace falta. Hoy environment:'node' es global y los tests del panel no correrían, y nadie se enteraría.",
+    "T6: existe un workflow de CI que corre npm run build y npm test. Hoy no hay .github/workflows y 'build y test en verde' depende de que alguien lo corra a mano.",
+    "La capa api/ se COPIA de web/ (883 líneas, sin React) y el reloj se porta como composable. Copiar es copiar: si se 'aprovecha y mejora' base.ts o demoFetch.ts, la estimación se va. Cualquier mejora va a un ticket propio.",
+    "Resumen (el hogar) con: Saldo (navega a Movimientos), Safe-to-spend, chip de sync, 'N sin confirmar el monto', 'M sin clasificar en K comercios', gasto del mes por categoría (cada barra navega a Movimientos filtrado por la categoría recalculada), y Tarjeta y Colchón mostrando su cifra SIN navegar, porque sus pantallas no existen (R4).",
+    "R7: no se dibuja 'podés gastar 0,00 hoy' cuando el dato es 'todavía no sé'. server/src/strategy/balance.ts:151-154 devuelve 0 sin día de pago conocido; la tarjeta deriva su estado de next_payday, que sí distingue. Es cliente puro.",
+    "R6/X8/X11: 'Sin confirmar' (fila con needs_review=1) y 'Sin leer' (campo del resumen que sí puede ser nulo: card, next_payday) son dos estados distintos con dos rótulos distintos. El motor NUNCA devuelve amount:null (db/schema.ts:13 declara amount REAL NOT NULL).",
+    "El sync vive dentro del chip: disparar, barra de progreso ('1240 de 3800'), 'quedan 2560 · Seguir', hasta 'Al día'. Sin auto-encadenado — Seguir es un botón, y es el único que no puede entrar en un bucle de requests sin supervisión.",
+    "R9: GET /api/sync/status expone running. Hoy la guarda es 'let running = false' en memoria del proceso (server/src/api/sync-route.ts:38) y no se expone en ninguna ruta; sin esto un F5 en medio de un lote rehidrata en un estado falso y el 409 se auto-reintenta contra un lote de minutos.",
+    "H19: batch_size expuesto por HTTP (dos líneas; el runner ya lo acepta).",
+    "Los dos avisos post-sync son DOS y siguen separados: uno pregunta un monto (lleva a la pestaña Monto), el otro una categoría (lleva a la cola FILTRADA por lo que entró en ese lote, D7-b). Mezclarlos haría que responder uno parezca haber respondido el otro.",
+    "T4: el modo demo cubre las rutas que el andamio necesita, y ese trabajo se cuenta como trabajo (W6).",
+    "UI EXACTA: el shell replica el design system 'Agentic Wallet Panel - Design System' (Claude Design, proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2, referencia canónica home.html) y el shell repetido en p2-resumen.html: grid 236px 1fr, barra lateral #101A26, enlaces 13.5px #A9B8C8, activo #1D2D3F con texto blanco 600, separadores 1px #1D2D3F, contenido con padding 20px 26px 40px.",
+    "UI EXACTA: la navegación se recorta a Resumen · Preguntas · Movimientos. NO se dibuja un enlace a Sincronización, Reglas, Estrategia, Ahorro, Chat ni Configuración: lo que no tiene backend, o no entra al MVP, no se dibuja.",
+    "UI EXACTA: el Resumen replica p2-resumen.html (rejilla de tarjetas, gráfico de barras por categoría, aviso .alert amarillo #FFF4D6/#E0B73A, cabecera con estado y acción), menos el brief y menos los dos destinos que no existen.",
+    "UI EXACTA: OverviewCard.vue replica c3-tarjeta-overview.html (etiqueta 11px/650 mayúsculas #5B6B7C, cifra 26px/640 tabular, nota 12.5px) y SyncButton.vue replica c1-boton-sync.html, con CINCO de sus ocho estados: al día, atrasado, nunca, corriendo, falló. 'A medias' se dibuja como corriendo con el pendiente al lado; 409 y 503 comparten el cartel de falla con distinto texto.",
+    "UI EXACTA: la barra de progreso y el botón Seguir se toman de p3-sincronizacion.html y viven DENTRO del chip del Resumen. La pantalla P3 no se construye.",
+    "UI EXACTA: toda cifra de plata usa font-variant-numeric: tabular-nums. Ningún hex fuera de panel/src/styles/tokens.css (grep en verde).",
+    "D6 opción A: el Resumen tiene diseño chico propio y se verifica en un teléfono real. Las demás superficies son usables en teléfono sin diseño chico propio.",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tests-after",
+  "depends_on": [
+    "TASK-054",
+    "TASK-055"
+  ],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n2",
+    "vue",
+    "resumen",
+    "sync",
+    "design-system"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N2). La referencia de diseño obligatoria está en §2; los tokens exactos en §2.1; el mapa pantalla → tarjeta del sistema en §2.2; cómo se verifica el 'replica exactamente' en §2.5.\n\nAbsorbe TASK-047 (esqueleto + P2 + P3), con P3 fusionada en el chip.\n\nDeuda que este ticket NO resuelve pero que muerde acá: T8, las dos bases de datos. Correr un comando desde server/ abre ./server/bolsillo.sqlite, que tiene 0 filas y se ve igual que el ledger real de 1.159. Si el Resumen sale vacío, revisar eso antes que el código.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}

@@ -1,0 +1,45 @@
+{
+  "key": "TASK-054",
+  "title": "N0 del plan final — La puerta mínima: WALLET_ACCESS_TOKEN, CORS, lista blanca de orígenes y chip de backend",
+  "description": "Fase N0 de docs/plan-final-mvp.md (0,5-1 día). Reemplaza a TASK-046 en lo que respecta al MVP: la decisión M3 de Mato saca Firebase y el login con Google del alcance, así que la puerta es SOLO la llave estática.\n\nQué entrega: el server se expone al tailnet con llave, y la credencial no puede viajar a un host ajeno.\n\nEl riesgo real de esta fase no es técnico, es D14: el checklist de credenciales del prep §4 (WALLET_ACCESS_TOKEN generado, WALLET_ALLOWED_ORIGINS definido, tailscale serve probado con curl) son tareas de Mato en su máquina y ninguna está hecha. Es el único bloqueo externo del MVP.\n\nCabos que cierra: H1, R1, R2, R27, M3 (D9), D14.\n\nNO se instala firebase-admin. NO hay uid permitido ni cuenta de servicio. NO se construye la pantalla P0 con botón de Google.",
+  "acceptance_criteria": [
+    "Middleware Bearer sobre WALLET_ACCESS_TOKEN protege todo /api/*, con test que verifique 401 sin cabecera, 401 con token incorrecto y 200 con el correcto.",
+    "GET /api/health queda SIN llave y expone auth_required, porque es el único diagnóstico posible: servidor caído, origen no permitido por CORS y credencial rechazada producen el mismo error de red en el navegador (R27).",
+    "server/src/api/cors.ts suma Authorization a los encabezados permitidos y DELETE a los métodos. Hoy no los acepta y el panel publicado no cargaría. Con test.",
+    "El cliente mantiene una lista blanca de orígenes: un backend fuera de la lista se llama SIN credencial y el 401 se explica ('ese servidor no está autorizado'), en vez de mandarle la llave. Con test.",
+    "Un enlace con ?api= NO se guarda sin confirmación explícita del usuario. Hoy web/src/api/base.ts:62-70 lo guarda sin preguntar, y con el token en la cabecera eso es la credencial viajando a un host ajeno (R1). Con test.",
+    "El chip de backend (BackendChip) es visible SIEMPRE, en la barra, y muestra a qué servidor apunta este navegador; incluye 'Probar conexión' contra /api/health y rotula el modo demo en el mismo lugar.",
+    "UI EXACTA: el chip replica el design system 'Agentic Wallet Panel - Design System' (Claude Design, proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2, referencia canónica home.html). Hereda del bloque de conexión de p10-configuracion.html; usa los tokens de docs/plan-final-mvp.md §2.1 y las etiquetas .tag ok/warn/bad/neu con sus hex exactos.",
+    "UI EXACTA: la pantalla de la llave se construye como tarjeta NUEVA del sistema, 'P0-b — Acceso por llave' (grupo Páginas), heredando el lienzo y la tipografía de p0-acceso.html SIN el botón de Google: un campo, un botón primario #2B5FD9 y el texto de ayuda. Se sube al proyecto de Claude Design con su marcador @dsCard antes de dar la fase por terminada.",
+    "panel/src/styles/tokens.css existe y contiene textualmente los valores de docs/plan-final-mvp.md §2.1; un grep de literales de color fuera de ese archivo en panel/src/ devuelve cero resultados.",
+    "Ningún valor personal en la telemetría: ni el token, ni el origen del usuario. Sólo claves, conteos e ids (CLAUDE.md).",
+    "tailscale serve probado con curl contra el server real, y el resultado escrito en el ticket. Checklist D14 marcado punto por punto.",
+    "npm run build y npm test en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "verification_tier": "tdd",
+  "depends_on": [],
+  "labels": [
+    "panel",
+    "plan-final",
+    "n0",
+    "seguridad",
+    "api",
+    "design-system",
+    "bloqueante"
+  ],
+  "assignee": null,
+  "jira_key": null,
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N0). Las seis decisiones de Mato están en §0 del mismo documento y no se re-abren. La referencia de diseño obligatoria está en §2, con los tokens exactos en §2.1 y las tres tarjetas que hay que crear en §2.4.\n\nRelación con TASK-046: aquel ticket cubría la misma puerta PERO con Firebase adentro. La decisión M3 lo recorta. Si se implementa este ticket, TASK-046 queda absorbido en su parte de token y su parte de Firebase se difiere.",
+      "created_at": "2026-09-02T23:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T23:00:00.000Z",
+  "updated_at": "2026-09-02T23:00:00.000Z"
+}
