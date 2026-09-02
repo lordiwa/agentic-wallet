@@ -1,9 +1,15 @@
 # Panel de manejo — auditoría de viabilidad
 
 Mapeo pantalla por pantalla del diseño (`Agentic Wallet Panel — Design System`,
-18 tarjetas: 5 de fundamentos, 11 páginas y 6 componentes) contra lo que el
-backend **realmente** expone hoy. El plan funcional está en
-`docs/panel-manejo-flujo.md`; el ticket, en `tasks/TASK-045.json`.
+**19 tarjetas**: Fundamentos, 11 páginas `P0..P10`, 6 componentes `C1..C6` y el
+mapa de flujo) contra lo que el backend **realmente** expone hoy. El plan
+funcional está en `docs/panel-manejo-flujo.md`; el recorrido clickeable y la
+ficha completa de cada pantalla, en `docs/flujo-app-prototipo.md`; el ticket, en
+`tasks/TASK-045.json`.
+
+El **mapa de flujo** (`pf-mapa-de-flujo.html`) es el índice navegable del
+prototipo: cada nodo abre la tarjeta de esa pantalla y lleva marcado el
+veredicto de esta auditoría. No es una pantalla del panel.
 
 Esto no diseña ni implementa nada. Contesta una sola pregunta, pantalla por
 pantalla: **¿con qué se alimenta, y existe?**
@@ -16,7 +22,8 @@ Se leyó el código, no la documentación: `server/src/api/` (`routes.ts`,
 14 tools), `server/src/onboard/`, `server/src/category/`,
 `server/src/strategy/`, `server/src/review/resolve.ts`,
 `server/src/ingest/pipeline.ts` y `server/src/db/schema.ts`. Los detalles de
-cada pantalla salen de los 18 previews del diseño.
+cada pantalla salen de los 19 previews del diseño (las 18 tarjetas de contenido
+más el mapa de flujo).
 
 Tres veredictos:
 
@@ -30,9 +37,37 @@ Tres veredictos:
 
 | | Pantallas | Componentes | Total |
 |---|---|---|---|
-| VIABLE | P2, P7 | OverviewCard, ChatPanel | **4** |
-| PARCIAL | P3, P4, P5, P8, P9, P10 | SyncButton, TransactionsTable, FilterBar | **9** |
-| NO VIABLE | P0, P1, P6 | ReviewCard | **4** |
+| VIABLE | P2, P7 | C3 OverviewCard, C5 ChatPanel | **4** |
+| PARCIAL | P3, P4, P5, P8, P9, P10 | C1 SyncButton, C4 TransactionsTable, C6 FilterBar | **9** |
+| NO VIABLE | P0, P1, P6 | C2 ReviewCard | **4** |
+
+### Veredicto por pieza, de un vistazo
+
+Una fila por tarjeta del design system. El detalle de cada una está en §2
+(páginas) y §2.b (componentes); su recorrido clickeable y sus datos ficticios,
+en la ficha correspondiente de `docs/flujo-app-prototipo.md` §5 y §6.
+
+| Pieza | Veredicto | Huecos | Se alimenta con |
+|---|---|---|---|
+| P0 Acceso | **NO VIABLE** | H1 | `GET /api/health` (sonda). La sesión de Google **no existe** |
+| P1 Alta y perfil | **NO VIABLE** | H2, H3, H4 | `onboardStatus`, `buildSuggestions`, `setStrategyConfig` — **sólo por MCP/CLI** |
+| P2 Resumen | **VIABLE** | — | `GET /api/overview`, `GET /api/brief`, `GET /api/sync/status` |
+| P3 Sincronización | **PARCIAL** | H17, H18, H19 | `POST /api/sync`, `GET /api/sync/status` |
+| P4 Movimientos | **PARCIAL** | H20, H21, H24, H26 | `GET /api/transactions` |
+| P5 Revisión | **PARCIAL** | H9, H10, H24 | `GET /api/review`, `POST /api/review/:id/resolve`, `GET /api/review/resolutions` |
+| P6 Categorías y reglas | **NO VIABLE** | H5, H6, H7, H8, H25 | `listCategoryRules`, `upsertCategoryRule`, `backfillCategories` — **sólo por MCP/CLI** |
+| P7 Chat | **VIABLE** | — | `POST /api/chat/:conversationId?` (SSE), `GET /api/conversations` |
+| P8 Estrategia | **PARCIAL** | H11, H12, H13 | `GET /api/overview` (`card_status`), `GET /api/strategy/projection?abono=`, `POST /api/debts/:id/paid` |
+| P9 Ahorro y colchón | **PARCIAL** | H14, H15, H16 | `GET /api/overview` (`buffer_status`), `POST /api/buffer` |
+| P10 Configuración | **PARCIAL** | H1, H2, H26 | `GET /api/health` + el checklist de onboarding, que no tiene HTTP |
+| C1 SyncButton | **PARCIAL** | H17, H18, H19 | `GET /api/sync/status`, `POST /api/sync` |
+| C2 ReviewCard | **NO VIABLE** | H9, H10 | `GET /api/review` — sin `review_reason` ni `claude_amount` |
+| C3 OverviewCard | **VIABLE** | — | cualquier campo de `GET /api/overview` |
+| C4 TransactionsTable | **PARCIAL** | H20, H24, H25 | `GET /api/transactions` |
+| C5 ChatPanel | **VIABLE** | — | `POST /api/chat/:conversationId?` (SSE) |
+| C6 FilterBar | **PARCIAL** | H20, H21, H22, H23 | traduce a los parámetros de `GET /api/transactions` |
+| Fundamentos | n/a | — | no consume datos: es la referencia de color, tipografía y estados |
+| Mapa de flujo | n/a | — | índice navegable del prototipo; no consume datos |
 
 Diecisiete piezas evaluadas (11 páginas + 6 componentes). **Cuatro se pueden
 construir hoy tal cual.** Las otras trece necesitan, entre todas, **26 huecos**
@@ -335,7 +370,7 @@ ticket propio.
 
 ## 2.b Componentes
 
-### SyncButton (8 estados) · **PARCIAL**
+### C1 — SyncButton (8 estados) · **PARCIAL**
 
 Siete de los ocho estados se derivan de datos reales: *al día*, *atrasado* y
 *nunca* de `last_sync_ts`; *a medias* de `backlog`; *otro lo está corriendo* del
@@ -345,7 +380,7 @@ lotes (H18 explica por qué) y no hay cancelación. El "reintento 2 de 5" es
 contador del cliente y está bien que lo sea. La rehidratación desde
 `GET /api/sync/status` al montar: existe y funciona.
 
-### ReviewCard · **NO VIABLE (tal como está diseñada)**
+### C2 — ReviewCard · **NO VIABLE (tal como está diseñada)**
 
 Es la pieza con el hueco más grande, y conviene decirlo sin rodeos: sus tres
 elementos distintivos — **el motivo**, **la columna "lo que leyó Claude"** y
@@ -360,13 +395,13 @@ son acciones nuevas del motor: se mapean a `confirm` y `discard`. Eso está bien
 — pero requiere saber que la fila cayó por `ambiguous_reversal_match`, o sea,
 otra vez `review_reason`.
 
-### OverviewCard · **VIABLE**
+### C3 — OverviewCard · **VIABLE**
 
 Cifra + contexto + estado, sin cálculo propio. Los estados *cargando*, *sin
 dato* ("Sin leer", con "Completar perfil" a P1) y *sin conexión* son de
 cliente. El "0,00 se muestra como cifra" sale del dato. Nada que agregar.
 
-### TransactionsTable · **PARCIAL**
+### C4 — TransactionsTable · **PARCIAL**
 
 Las columnas y las marcas están completas. Faltan tres cosas del pie y las
 acciones: **"Mostrando 8 de N"** (no hay total, H20), **"Ver por qué"** de una
@@ -374,12 +409,12 @@ fila descartada (el filtro por transacción existe en el motor pero no en la
 ruta, H24) y **"Recuperar"** una fila sin contraparte (el heal es por lote, no
 por fila, H25).
 
-### ChatPanel · **VIABLE**
+### C5 — ChatPanel · **VIABLE**
 
 Streaming, historial, contexto de origen, 503 con link a configuración,
 "Detener" por corte de request. Todo cableado.
 
-### FilterBar · **PARCIAL**
+### C6 — FilterBar · **PARCIAL**
 
 El componente declara que traduce "a los parámetros que ya acepta
 `GET /api/transactions` — y nada más". El preview, sin embargo, dibuja cuatro
@@ -485,6 +520,8 @@ son las dos únicas pantallas que se construyen hoy sin tocar el server.**
 ---
 
 Ver también: `docs/panel-manejo-flujo.md` (el plan de producto),
+`docs/flujo-app-prototipo.md` (el recorrido clickeable y la ficha completa de
+cada una de las 19 tarjetas — §5 páginas, §6 componentes),
 `tasks/TASK-045.json` (el ticket), `docs/mcp.md` (las 14 tools),
 `docs/onboarding.md` (por qué el onboarding es no interactivo),
 `docs/frontend-desplegado.md` (por qué el sitio actual está en modo demo).

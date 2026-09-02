@@ -65,9 +65,9 @@ Esto es la parte incómoda del plan, y va acá arriba a propósito:
    puerto lee el ledger completo, dispara lecturas de Gmail y gasta crédito
    de Claude. Ver `docs/frontend-desplegado.md` y el comentario de
    `WALLET_BIND_HOST` en `server/src/config.ts`. Esto define por completo la
-   sección 7 (alta del usuario) y la 9 (despliegue).
+   sección 6 (alta del usuario) y la 8 (despliegue).
 4. **No hay canal de eventos del ledger.** El único stream del server es la
-   respuesta del chat. Define la sección 8 (tiempo real).
+   respuesta del chat. Define la sección 7 (tiempo real).
 
 **Regla del panel, heredada de la del MCP:** cero lógica financiera en la
 capa de UI. Un componente pide, muestra y dispara. Si te encontrás calculando
@@ -98,8 +98,16 @@ propio test.
 
 ## 3. Las pantallas
 
-Once pantallas. Para cada una: propósito, componentes, habilidad del agente
-que consume, dato que muestra, y qué puede **hacer** Mato.
+Once pantallas (`P0..P10`), más una duodécima planificada para fase 2. Para
+cada una: propósito, componentes, habilidad del agente que consume, dato que
+muestra, qué puede **hacer** Mato, **de dónde se llega y a dónde se va**, y si
+se puede construir hoy.
+
+La **ficha completa de cada pantalla y de cada componente** —con la navegación
+clickeable del prototipo, los estados y los datos ficticios— está en
+`docs/flujo-app-prototipo.md` §5 y §6. Acá va el plan de producto; allá, el
+recorrido. El veredicto de viabilidad y sus huecos salen de
+`docs/panel-viabilidad.md`.
 
 ### P0 — Acceso
 
@@ -115,8 +123,15 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Muestra:** el botón de Google, qué autoriza esa cuenta, y —si aplica— que
   el modo demostración está activo.
 - **Acciones:** una. *Continuar con Google*.
+- **Navegación.** *Entra desde:* el arranque, cuando no hay sesión de Google;
+  también desde P10 (*ver la pantalla de acceso*, rotulada decorativa) y desde
+  el mapa de flujo. *Sale a:* **P2** con *Continuar con Google* — o a **P1** si
+  el checklist de onboarding está incompleto.
+- **Viabilidad: NO VIABLE (H1).** El server no autentica nada: no hay
+  verificación de `id_token`, no hay sesión, no hay lista de cuentas
+  permitidas. Se puede dibujar; como control de acceso, no tiene respaldo.
 - **Honestidad:** en modo demo esta pantalla es decorativa y lo dice. Sólo
-  tiene sentido real cuando el server valide la sesión (sección 7).
+  tiene sentido real cuando el server valide la sesión (sección 6).
 
 ### P1 — Alta y perfil
 
@@ -131,6 +146,15 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Muestra:** el checklist con lo que falta, y al lado la sugerencia leída
   del ledger real.
 - **Acciones:** *Sugerir desde mi historial*, *Guardar*, *Saltar por ahora*.
+- **Navegación.** *Entra desde:* P0 (checklist incompleto), P10 (*Completar
+  perfil*), una `OverviewCard` en estado *sin leer* de P2, y el mapa de flujo.
+  *Sale a:* **P2**, tanto con *Guardar* como con *Saltar por ahora* — **P1 no
+  bloquea a nadie**.
+- **Viabilidad: NO VIABLE (H2, H3, H4).** Las tres funciones que necesita
+  existen y están testeadas, pero sólo se alcanzan por MCP o CLI: no hay una
+  sola ruta HTTP de onboarding. Además el checklist se renderiza con **los
+  pasos que devuelva el motor** (H4) y el paso dibujado como *"Cuentas"* se
+  renombra a **Titular** (H3), que es lo que el motor realmente usa.
 - **Invariante que se hereda del onboarding CLI:** **nunca escribir un valor
   que el usuario no confirmó.** La sugerencia se muestra deshabilitada hasta
   que Mato la acepta explícitamente. Sin defaults plausibles, sin comercios
@@ -149,6 +173,15 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Acciones:** *Sincronizar ahora* (mismo botón que P3), *Ver los N
   pendientes* (lleva a P5), *Preguntarle al agente* (lleva a P7 con el
   contexto de la tarjeta que se tocó).
+- **Navegación.** *Entra desde:* P0, P1, el ítem *Resumen* de la barra, y toda
+  vuelta de un flujo (P5 con la cola vacía, P6 tras aplicar reglas, P9 tras
+  fijar el objetivo). *Sale a:* **P3** (chip de sync), **P5** (badge de
+  pendientes), **P4** (tarjeta de saldo y barras del gráfico de categorías),
+  **P8** (tarjeta de la tarjeta de crédito), **P9** (tarjeta de colchón),
+  **P1** (*Completar perfil* desde una tarjeta sin dato) y al cajón de chat.
+- **Viabilidad: VIABLE, sin huecos.** Cada elemento del diseño se verificó
+  contra un campo real de `/api/overview`. Es una de las **dos únicas
+  pantallas** que se construyen hoy sin tocar el server (la otra es P7).
 - **Detalle que importa:** `amount: null` se muestra como "sin leer", no como
   cero. Cero es un monto válido; lo desconocido es otra cosa.
 
@@ -162,7 +195,16 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
   viene `null` — no una fecha inventada), backlog a medias
   (`processed / total / remaining`), y el resumen del último lote.
 - **Acciones:** *Sincronizar*, *Seguir* (cuando quedó backlog), *Detener*.
-- Flujo completo en la sección 6.
+- **Navegación.** *Entra desde:* el chip de sync de la barra (presente en toda
+  pantalla), el estado vacío de P2, el estado sin ledger de P4, y el menú `[≡]`.
+  *Sale a:* **P5** cuando el lote deja filas en la cola (*Revisarlos ahora*) y
+  **P10** cuando el server responde 503 `gmail_not_configured`.
+- **Viabilidad: PARCIAL (H17, H18, H19).** El ciclo entero y los ocho estados
+  del botón salen de datos reales. Falta cancelación (**H18**: *Detener* corta
+  sólo el auto-encadenado del cliente, y la barra avanza **entre lotes**, no de
+  forma continua), historial de lotes persistido (**H17**: `SyncLog` vive en
+  memoria y se pierde al recargar) y `batch_size` por HTTP (**H19**).
+- Flujo completo en la sección 5.
 
 ### P4 — Movimientos
 
@@ -173,9 +215,25 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Muestra:** fecha, contraparte, monto, tipo, dirección, categoría, y las
   marcas de `needs_review` / reverso / transferencia interna.
 - **Acciones:** filtrar por rango, tipo, dirección y contraparte; mostrar u
-  ocultar reversados/internos/descartados; *Mandar a revisión*; *Crear regla
-  para este comercio* (abre P6 precargado); *Preguntar sobre este movimiento*
-  (abre P7 con la fila como contexto).
+  ocultar reversados/internos/descartados; *Crear regla para este comercio*
+  (abre P6 precargado); *Preguntar sobre este movimiento* (abre P7 con la fila
+  como contexto); *Resolver* en una fila marcada en revisión (lleva a P5).
+- **Navegación.** *Entra desde:* la tarjeta de saldo de P2, una barra del
+  gráfico de categorías (con el filtro puesto), el ítem *Movimientos* de la
+  barra, y el cierre del cajón de chat (que devuelve al **mismo scroll y los
+  mismos filtros**). *Sale a:* **P6** (crear regla, precargado), **P5**
+  (resolver una fila), **P3** (estado sin ledger) y al cajón de chat.
+- **Viabilidad: PARCIAL (H20, H21, H24).** La tabla y sus marcas son viables
+  hoy: vienen como columnas de la fila y no se recalculan. Faltan el **total**
+  de coincidencias —sin él no hay *"Mostrando 8 de N"* ni paginador (**H20**)—,
+  el **filtro por categoría** (**H21**) y el *"Ver por qué"* de una fila
+  descartada (**H24**).
+- **Acción que se saca del diseño:** *Mandar a revisión* (**H26**). `needs_review`
+  es una afirmación del pipeline sobre una discrepancia entre dos lecturas del
+  correo, no una etiqueta que un humano pone a gusto; ponerla a mano crea una
+  fila en la cola sin las dos lecturas que la cola existe para comparar. Lo que
+  el usuario quiere hacer ahí ya tiene camino: `correct` sobre la fila que
+  **sí** está en la cola, que deja rastro auditable.
 
 ### P5 — Revisión
 
@@ -192,6 +250,22 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Acciones:** *Confirmar monto*, *Corregir monto*, *Descartar*, con nota
   opcional. El error del motor se traduce tal cual: `not_found` es 404, el
   resto son 400 y se muestran como "el motor rechazó esto, y por qué".
+- **Navegación.** *Entra desde:* el badge de pendientes de P2, el aviso
+  persistente que deja un sync con filas en la cola (P3), una fila en revisión
+  de P4, y el ítem *Revisión (N)* de la barra. *Sale a:* **P2** al vaciar la
+  cola —y el total de P2 tiene que verse cambiado, ése es el punto de la
+  pantalla— y al cajón de chat.
+- **Viabilidad: PARCIAL (H9, H10, H24), y el hueco es el corazón de la
+  pantalla.** La cola, el conteo, las tres acciones, la traducción del error y
+  el rastro auditable están completos y testeados. Pero **el motivo por el que
+  cayó cada fila no se persiste** (**H9**: `review_reason` se calcula en
+  `ingest/pipeline.ts` y se pierde) y **el monto que leyó Claude tampoco**
+  (**H10**), así que la comparación de dos lecturas que define la `ReviewCard`
+  no tiene hoy de dónde salir. **H24**: las resoluciones no se pueden filtrar
+  por transacción desde la ruta.
+- **Lo que no se guarda, a propósito:** el cuerpo del correo. Sólo queda
+  `raw_subject`; el resto es dato personal. El diseño lo reemplaza por asunto +
+  enlace a Gmail por `gmail_msg_id`.
 - **Detalle de diseño:** la cola vacía se celebra explícitamente ("nada
   pendiente"), porque es el estado normal y hay que poder confiar en él.
 
@@ -205,8 +279,19 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
   `POST /api/rules/apply`, `POST /api/counterparties/heal`).
 - **Muestra:** las reglas vigentes, cuántas filas matchea cada una, y las
   filas sin categoría o sin contraparte.
-- **Acciones:** *Crear regla*, *Editar*, *Borrar*, *Aplicar reglas al
-  historial*, *Recuperar comercios faltantes*.
+- **Acciones:** *Crear regla*, *Editar*, *Borrar*, *Ver las N que matchea*,
+  *Aplicar reglas al historial* (con previsualización antes de escribir),
+  *Recuperar comercios faltantes*.
+- **Navegación.** *Entra desde:* una fila sin categoría de P4 (*Crear regla
+  para este comercio*, con el patrón precargado con la contraparte real), una
+  propuesta del chat (*Revisar y crear*), y el menú `[≡]`. *Sale a:* **P2**,
+  donde el gasto por categoría tiene que reflejar la regla recién aplicada.
+- **Viabilidad: NO VIABLE (H5, H6, H7, H8, H25).** Todas las funciones existen
+  y están testeadas, y **ninguna tiene ruta HTTP** (**H5**). Y aun con las
+  rutas: no existe la función que cuenta cuántas filas matchea un patrón
+  (**H6**), no se puede borrar una regla (**H7**), `backfillCategories` no
+  tiene modo dry-run, así que la previsualización no existe (**H8**), y
+  *Recuperar* es por lote, no por fila elegida (**H25**).
 - **Trampa conocida, documentada en memoria del proyecto:** un patrón de
   regla **más largo que la contraparte real nunca matchea**. El editor tiene
   que mostrar en vivo cuántas filas matchea el patrón que se está escribiendo
@@ -227,6 +312,20 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
   de conversaciones anteriores.
 - **Acciones:** escribir, *Nueva conversación*, *Retomar*, y atajos
   ("¿en qué se me fue la plata este mes?", "¿llego al pago de la tarjeta?").
+- **Navegación.** *Entra desde:* **cualquier pantalla** — el ícono de chat de
+  la barra, la `BriefCard` de P2, una fila de P4, el plan de P8, el colchón de
+  P9 — siempre arrastrando el contexto de origen. La ruta `/chat` existe para
+  entrar directo al historial. *Sale a:* **P6** cuando una propuesta se acepta
+  (*Revisar y crear*, con el editor precargado), **P10** ante un 503, y al
+  cerrarse **devuelve a la pantalla de origen, mismo scroll y mismos filtros**.
+- **La regla que lo gobierna:** el agente **propone, no ejecuta**. Toda acción
+  sugerida en el chat lleva a la pantalla donde esa acción se confirma, con los
+  campos precargados. Es la invariante del onboarding —nunca escribir un valor
+  que el usuario no confirmó— aplicada al chat.
+- **Viabilidad: VIABLE, sin huecos.** Streaming, historial, contexto de origen,
+  503 antes de abrir el stream, *Detener* por corte de request
+  (`AbortController` cableado al `close`) y chips de tool desde los eventos
+  `tool`: todo existe y está cableado.
 - **Nota:** si falta la credencial de Claude, el server responde 503 igual que
   el sync responde `gmail_not_configured`. El panel muestra eso como
   "falta configurar", con link a P10, no como un error rojo genérico.
@@ -241,8 +340,24 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 - **Muestra:** saldo de corte, mínimo, fecha máxima, requerido por quincena,
   si va a tiempo; deudas y su vencimiento; la proyección.
 - **Acciones:** *Marcar deuda pagada*, *Simular* (cambiar un supuesto y ver
-  la proyección; **sin escribir nada** hasta confirmar), *Preguntarle al
-  agente sobre este plan* (a P7).
+  la proyección; **sin escribir nada** hasta confirmar), *Ver el colchón*,
+  *Preguntarle al agente sobre este plan* (a P7).
+- **Navegación.** *Entra desde:* la tarjeta de la tarjeta de crédito en P2 y el
+  ítem *Estrategia* de la barra. *Sale a:* **P9** (*Ver el colchón*) y al cajón
+  de chat con el plan como contexto.
+- **Simular ≠ guardar.** La perilla es un control continuo sin confirmación y
+  rotulado *"simulación, no se guarda"*; *Marcar deuda pagada* es un botón con
+  confirmación porque escribe. La pantalla tiene que hacer evidente cuál es
+  cuál.
+- **Viabilidad: PARCIAL (H11, H12, H13).** Las cuatro tarjetas de arriba salen
+  exactas de `card_status`. Pero **no hay forma de listar las deudas**
+  (**H11**: se puede marcar una pagada por id y no hay de dónde sacar los ids;
+  la tabla `debts` tampoco tiene fecha de vencimiento, ni existe *Deshacer*),
+  el **calendario de pagos** no está expuesto (**H12**: sólo el corte y el
+  vencimiento de tarjeta son reales) y el **simulador** dibuja tres perillas
+  cuando la proyección acepta una, `abono` (**H13**). Las otras dos serían
+  aritmética financiera nueva: van en `strategy/` con sus tests, en su propio
+  ticket — **nunca en un `computed` del cliente**.
 
 ### P9 — Ahorro y colchón
 
@@ -258,6 +373,21 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
   metas cargadas.
 - **Acciones:** *Fijar objetivo de colchón*, *Registrar aporte*, *Pedirle
   sugerencias de ahorro al agente*.
+- **Navegación.** *Entra desde:* la tarjeta de colchón de P2, el *Ver el
+  colchón* de P8, y el ítem *Ahorro* de la barra. *Sale a:* **P2**, que tiene
+  que mostrar el colchón ya actualizado —el impacto del ajuste **tiene que
+  verse**, ajustar sin ver el impacto es un formulario, no una herramienta— y
+  al cajón de chat para las sugerencias.
+- **Viabilidad: PARCIAL (H14, H15, H16).** El anillo entero, con su porcentaje
+  y su estado, es viable hoy. La trampa fina es **H14**: `POST /api/buffer`
+  escribe `savings.reserved`, pero **el objetivo que el motor lee sale de
+  `strategy_config.colchonObjetivo`** — o sea que el botón más visible de la
+  pantalla escribiría una columna que el motor no lee. El objetivo tiene que
+  ir por la ruta de perfil, y la pantalla lo dice: *"esto cambia tu perfil"*.
+  **H15**: *Registrar aporte* es un incremento y el endpoint fija un valor
+  absoluto; **la suma la hace el server, no el cliente**. **H16**: `metas`,
+  `metas_avance`, `flexiahorro` y `saldos` existen en el esquema y ningún
+  código las lee.
 - **Honestidad de producto:** las "sugerencias de ahorro" **son el chat con
   un prompt específico**, no un motor propio. Se muestran como respuesta del
   agente, no como un número calculado por el sistema. El día que exista un
@@ -273,14 +403,59 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
   qué backend apunta este navegador; si está en modo demo.
 - **Acciones:** cambiar backend, activar/desactivar demo, volver a correr el
   checklist, ver instrucciones de `npm run gmail-auth`.
+- **Navegación.** *Entra desde:* el engranaje de la barra y **todo 503 del
+  server**, desde donde haya ocurrido (P3 con `gmail_not_configured`, el cajón
+  de chat con `claude_not_configured`). *Sale a:* **P1** (*Completar perfil*) y
+  **P0** (ver la pantalla de acceso, rotulada decorativa).
+- **Viabilidad: PARCIAL (H1, H2).** Lo que vive en el navegador —selector de
+  backend, modo demo, *Probar conexión* contra `GET /api/health`, el bloque de
+  publicación y los textos— se construye hoy. Falta el **checklist de
+  conexiones**, que es `onboarding_status` sin ruta HTTP (**H2**) y es el
+  contenido principal de la pantalla, y el **estado de la sesión de acceso**,
+  que todavía no existe (**H1**). No hay endpoint que pruebe la credencial de
+  Gmail sin disparar un sync: ese estado sale del checklist.
 - **Lo que NO hace:** no muestra ni edita credenciales. Los tokens viven en
   `.env` en la máquina de Mato y ahí se quedan.
+- **Zona de riesgo sin botón (H26):** *Rehacer el ledger desde cero* **no se
+  construye**. Un endpoint que borra el ledger, en una API que hoy no tiene
+  autenticación, es exactamente el botón que no hay que exponer: cualquiera que
+  llegue al puerto lo pulsa con `curl`. La pantalla explica **cómo** se hace
+  desde la terminal; no debe poder hacerlo.
 
 ### P11 — Estado del sistema (opcional, fase 2)
 
 Salud del pipeline: última corrida, errores recientes, métricas de
 `db/telemetry.ts`. Sólo claves, conteos e ids — **nunca valores personales**.
 Se lista para que quede planificado, no para la primera versión.
+
+- **Navegación.** No tiene: no está en la barra, no es tarjeta del design
+  system y **no entra en el prototipo**.
+- **Viabilidad: NO VIABLE.** La telemetría se emite a stdout/stderr y no hay
+  endpoint que la devuelva. Necesitaría un colector, que es un ticket propio.
+
+---
+
+## 3.b Los componentes compartidos
+
+Seis componentes se repiten entre pantallas. Un componente no tiene navegación
+propia: **hereda la de la pantalla donde vive**. Su ficha completa —estados,
+interacción clickeable, viabilidad y datos ficticios— está en
+`docs/flujo-app-prototipo.md` §6.
+
+| Componente | Vive en | Qué es | Viabilidad |
+|---|---|---|---|
+| **C1 SyncButton** | P2 (chip en la barra), P3 (control principal), P10 (estado de Gmail) | los **8 estados** del sync: al día, atrasado, nunca, a medias, corriendo, otro lo corre (409), sin configurar (503), falló (500) | **PARCIAL** — H17, H18, H19 |
+| **C2 ReviewCard** | P5 (la cola), P4 (drawer de una fila en revisión) | una fila que el motor no pudo afirmar, con sus tres acciones | **NO VIABLE** tal como está diseñada — H9, H10 |
+| **C3 OverviewCard** | P2 (rejilla de 6), P8 (4 tarjetas), P9 (anillo del colchón) | cifra + contexto + estado, **sin cálculo propio** | **VIABLE** |
+| **C4 TransactionsTable** | P4 (completa), P6 (miniatura de lo que matchea una regla) | el ledger con sus marcas por fila | **PARCIAL** — H20, H24, H25 |
+| **C5 ChatPanel** | P7 (ruta propia) y cajón sobre P2, P4, P5, P8, P9 | el agente: streaming, contexto de origen, propuestas | **VIABLE** |
+| **C6 FilterBar** | P4 (encabezado), P6 (filtrar sin-categoría) | traduce a los parámetros de `GET /api/transactions` **y nada más** | **PARCIAL** — H20, H21, H22, H23 |
+
+Los seis, más las once páginas, más Fundamentos y el mapa de flujo, son las
+**19 tarjetas** del design system *Agentic Wallet Panel — Design System*
+(`d509acfb-b4ad-480d-aa67-1b09b16a13c2`). El **mapa de flujo**
+(`pf-mapa-de-flujo.html`) es el índice navegable del prototipo: cada nodo abre
+la tarjeta de esa pantalla.
 
 ---
 
@@ -569,7 +744,9 @@ server.
 
 ---
 
-Ver también: `docs/panel-viabilidad.md` (la auditoría pantalla por pantalla
+Ver también: `docs/flujo-app-prototipo.md` (el recorrido clickeable y la ficha
+completa de cada una de las 19 tarjetas — §5 páginas, §6 componentes),
+`docs/panel-viabilidad.md` (la auditoría pantalla por pantalla
 contra el backend real — los 26 huecos con su endpoint propuesto),
 `docs/frontend-desplegado.md` (por qué el sitio actual está en modo demo),
 `docs/onboarding.md` (el diseño no interactivo del onboarding),
