@@ -454,10 +454,11 @@ orden en que se enlazan las tarjetas en Claude Design.
 
 **El prototipo se recorre a click.** Cada flecha de este mapa es un enlace
 real entre tarjetas: se navega pulsando el elemento de la pantalla, no
-abriendo la tarjeta destino a mano. El primer enlace ya está construido —
-*Continuar con Google* en `p0-acceso.html` apunta a `p2-resumen.html`. La
-lista completa de enlaces, origen por origen, está en **§4.4**; el detalle de
-qué entra y qué sale de cada pantalla, en su ficha de §5.
+abriendo la tarjeta destino a mano. Los enlaces **ya están construidos** en
+las 19 tarjetas: la barra de navegación, los retornos al hogar, los cinco
+flujos y los nodos del mapa. La lista completa, origen por origen, está en
+**§4.4**; el detalle de qué entra y qué sale de cada pantalla, en su ficha
+de §5.
 
 **Entrada**
 
@@ -619,6 +620,18 @@ que son de entrada y en una sesión normal no se vuelven a ver).
 **Enlaces que el prototipo deliberadamente no dibuja:** *Mandar a revisión*
 desde P4 y *Rehacer el ledger desde cero* en P10 (H26 — ver
 `docs/panel-viabilidad.md` §4). No están deshabilitados: no están.
+
+**Filas de la tabla sin control en la maqueta.** Cinco destinos de arriba no
+tienen hoy un elemento que pulsar, porque la tarjeta dibuja un solo estado y
+esos controles viven en otro: los estados vacíos de **P2** (*Sincronizar por
+primera vez*) y **P4** (*Sincronizar* sin ledger), *Ver el rastro de
+resoluciones* en **P5** — el rastro ya está desplegado —, la propuesta del
+agente en **C5** (*Revisar y crear* / *Descartar*), y *Ver la pantalla de
+acceso* en **P10**. Los dos primeros se alcanzan igual desde `C1`/`C3`, que
+sí dibujan el estado *nunca sincronizaste*; a **P0** se llega desde el mapa
+de flujo, que es su único enlace entrante por diseño (§1.1). Se resuelven
+cuando existan los duplicados por estado de §4.3, no antes: agregar el botón
+sólo para tener el enlace inventaría un estado que la tarjeta no muestra.
 
 ---
 
