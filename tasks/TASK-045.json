@@ -1,0 +1,48 @@
+{
+  "key": "TASK-045",
+  "title": "Panel de manejo en Vue 3: consola para operar las habilidades del agente",
+  "description": "Mato quiere un panel de manejo del wallet en Vue 3 que no sea sólo de mirar: tiene que permitir OPERAR visualmente las habilidades del agente (sincronizar, revisar la cola, categorizar, conversar, planificar, ahorrar), estar permanentemente actualizado, y ser desplegable — Mato no accede al servidor, todo lo ve publicado.\n\nEl flujo de pantallas completo, los componentes por pantalla, la habilidad del agente que consume cada una, el diagrama de navegación, el ciclo del botón de sync y las decisiones de tiempo real y despliegue están en docs/panel-manejo-flujo.md. Resumen de lo decidido ahí:\n\n- ONCE PANTALLAS: P0 Acceso, P1 Alta y perfil, P2 Resumen, P3 Sincronización, P4 Movimientos, P5 Revisión, P6 Categorías y reglas, P7 Chat, P8 Estrategia, P9 Ahorro y colchón, P10 Configuración (+ P11 Estado del sistema, fase 2). P2 es el hogar; P7 es un cajón lateral que se abre encima de cualquier pantalla arrastrando el contexto de origen.\n- UBICACIÓN: workspace nuevo `panel/` al lado de `web/`. NO se toca web/ (React) — convive hasta que el panel esté probado en uso real; su retiro es otro ticket.\n- TRES HUECOS REALES EN EL MOTOR, verificados leyendo el código:\n  1. NO hay API HTTP de configuración. `onboarding_status`, `suggest_profile`, `set_profile`, `set_rule`, `apply_rules` y `heal_counterparties` viven SÓLO en MCP (stdio) y en los CLIs. Un navegador no habla MCP. P1, P6 y P10 no se pueden construir sin rutas HTTP nuevas en server/src/api/ que llamen a las funciones que ya existen en onboard/ y category/.\n  2. NO hay motor de ahorro (no existe strategy/savings.ts ni tool de sugerencias). Lo que hay: `buffer_status` en /api/overview, POST /api/buffer, y las tablas flexiahorro/saldos/metas sin endpoint. P9 se arma con eso, y las \"sugerencias de ahorro\" son el chat con un prompt específico — se rotulan como respuesta del agente, no como número calculado.\n  3. NO hay autenticación ninguna en la API. Define el alta del usuario y todo el despliegue.\n- ALTA MANUAL DEL USUARIO: un solo usuario, sin registro, sin tabla de usuarios. Se separan dos cosas que la palabra \"alta\" mezcla: (a) ACCESO = una variable `WALLET_ACCESS_TOKEN` que Mato escribe a mano en .env + middleware Bearer sobre /api/* (salvo /api/health); con la variable vacía el server sigue aceptando sólo 127.0.0.1, o sea el comportamiento de hoy sigue siendo el default. (b) PERFIL = P1, que es `npm run onboard` convertido en formulario, conservando su invariante: nunca escribir un valor que el usuario no confirmó.\n- TIEMPO REAL: polling con reloj compartido (portar web/src/lib/refresh.tsx a un composable + store de Pinia, conservando sus tres propiedades: un solo reloj, se para con la pestaña oculta y tickea al volver, y `refreshNow()` para forzar tras cada mutación). SSE sólo para el chat, que es el único stream que el server ya habla. NO se monta canal de eventos del ledger: el único que escribe es el sync que dispara este mismo panel, no hay un tercero produciendo cambios. Se agrega un GET /api/events el día que el sync corra por cron, no antes.\n- DESPLIEGUE, la tensión honesta: \"panel desplegable\" y \"server en 127.0.0.1\" chocan, y el choque no es del panel — es que la API no tiene auth. Recomendación en tres fases SIN saltearse ninguna: fase 0 panel publicado en modo demo (cero riesgo, la UI se opera entera con datos inventados); fase 1 datos reales por Tailscale (`tailscale serve` hacia localhost, sin abrir puerto público, sin tocar WALLET_BIND_HOST); fase 2 `WALLET_ACCESS_TOKEN` ANTES de cualquier otra exposición. Al revés hay una ventana con el ledger en internet sin llave. Túnel público, snapshot horneado en el bundle y 0.0.0.0 sin auth quedan descartados por escrito.\n\nORDEN DE CONSTRUCCIÓN: (1) server — rutas faltantes + token; (2) esqueleto panel/ + capa api/ portada + modo demo; (3) P2+P3+P5, que ya reemplazan funcionalmente a la web actual; (4) P4+P7; (5) P8+P9; (6) P1+P6+P10; (7) P0.\n\nEste ticket es el PLAN. La implementación se puede partir en tickets hijos por fase; los criterios de abajo son de alto nivel y valen como definición de terminado del panel completo.",
+  "acceptance_criteria": [
+    "Existe el workspace `panel/` (Vue 3 + <script setup> + TypeScript + Vite) declarado en `workspaces` de package.json, y `panel/src/**/*.test.ts` está agregado al `include` de vitest.config.ts — sin eso los tests del panel no corren.",
+    "`web/` (React) NO se modifica en ninguno de los commits del panel: sigue construyendo y sus tests siguen verdes. El retiro de web/ es otro ticket.",
+    "Las rutas HTTP faltantes existen en server/src/api/ y sólo validan y serializan — cero lógica financiera nueva: onboarding (status/suggest/profile) sobre server/src/onboard/, reglas (listar/crear/aplicar/heal) sobre server/src/category/, y el histórico de ahorro sobre las tablas flexiahorro/saldos/metas. Cada ruta con su test.",
+    "`WALLET_ACCESS_TOKEN` existe en config.ts y .env.example, y un middleware exige `Authorization: Bearer` en todo /api/* salvo /api/health. Con la variable VACÍA el comportamiento es el de hoy (sólo 127.0.0.1) — el token habilita exponerse, no es cosmético. Cubierto por tests que verifican 401 sin token y 200 con token.",
+    "Las once pantallas del doc existen y están ruteadas; cada una consume la habilidad del agente que el doc le asigna y ninguna calcula un total, una proyección o una categoría en el cliente.",
+    "El botón de sync cubre los ocho estados del doc (al día / atrasado / nunca / a medias / corriendo / 409 sync_already_running / 503 gmail_not_configured / 500). `last_sync_ts: null` se muestra como 'nunca sincronizaste', NO como una fecha; `progress.complete === false` ofrece 'Seguir' con el conteo real y no finge que terminó.",
+    "Cuando un lote de sync deja filas en needs_review, el panel muestra un aviso PERSISTENTE (no un toast) con acción directa a P5, y no desaparece hasta que la cola queda vacía.",
+    "El estado del sync se rehidrata de GET /api/sync/status al montar: recargar la página en medio de un backlog muestra el backlog, no un estado limpio falso.",
+    "El reloj de refresco es un composable + store de Pinia con las tres propiedades portadas de web/src/lib/refresh.tsx: uno solo para todo el panel, se detiene con la pestaña oculta y dispara un tick al volver, y expone `refreshNow()` que se llama tras cada mutación (resolver revisión, guardar regla, fijar colchón, terminar un lote de sync). Con test que verifique la pausa y el tick al volver.",
+    "Hay indicador de frescura permanente ('actualizado hace X') y cartel de desconexión cuando el backend no responde: el panel nunca muestra números viejos con cara de actuales.",
+    "El editor de reglas muestra EN VIVO cuántas filas del ledger matchea el patrón que se está escribiendo, antes de guardarlo — un patrón más largo que la contraparte real nunca matchea y eso tiene que ser visible al escribirlo, no después.",
+    "`amount: null` se muestra como 'sin leer' en toda la UI, nunca como cero; las filas en needs_review se muestran marcadas y excluidas de los totales, igual que el motor las excluye.",
+    "El panel construye y se publica en modo demostración (`VITE_API_BASE_URL=demo`, la mecánica de web/src/demo/demoFetch.ts portada) y el artefacto publicado NO contiene ningún dato real ni ninguna URL privada: el backend se elige con `?api=` desde el navegador de quien mira.",
+    "P9 rotula las sugerencias de ahorro como respuesta del agente (chat), no como un cálculo del sistema — no se inventa un motor de ahorro que no existe.",
+    "Ningún valor personal se loguea ni se hornea: nada de nombres, montos o correos en telemetría, fixtures o bundle. Los fixtures del panel usan nombres ficticios.",
+    "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "panel",
+    "vue3",
+    "frontend",
+    "plan-listo",
+    "requiere-api-nueva",
+    "despliegue"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Planificación completada en docs/panel-manejo-flujo.md. Tres hallazgos que cambian el alcance respecto de lo asumido al pedirlo: (1) la mitad de las habilidades del agente (onboarding, reglas, heal) sólo existen en MCP por stdio y necesitan rutas HTTP nuevas antes de que el panel pueda usarlas; (2) no hay motor de ahorro — P9 se apoya en el colchón y en el chat, y se rotula como tal; (3) la API no tiene autenticación, así que 'panel desplegable' y 'server en 127.0.0.1' sólo conviven en modo demo hasta que exista WALLET_ACCESS_TOKEN. Recomendación registrada: fase 0 demo publicado, fase 1 Tailscale, fase 2 token antes de cualquier otra exposición, en ese orden.",
+      "created_at": "2026-09-02T00:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T00:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
