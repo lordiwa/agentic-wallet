@@ -558,6 +558,8 @@ server.
 
 ---
 
-Ver también: `docs/frontend-desplegado.md` (por qué el sitio actual está en
-modo demo), `docs/onboarding.md` (el diseño no interactivo del onboarding),
+Ver también: `docs/panel-viabilidad.md` (la auditoría pantalla por pantalla
+contra el backend real — los 26 huecos con su endpoint propuesto),
+`docs/frontend-desplegado.md` (por qué el sitio actual está en modo demo),
+`docs/onboarding.md` (el diseño no interactivo del onboarding),
 `docs/mcp.md` (las tools del agente), `docs/reliability.md`.
