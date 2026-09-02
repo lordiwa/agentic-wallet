@@ -19,9 +19,17 @@
   ],
   "status": "todo",
   "priority": "medium",
-  "labels": ["panel", "fase-4", "estrategia", "ahorro", "api"],
+  "labels": [
+    "panel",
+    "fase-4",
+    "estrategia",
+    "ahorro",
+    "api"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-047"],
+  "depends_on": [
+    "TASK-047"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [
@@ -29,10 +37,15 @@
       "author": "orquestador",
       "body": "Fase 4 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 6-8 turnos, 2-3 días, riesgo bajo — son rutas sobre funciones existentes. La única trampa es H14 (el objetivo del colchón escrito en la columna que el motor no lee) y ya está identificada arriba.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "RECALCULADO (docs/panel-prep-implementacion.md, seccion 1 puntos 13 y 18). Sin cambios de alcance; baja de 2-3 dias a aproximadamente 1.\n\nPOR QUE BAJA: las tres piezas de server son mas chicas de lo estimado.\n- GET /api/debts son unas 10 lineas sobre una tabla que ya existe y un getDebtById ya escrito y testeado (api/mutations.ts:29).\n- El calendario se apoya en paydaysBetween, que ya existe (strategy/calendar.ts:124), y en tarjetaStatus, que ya alimenta el overview.\n\nY H14 ESTABA MAL DIAGNOSTICADO. La auditoria decia que 'el boton mas visible de P9 apunta a la columna equivocada'. No es asi: POST /api/buffer escribe savings.reserved, que es exactamente el 'reservado' que lee colchonStatus (strategy/balance.ts:68). Ese endpoint funciona y hace lo que dice.\n\nLo que no existe es una ruta que escriba strategy_config.colchonObjetivo -- el objetivo, no lo reservado. Y esa escritura ya la hace la tool MCP set_profile (mcp/server.ts:404). O sea: no es un bug ni trabajo propio de este ticket, es un campo mas de la ruta de perfil de TASK-051 (H2). Se saca de aca.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

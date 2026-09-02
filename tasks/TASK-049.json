@@ -1,31 +1,36 @@
 {
   "key": "TASK-049",
-  "title": "Fase 3 del panel — P4 Movimientos y P5 Revisión, con review_reason y claude_amount persistidos",
+  "title": "Fase 3 del panel — P4 Movimientos y P5 Revisión sobre las rutas que ya existen",
   "description": "Cuarta fase del roadmap de docs/panel-roadmap-implementacion.md. Es la fase con más trabajo de motor de las seis, y la única que toca el pipeline de ingesta — o sea, la zona que la regla 1 de CLAUDE.md protege.\n\nEL CORAZÓN DEL TICKET ES LA REVIEWCARD. Es la pieza que el propio diseño declara 'donde la invariante del motor se vuelve visible': compara lo que leyó el parser contra lo que leyó Claude y muestra el motivo de la discrepancia. Ninguno de esos tres datos se persiste hoy. review_reason se calcula en ingest/pipeline.ts (amount_not_found, claude_amount_mismatch, ambiguous_reversal_match, ambiguous_retiro_group, invalid_ts) y SE PIERDE EN LA ESCRITURA: no hay columna en transactions ni la escribe insertTransaction. El monto de la verificación cruzada tampoco se guarda. Del correo sólo queda raw_subject.\n\nHuecos que cierra: H9, H10 (motor + pipeline), H20, H21, H22, H23, H24 (tabla y filtros).\n\nEL CUERPO DEL CORREO NO SE PERSISTE. Es dato personal, y ahí el diseño se corrige en vez de construirse: el bloque del correo original pasa a ser asunto + enlace a Gmail por gmail_msg_id.\n\nLO QUE NO SE CONSTRUYE, POR DECISIÓN ESCRITA (H26, docs/panel-viabilidad.md §4): 'Mandar a revisión' una fila ya persistida desde P4 — needs_review es una afirmación del pipeline sobre una discrepancia entre dos lecturas del correo, no una etiqueta que un humano pone a gusto; ponerla a mano crea una fila en la cola sin las dos lecturas que la cola existe para comparar. Lo que el usuario quiere hacer ahí ya tiene camino: la fila que SÍ está en la cola se corrige con `correct`, que deja rastro. No se dibuja deshabilitado: no está.",
   "acceptance_criteria": [
-    "Existen las columnas `review_reason TEXT` y `claude_amount REAL` en `transactions`, agregadas con `addColumnIfMissing` (migración aditiva, nunca destructiva), y las escribe `insertTransaction` desde el pipeline (H9, H10). `claude_amount` guarda SÓLO el número de la verificación cruzada — nada de texto del correo.",
-    "Los tests existentes del parser y del pipeline siguen verdes SIN CAMBIAR NINGUNA ASERCIÓN. La invariante no se toca: el monto sigue saliendo del parser determinista, Claude sigue siendo verificación cruzada, y la discrepancia sigue mandando la fila a needs_review excluida de todos los totales.",
-    "Un test verifica que una fila que cae por `claude_amount_mismatch` queda persistida con su `review_reason` y su `claude_amount`, y que una fila sana queda con `review_reason` null.",
-    "`GET /api/review` devuelve `amount`, `claude_amount`, `review_reason`, `raw_subject` y `gmail_msg_id`, con su test.",
-    "`GET /api/transactions` devuelve un `total` real (COUNT con los mismos filtros) además del `count` de la página, y `needs_review_in_range` (H20). Hoy `count` es el tamaño de la página, con lo que no se puede saber si hay página siguiente.",
-    "`queryTransactions` y `transactionsQuerySchema` aceptan filtro por `category` (enum de CATEGORIES + `sin_categoria`), con su test (H21).",
-    "Existe `GET /api/counterparties?q=&limit=` (DISTINCT con conteo) para el autocompletar de la FilterBar (H23), con su test.",
-    "`GET /api/review/resolutions` acepta `?transaction_id=` y `?limit=` — el motor ya los soporta y la ruta hoy los descarta (H24). Es lo que alimenta el 'Ver por qué' de una fila descartada.",
-    "P4 Movimientos y la TransactionsTable: columnas, marcas (reverso, interna, en revisión, descartado) tomadas de las columnas de la fila y NO recalculadas en el cliente, paginador con el total real, y 'Ver por qué' de una fila descartada.",
-    "P4/FilterBar sólo ofrece filtros que la API acepta. 'Interna' NO es una dirección: va en el toggle `include_internal`. El `type` múltiple o se soporta como parámetro repetible en el schema o la barra baja a selección simple — no se dibuja multi-selección sobre un schema que acepta uno solo (H22).",
-    "P5 Revisión: la cola, el conteo, las tres acciones (confirm / correct / discard), la traducción del error (`not_found` → 404, el resto 400), el rastro auditable y el estado vacío.",
-    "P5/ReviewCard muestra la comparación 'lo que leyó el parser' vs 'lo que leyó Claude' y el chip de motivo SÓLO cuando los datos vienen del backend. Para las filas anteriores a la migración, que no tienen `review_reason`, la tarjeta muestra la variante SIN MOTIVO disponible y lo dice — no inventa una explicación.",
-    "El cuerpo del correo NO se persiste ni se dibuja en ninguna variante de la ReviewCard: es dato personal. El enlace al correo original se hace con `gmail_msg_id` hacia Gmail.",
-    "Resolver una fila mueve el número del overview: la pantalla llama a `refreshNow()` tras cada resolución y el badge de P2 baja. Si resolver no mueve nada visible, la pantalla no se entiende.",
-    "La franja persistente de revisión pendiente (TASK-047) ahora sí linkea a P5 y desaparece cuando la cola queda en cero.",
-    "NO se construye 'Mandar a revisión' desde P4 ni ningún endpoint que escriba needs_review sobre una fila ya persistida (H26).",
+    "P5 Revisión se construye SOBRE LAS TRES RUTAS QUE YA EXISTEN y funcionan: `GET /api/review` (routes.ts:151), `POST /api/review/:id/resolve` (routes.ts:164) y `GET /api/review/resolutions` (routes.ts:193). NO se toca el pipeline ni el esquema en este ticket.",
+    "La ReviewCard muestra, por fila: tipo, dirección, fecha, contraparte, monto, `raw_subject` y enlace al correo original vía `gmail_msg_id` hacia Gmail. El cuerpo del correo NO se persiste ni se muestra: es dato personal.",
+    "Los tres caminos de resolución (confirmar el monto, corregirlo, descartar la fila) funcionan y el overview se refresca después de cada uno: resolver tiene que MOVER el número, o la pantalla no se entiende.",
+    "P4 Movimientos usa la paginación que `GET /api/transactions` YA soporta: `limit` y `offset` existen y ya se pasan (api/queries.ts:19,74 y routes.ts:145). No se reimplementa.",
+    "Se agrega el `total` del conjunto filtrado a `GET /api/transactions` (H20): hoy `count` es el tamaño de la página, no el total de coincidencias, y sin eso la paginación no puede decir cuántas páginas hay. Con su test.",
+    "Se agrega el filtro por `category` a `queryTransactions` y a la ruta (H21), con su test.",
+    "El FilterBar traduce a los parámetros de la ruta: rango, tipo, dirección, contraparte, categoría, e 'Interna' como toggle `include_internal` (H22). La contraparte se escribe a mano — el autocompletar (H23) NO se construye acá.",
+    "Las filas en needs_review se muestran marcadas y excluidas de los totales. 'Sin leer' se rotula con el par (amount=0, needs_review=1), nunca comparando contra null — ver la nota de TASK-047.",
+    "NO se construye 'Mandar a revisión' desde P4 ni 'Rehacer el ledger desde cero' en P10 (H26). No se dibujan deshabilitados: no están.",
+    "Ninguna acción sin respaldo backend se dibuja; lo que quedó como hueco se dibuja explícitamente deshabilitado diciendo POR QUÉ.",
+    "Los tests del parser y del pipeline siguen verdes sin cambiar una sola aserción — trivialmente, porque este ticket no los toca.",
     "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
   ],
   "status": "todo",
   "priority": "high",
-  "labels": ["panel", "fase-3", "revision", "movimientos", "motor", "pipeline", "riesgo-medio"],
+  "labels": [
+    "panel",
+    "fase-3",
+    "revision",
+    "movimientos",
+    "api",
+    "riesgo-bajo",
+    "recalculado"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-047"],
+  "depends_on": [
+    "TASK-047"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [
@@ -33,10 +38,15 @@
       "author": "orquestador",
       "body": "Fase 3 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 9-11 turnos, 3-4 días, riesgo MEDIO — es la única fase que toca insertTransaction, o sea la invariante. Los tests existentes del parser y del pipeline son el cinturón.\n\nSi el presupuesto no alcanza, se recorta la fase ENTERA, no su corazón: sin H9/H10 la ReviewCard no es la ReviewCard, es una lista de asuntos de correo con tres botones.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "RECALCULADO POR EL WARGAMING (docs/panel-prep-implementacion.md, seccion 1.1). Es el ticket que mas cambia, y el cambio esta respaldado por el ledger real, no por opinion.\n\nLO QUE SE MIDIO sobre bolsillo.sqlite (solo conteos, ningun dato personal):\n- 1.159 transacciones, 2026-01-07 a 2026-09-01.\n- Filas en needs_review: 4. Cero por ciento coma treinta y cinco del ledger.\n- De esas 4, cuantas tienen amount = 0 (monto ilegible): 0.\n- Filas con amount = 0 en TODO el ledger: 0.\n- Resoluciones de revision ya registradas: 50.\n- Filas donde Claude discrepo del parser, en 8 meses: 0 (forense de docs/investigacion-riesgos.md sobre 933 correos).\n\nTRES CONSECUENCIAS:\n\n1. claude_amount (H10) SE RECORTA, CON EVIDENCIA. El roadmap decia que la comparacion de las dos lecturas es el corazon de la ReviewCard y que 'si el presupuesto no alcanza se recorta la fase entera, no su corazon'. Pero esa comparacion mostraria el mismo numero en el 100 por ciento de los casos: en 8 meses de correos reales no hubo ni una discrepancia. Es una migracion de esquema mas un cambio en insertTransaction por una columna sin contenido. Si algun dia aparece la primera discrepancia, addColumnIfMissing es aditivo y se agrega ese dia.\n\n2. review_reason (H9) SE DIFIERE, no se recorta. Es el unico de los dos que tiene contenido -- seis motivos distintos, ninguno Claude -- y es barato. Pero con 4 filas en cola no bloquea nada. Sale en su propio ticket cuando toque.\n\n3. P5 ES ENTREGABLE HOY SIN TOCAR EL SERVER. El roadmap descartaba esta version con desden ('es una lista de asuntos de correo con tres botones'). Esa lista con tres botones es exactamente el flujo de npm run review, que tiene 50 resoluciones reales de uso probado, y para 4 filas alcanza y sobra.\n\nCONSECUENCIAS EN LA ESTIMACION Y EL RIESGO: el ticket ya NO toca el pipeline, asi que el rotulo de RIESGO MEDIO desaparece -- pasa a bajo. Lo que queda de server son dos cambios en un archivo de queries de solo lectura (el total y el filtro por categoria). Baja de 3-4 dias a 1,5-2, y ENTRA AL MVP.\n\nY una correccion menor de la auditoria: H20 estaba mal contado como 'no puede paginar'. offset ya existe y ya se pasa (api/queries.ts:19,74). Falta solo el total.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
-  "verification_tier": "tdd"
+  "verification_tier": "tests-after"
 }

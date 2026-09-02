@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-02T00:00:00.000Z",
+  "generated_at": "2026-09-02T12:00:00.000Z",
   "tasks": [
     {
       "key": "TASK-044",
@@ -15,7 +15,7 @@
     },
     {
       "key": "TASK-046",
-      "title": "Fase 0 del panel — Acceso real: WALLET_ACCESS_TOKEN, middleware Bearer y tailscale serve",
+      "title": "Fase 0 del panel — La puerta: WALLET_ACCESS_TOKEN, ID token de Firebase y tailscale serve",
       "status": "todo",
       "priority": "high"
     },
@@ -29,11 +29,11 @@
       "key": "TASK-048",
       "title": "Fase 2 del panel — Chat con gastos reales: motor de resumen de gasto, tools del agente y P7",
       "status": "todo",
-      "priority": "high"
+      "priority": "medium"
     },
     {
       "key": "TASK-049",
-      "title": "Fase 3 del panel — P4 Movimientos y P5 Revisión, con review_reason y claude_amount persistidos",
+      "title": "Fase 3 del panel — P4 Movimientos y P5 Revisión sobre las rutas que ya existen",
       "status": "todo",
       "priority": "high"
     },
@@ -45,15 +45,21 @@
     },
     {
       "key": "TASK-051",
-      "title": "Fase 5 del panel — P1 Alta, P6 Reglas y P10 Configuración: las rutas HTTP que hoy sólo existen en MCP",
+      "title": "Fase 5 del panel — P6 Categorías y reglas (al MVP); P1 Alta y P10 Configuración (diferidos)",
       "status": "todo",
-      "priority": "medium"
+      "priority": "high"
     },
     {
       "key": "TASK-052",
-      "title": "Fase 6 del panel — P0 Acceso: login con Gmail (verificación de id_token, sesión y cuenta permitida)",
-      "status": "todo",
+      "title": "[ABSORBIDO por TASK-046] Fase 6 del panel — P0 Acceso: login con Gmail",
+      "status": "closed",
       "priority": "low"
+    },
+    {
+      "key": "TASK-053",
+      "title": "Investigación: el modelo 'todo web' — cuenta de usuario, ingesta del correo sin instalar nada, y qué implica para el multi-tenant",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

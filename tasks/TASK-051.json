@@ -1,6 +1,6 @@
 {
   "key": "TASK-051",
-  "title": "Fase 5 del panel — P1 Alta, P6 Reglas y P10 Configuración: las rutas HTTP que hoy sólo existen en MCP",
+  "title": "Fase 5 del panel — P6 Categorías y reglas (al MVP); P1 Alta y P10 Configuración (diferidos)",
   "description": "Sexta fase del roadmap de docs/panel-roadmap-implementacion.md. Es el bloque más grande de rutas nuevas y el que menos se extraña: es exactamente lo que hoy se hace por terminal con `npm run onboard` y las tools MCP, y eso funciona.\n\nEL HUECO DE FONDO: seis tools MCP no tienen equivalente HTTP — onboarding_status, suggest_profile, set_profile, set_rule, apply_rules y heal_counterparties. Un navegador no habla MCP por stdio, así que para el panel esas seis habilidades no existen. Las funciones de motor detrás YA EXISTEN Y ESTÁN TESTEADAS; lo que falta es la capa de ruta.\n\nHuecos que cierra: H2, H3, H4 (onboarding), H5, H6, H7, H8 (reglas), H25 (heal por fila).\n\nDOS DESALINEACIONES DEL DISEÑO QUE SE CORRIGEN EN EL DISEÑO, NO EN EL CÓDIGO:\n- H4: el checklist dibujado (Gmail · base de datos · sueldo y día de pago · colchón objetivo · cuentas · reglas) NO es el que devuelve el motor (env · claude · gmail · sync · huso · profile). El panel renderiza los pasos que vengan, no una lista escrita a mano.\n- H3: el paso 'Cuentas — qué cuentas mira el motor' no corresponde a nada. strategy_config no tiene una clave `cuentas`, y el motor no mira cuentas sino el TITULAR (`titular`, que rules/reconcile.ts compara contra el contacto de cada transferencia para marcarla interna). El paso se renombra a Titular.\n\nEL CONTADOR EN VIVO (H6) ES EL CORAZÓN DE P6. No existe ninguna función que cuente cuántas filas del ledger matchea un patrón, y tiene que usar EXACTAMENTE la normalización de toRulePattern: si no, el número miente y la pantalla queda peor que sin él. Es la defensa contra la trampa del patrón más largo que la contraparte real, que nunca matchea.\n\nACÁ TAMBIÉN LLEGA LA TARJETA DE PROPUESTA DEL CHAT, que TASK-048 dejó fuera a propósito: ahora P6 existe y 'Revisar y crear' tiene a dónde navegar.\n\nNO SE CONSTRUYE la zona de riesgo de P10 ('Rehacer el ledger desde cero', H26). La pantalla puede explicar CÓMO se hace; no debe poder hacerlo. Rehacer la base es una operación de terminal, en la máquina, con la base a la vista.",
   "acceptance_criteria": [
     "Existen `GET /api/onboarding/status`, `GET /api/onboarding/suggestions`, `GET /api/onboarding/profile` y `POST /api/onboarding/profile` sobre `onboardStatus`, `buildSuggestions`, `getStrategyConfig` y `setStrategyConfig` (H2). Cada ruta con su test; sólo validan y serializan.",
@@ -19,10 +19,20 @@
     "`npm run build` y `npm test` en verde, con los tests del panel incluidos; el bundle MCP regenerado en el mismo commit si se tocó server/src/mcp/."
   ],
   "status": "todo",
-  "priority": "medium",
-  "labels": ["panel", "fase-5", "onboarding", "reglas", "configuracion", "api"],
+  "priority": "high",
+  "labels": [
+    "panel",
+    "fase-5",
+    "reglas",
+    "categorias",
+    "onboarding",
+    "api",
+    "reordenado"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-047"],
+  "depends_on": [
+    "TASK-047"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [
@@ -30,10 +40,15 @@
       "author": "orquestador",
       "body": "Fase 5 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 9-11 turnos, 3-4 días, riesgo bajo-medio: muchas rutas, poca lógica. El cuidado va en mantener la invariante del onboarding — nunca escribir un valor que el usuario no confirmó — ahora que deja de ser un CLI no interactivo y pasa a ser un formulario.\n\nVa al final porque es lo que menos se extraña: hoy todo esto se hace con `npm run onboard` y las tools MCP, y eso funciona.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "REORDENADO POR EL WARGAMING (docs/panel-prep-implementacion.md, seccion 1.2). El roadmap mandaba esta fase al final; la evidencia dice que su primera mitad tiene que estar en el MVP.\n\nEL DATO QUE LO DECIDE, medido sobre el ledger real (solo conteos):\n- Movimientos sin categoria util (category NULL o 'otros'): 206. Diecisiete coma ocho por ciento del ledger.\n- Movimientos en revision: 4. Cero coma treinta y cinco por ciento.\n- Contrapartes distintas: 200. Reglas de categoria escritas: 36.\n\nEl roadmap prioriza la cola de 4 (con migracion de esquema incluida) y posterga la de 206. El trabajo de datos que a Mato le queda de verdad es CLASIFICAR, no revisar.\n\nEl argumento del roadmap para mandar esto al final era 'es lo que menos se extrana, hoy se hace por terminal y funciona'. Es cierto -- y aplica IGUAL DE BIEN a la cola de revision, que tambien se hace por terminal (50 resoluciones registradas) y que el roadmap si adelantaba. El argumento no distingue entre las dos cosas, asi que no puede sostener el orden.\n\nEL TICKET SE PARTE EN DOS:\n\n(A) AL MVP -- P6 Categorias y reglas: GET/POST/DELETE /api/rules, POST /api/rules/apply con dry_run (H8), countMatchingTransactions con la normalizacion de toRulePattern (H6, el contador en vivo -- que es la defensa contra el patron mas largo que la contraparte real), deleteCategoryRule (H7), y GET /api/counterparties/uncategorized. Todo sobre funciones que ya existen en category/ y que las tools MCP set_rule y apply_rules ya usan. Estimacion 2 dias.\n\n(B) DIFERIDO -- P1 Alta y P10 Configuracion: las rutas de onboarding (H2, H3, H4), healCounterparties por ids (H25), y el campo colchonObjetivo que viene de TASK-050. Esto si es lo que menos se extrana: npm run onboard y las 14 tools MCP funcionan y se usan.\n\nLa invariante del onboarding no cambia en ninguna de las dos mitades: nunca escribir un valor que el usuario no confirmo.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

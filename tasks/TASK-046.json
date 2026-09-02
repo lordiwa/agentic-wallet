@@ -1,22 +1,33 @@
 {
   "key": "TASK-046",
-  "title": "Fase 0 del panel — Acceso real: WALLET_ACCESS_TOKEN, middleware Bearer y tailscale serve",
+  "title": "Fase 0 del panel — La puerta: WALLET_ACCESS_TOKEN, ID token de Firebase y tailscale serve",
   "description": "Primera fase del roadmap de docs/panel-roadmap-implementacion.md. Bloquea a todas las demás.\n\nHoy la API HTTP no autentica nada: createApp monta CORS y nada más (hueco H1 de docs/panel-viabilidad.md). Toda fase posterior agrega endpoints que leen o escriben el ledger; construirlos antes del middleware crea una ventana en la que cada endpoint nuevo nace sin llave.\n\nY el endpoint más caro de dejar abierto no es el que lee: es POST /api/chat, que además de leer el ledger entero gasta la credencial de Claude de Mato en cada llamada. Cualquiera que alcance el puerto puede facturarle tokens.\n\nRESTRICCIÓN DURA DE MATO, que este ticket respeta: el server sigue escuchando sólo en 127.0.0.1 (WALLET_BIND_HOST, config.ts:44). NO se abre ningún puerto. NO se usa tailscale funnel. El camino a datos reales es tailscale serve hacia localhost (sólo dentro de la tailnet) + WALLET_ACCESS_TOKEN.\n\nDETALLE TÉCNICO QUE IMPORTA PARA EL CHAT: EventSource, la API estándar del navegador para SSE, no permite mandar cabeceras, así que no puede autenticarse con Bearer. No es un problema: el cliente actual (web/src/api/client.ts, streamChat) ya usa fetch + getReader() en vez de EventSource. El panel porta ese mismo camino y hereda la autenticación gratis. Verificar que sigue siendo así antes de dar el ticket por cerrado.\n\nNOTA DE NOMBRES: la variable de binding se llama WALLET_BIND_HOST. No existe BOLSILLO_BIND_HOST. BOLSILLO_DB_PATH sí existe, pero es la ruta de la base, aceptada por compatibilidad con la migración desde iwa-wallet (config.ts:95).",
   "acceptance_criteria": [
-    "`WALLET_ACCESS_TOKEN` existe en server/src/config.ts (opcional, sin default) y en .env.example con su explicación.",
-    "Un middleware exige `Authorization: Bearer <token>` en todo `/api/*` salvo `GET /api/health`. Con la variable VACÍA el comportamiento es exactamente el de hoy — el server sigue aceptando sólo 127.0.0.1 por WALLET_BIND_HOST y ninguna request se rechaza. El token es lo que HABILITA exponerse, no es cosmético.",
-    "Tests que verifican: 401 sin cabecera con el token configurado, 401 con token incorrecto, 200 con token correcto, 200 en `/api/health` sin token en cualquier caso, y que con la variable vacía ninguna ruta pide token.",
-    "La comparación del token es en tiempo constante (timingSafeEqual o equivalente), no `===` sobre strings.",
-    "`GET /api/health` devuelve `{status, auth_required}` — no sólo `{status:\"ok\"}` — para que P0 y P10 sepan si la puerta sirve o es decorativa. El token NUNCA se devuelve ni se refleja en ninguna respuesta.",
-    "El token no se loguea en ningún span, métrica ni mensaje de error: la telemetría registra a lo sumo que la request fue rechazada, nunca el valor recibido (db/telemetry.ts, regla de no loguear valores personales).",
-    "El middleware NO rompe el SSE de `POST /api/chat`: existe un test que verifica que una request de chat con Bearer válido abre el stream y recibe sus eventos, y que sin Bearer devuelve 401 ANTES de escribir cabeceras de SSE.",
-    "docs/ documenta el camino de despliegue con `tailscale serve` hacia localhost, y deja escrito por qué NO se usa `tailscale funnel` (publicaría en internet) ni se cambia WALLET_BIND_HOST.",
-    "No se construye ningún endpoint que borre o rehaga el ledger, ni uno que marque a mano una fila como needs_review (H26, docs/panel-viabilidad.md §4).",
+    "`WALLET_ACCESS_TOKEN` existe en server/src/config.ts (opcional, sin default) y en .env.example con su explicación. Es el camino de terminal/curl y sobrevive a cualquier login del panel.",
+    "UN SOLO middleware sobre todo `/api/*` salvo `GET /api/health` acepta DOS credenciales: `Authorization: Bearer <WALLET_ACCESS_TOKEN>` (terminal) O un ID token de Firebase Auth verificado. No se construyen dos middlewares ni se migra de uno al otro después: TASK-052 quedó absorbido acá, ver docs/panel-prep-implementacion.md §1 punto 3.",
+    "Con AMBAS configuraciones vacías el comportamiento es exactamente el de hoy — el server sigue aceptando sólo 127.0.0.1 por WALLET_BIND_HOST y ninguna request se rechaza. Autenticar es lo que HABILITA exponerse, no es cosmético.",
+    "La verificación del ID token comprueba firma contra las claves públicas de Google, `aud`, `iss` y expiración — no se limita a decodificar. Se hace con firebase-admin (`verifyIdToken`) o, si esa dependencia resulta demasiado pesada, con una verificación propia de JWT contra el JWKS de Google. Ningún test hace una llamada de red real.",
+    "Existe una lista de uids permitidos (uno en la práctica) por variable de entorno. Un ID token válido de una cuenta que no está en la lista se rechaza con 403, con su test.",
+    "NO se construye sesión de server ni cookie. El cliente de Firebase ya sostiene y refresca el token, y una cookie obligaría a mandar `Access-Control-Allow-Credentials`, que api/cors.ts:12-19 decide a propósito no mandar nunca.",
+    "La comparación del `WALLET_ACCESS_TOKEN` es en tiempo constante (timingSafeEqual o equivalente), no `===` sobre strings.",
+    "Tests: 401 sin cabecera con credencial configurada, 401 con token estático incorrecto, 401 con ID token inválido o expirado, 403 con ID token válido de uid no permitido, 200 con cada uno de los dos caminos válidos, 200 en `/api/health` sin credencial siempre, y ninguna ruta pide credencial con la configuración vacía.",
+    "`GET /api/health` devuelve `{status, auth_required}` — no sólo `{status:\"ok\"}` — para que P0 y P10 sepan si la puerta sirve o es decorativa. Ningún token se devuelve ni se refleja en ninguna respuesta.",
+    "Ni el token estático, ni el ID token, ni el uid, ni la dirección de correo se loguean en ningún span, métrica ni mensaje de error (db/telemetry.ts, regla de no loguear valores personales).",
+    "El middleware NO rompe el SSE de `POST /api/chat`: test que verifica que una request con credencial válida abre el stream y recibe sus eventos, y que sin credencial devuelve 401 ANTES de escribir cabeceras de SSE.",
+    "docs/ documenta el camino de despliegue con `tailscale serve` hacia localhost, por qué NO se usa `tailscale funnel`, por qué no se cambia WALLET_BIND_HOST, y cómo se revoca el acceso desde la cuenta de Google.",
+    "No se construye ningún endpoint que borre o rehaga el ledger, ni uno que marque a mano una fila como needs_review (H26).",
     "`npm run build` y `npm test` en verde; el bundle MCP regenerado en el mismo commit si se tocó server/src/mcp/."
   ],
   "status": "todo",
   "priority": "high",
-  "labels": ["panel", "fase-0", "seguridad", "api", "bloqueante"],
+  "labels": [
+    "panel",
+    "fase-0",
+    "seguridad",
+    "api",
+    "firebase-auth",
+    "bloqueante"
+  ],
   "assignee": null,
   "depends_on": [],
   "linked_commits": [],
@@ -26,10 +37,15 @@
       "author": "orquestador",
       "body": "Fase 0 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 2-3 turnos, ~1 día, riesgo bajo. Es la única fase que bloquea a todas las demás y la única que no se puede recortar: recortarla es dejar el ledger y la credencial de Claude sin llave, y ninguna fase posterior lo arregla retroactivamente.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "WARGAMING (docs/panel-prep-implementacion.md): este ticket ABSORBE a TASK-052 y su estimacion NO sube. El roadmap calculaba la fase 6 en 2 dias con RIESGO ALTO porque 'es la unica fase que toca OAuth de verdad'. Eso dejo de ser cierto: Mato ya configuro Firebase Auth (correo + Gmail) en el proyecto del panel y ya creo su cuenta. Verificar un ID token de Firebase es verifyIdToken() -- Google gestiona JWKS, rotacion, aud e iss. Es un SUBCONJUNTO de este middleware, no una fase aparte.\n\nY se elimina un rework que el roadmap planificaba explicitamente ('el middleware pasa de Bearer a sesion'): construir Bearer ahora y migrarlo despues es hacer el mismo trabajo dos veces. Un solo middleware con dos credenciales.\n\nSe CAE la sesion con cookie httpOnly del viejo TASK-052 AC3, y no por comodidad: api/cors.ts:12-19 decide a proposito no mandar nunca Access-Control-Allow-Credentials, y una cookie obligaria a revertir esa decision. Con Firebase el cliente ya sostiene el token; no hay sesion que inventar.\n\nSe mantiene el veredicto del roadmap de que esta pieza es NECESARIA. Lo que se rechaza es que sea BLOQUEANTE de todo lo demas: el server escucha en 127.0.0.1 (config.ts:44) y el panel se construye entero en modo demo sin tocarlo. La ventana de exposicion se abre el dia que se enciende tailscale serve, no el dia que se escribe el endpoint.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

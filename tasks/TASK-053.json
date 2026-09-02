@@ -1,0 +1,40 @@
+{
+  "key": "TASK-053",
+  "title": "Investigación: el modelo 'todo web' — cuenta de usuario, ingesta del correo sin instalar nada, y qué implica para el multi-tenant",
+  "description": "Requisito nuevo de Mato: si va a haber una interfaz, la instalación tiene que dejar de ser difícil. Hoy el wallet es local-first — clonar el repo, tres códigos de Google Cloud (15-25 min de consola, ver docs/oauth-para-humanos.md) y npm. Mato propone que el usuario se cree una cuenta y que el servidor obtenga permiso para leer su correo, sin que el correo llegue nunca a su computadora.\n\nEl análisis inicial está en docs/panel-prep-implementacion.md §3, con cuatro modelos evaluados (A: OAuth del usuario contra nuestra app; B: SaaS multi-tenant completo; C: híbrido, que es lo que hay hoy; D: ingesta por reenvío de correo) y una recomendación: C hoy → D como modelo objetivo, con A como importador opcional de historial detrás de la verificación de Google.\n\nEste ticket es de INVESTIGACIÓN Y DECISIÓN. No se escribe código de producto.",
+  "acceptance_criteria": [
+    "CONFIRMADO POR ESCRITO, contra la documentación vigente de Google: qué exige publicar una app con el scope restringido `gmail.readonly` a usuarios externos — verificación, evaluación de seguridad por un tercero (CASA), su costo y su periodicidad; y qué límites tiene el modo de prueba (tope de usuarios de prueba y caducidad de los refresh tokens). Esta es la única incógnita externa del plan y decide si el modelo D es 'recomendado' u 'obligatorio'.",
+    "CONFIRMADO: que Firebase Auth NO entrega el refresh token de Google al servidor — el SDK cliente devuelve un access token de vida corta — y que por lo tanto el modelo A necesita un SEGUNDO flujo propio de código de autorización con `access_type=offline`. O sea: dos consentimientos, uno de identidad y otro de correo. Si esto resulta falso, se documenta y el modelo A se abarata mucho.",
+    "Evaluado el modelo D (ingesta por reenvío a una dirección por usuario): proveedor de correo entrante, verificación de la dirección, y cómo se conecta el webhook al pipeline actual sin tocar el motor — el adaptador tiene que producir la misma forma `GmailMessage` que `ingest/types.ts` ya define.",
+    "Documentado sin maquillaje lo que el modelo D pierde: no hay historial (un filtro de Gmail actúa sobre lo que llega, no sobre lo que ya llegó), el usuario tiene que crear el filtro, y un remitente puede ser falsificado — el parser tiene que seguir anclando en el remitente esperado.",
+    "Documentado qué del wallet actual se reutiliza tal cual en cualquiera de los modelos (motor entero: parser, pipeline, reconciliación, categorías, estrategia, brief, chat) y qué habría que construir nuevo (dueño de las filas, `getDb(tenantId)`, almacenamiento cifrado de credenciales por usuario).",
+    "Una recomendación con su fundamento, no un menú de opciones.",
+    "NO se implementa nada: ni multi-tenancy, ni OAuth de terceros, ni se toca `openDb`. Las dos únicas precauciones que sí valen hoy están en docs/panel-prep-implementacion.md §3.5 y son: ninguna ruta nueva abre la base por su cuenta (todas por `getDb`), y `owner TEXT` nullable en `conversations` cuando se toque el chat.",
+    "Ningún dato personal en el documento resultante."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "investigacion",
+    "modelo-web",
+    "multi-tenant",
+    "oauth",
+    "producto",
+    "sin-codigo"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Nace del wargaming del roadmap del panel (docs/panel-prep-implementacion.md, seccion 3).\n\nLA PIEZA QUE MATO INTUYE, verificada tecnicamente: 'me creo cuenta y desde nuestros servers se le dan permisos para leer su correo' son en realidad TRES decisiones separadas, y confundirlas es lo que hace parecer barato algo que no lo es.\n1. Identidad -- quien sos. RESUELTO: Firebase Auth, ya configurado.\n2. Autorizacion del correo -- como obtenemos permiso sobre tu buzon. ES EL PROBLEMA ENTERO.\n3. Donde corre el motor -- en tu maquina o en la nuestra.\n\nEL MURO DEL MODELO A, y por que hay que confirmarlo antes de prometer una fecha: gmail.readonly es un scope RESTRINGIDO de Google. Publicar con scopes restringidos a usuarios externos exige verificacion, y para restringidos eso incluye una evaluacion de seguridad por un tercero, anual y paga. Sin verificar, la app queda en modo prueba, con tope de usuarios y refresh tokens que caducan a los pocos dias -- o sea reconsentimiento periodico de cada usuario. Esa es la unica afirmacion del analisis que NO se pudo comprobar en el repo ni con una corrida, y por eso es el primer criterio de aceptacion de este ticket.\n\nY hay un tercer costo que no es tecnico: un refresh token de Gmail es poder sobre el correo ajeno. Guardar N de ellos es guardar N llaves de buzones, con cifrado gestionado aparte, revocacion real y un plan de incidente. Hoy ingest/token-store.ts guarda UNO en el llavero del sistema operativo -- un diseno que no escala a multi-usuario ni por asomo.\n\nEL MODELO D, que la consigna no listaba y que es la recomendacion: el usuario recibe una direccion propia y crea un filtro en Gmail que reenvia los correos de su banco. Cero OAuth, cero scope restringido, cero verificacion, cero refresh tokens guardados. Y la privacidad es ESTRICTAMENTE MEJOR que en el modelo A: alli tendriamos permiso de lectura sobre todo el buzon y prometeriamos filtrar; aca solo recibimos lo que el usuario decidio reenviar. La promesa deja de ser una politica y pasa a ser una imposibilidad tecnica. Cumple la frase de Mato al pie: el correo va del banco a nuestro servidor y nunca toca su computadora.\n\nLo que D pierde, dicho sin maquillaje, es el historial: un filtro actua sobre lo que llega, no sobre lo que ya llego. Por eso A y D conviven -- D para el dia a dia, A como importador opcional el dia que la verificacion exista.",
+      "created_at": "2026-09-02T12:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T12:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "docs-only"
+}

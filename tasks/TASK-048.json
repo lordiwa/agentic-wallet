@@ -24,10 +24,20 @@
     "`npm run build` y `npm test` en verde; el bundle MCP regenerado en el mismo commit si se tocó server/src/mcp/."
   ],
   "status": "todo",
-  "priority": "high",
-  "labels": ["panel", "fase-2", "chat", "motor", "gastos", "prioridad-de-mato"],
+  "priority": "medium",
+  "labels": [
+    "panel",
+    "fase-2",
+    "chat",
+    "motor",
+    "gastos",
+    "fuera-del-mvp",
+    "partir-en-dos"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-046", "TASK-047"],
+  "depends_on": [
+    "TASK-046"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [
@@ -35,10 +45,15 @@
       "author": "orquestador",
       "body": "Fase 2 del roadmap (docs/panel-roadmap-implementacion.md §3, la sección larga). Estimación: 7-9 turnos, 2-3 días, riesgo bajo. Es la fase de mejor relación valor/costo de todo el roadmap y cierra el MVP junto con TASK-046 y TASK-047.\n\nVa antes que movimientos y revisión por tres razones: es lo que Mato pidió; no depende de ninguna fase posterior (sus tools se apoyan en funciones que ya existen o en un GROUP BY con test propio); y mientras P4 y P8 no existan, el chat es el único lugar del panel donde se puede preguntar cualquier cosa sobre el historial — es la pantalla que hace que un panel a medias siga siendo útil.\n\nEL ÚNICO RIESGO REAL ES DE DISCIPLINA, NO TÉCNICO. Si spendingSummary no se construye y se deja que el modelo sume las filas que le llegan, el chat PARECE funcionar y devuelve cifras que no salieron del motor. Sería la primera grieta en la regla 1 del proyecto, y la más difícil de ver, porque el número casi siempre va a estar bien. El test que lo previene es del motor, no del chat.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "FUERA DEL MVP POR DECISION DE MATO: el chat se deja para el final. Este ticket no se toca hasta entonces.\n\nDOS COSAS QUE EL WARGAMING (docs/panel-prep-implementacion.md, seccion 1 puntos 16 y 17) DEJA ANOTADAS PARA CUANDO VUELVA:\n\n1. EL ANALISIS C1..C5 ES CORRECTO Y ES EL MEJOR TRABAJO DEL ROADMAP. Verificado uno por uno contra el codigo: engine-tools.ts registra exactamente cinco tools (:345-381) y ninguna suma; spendingByCategory (strategy/spending.ts:32) agrupa solo por categoria y no existe nada que agrupe por contraparte; get_review_queue esta en el MCP (mcp/server.ts:220) y no en el chat; chatBodySchema es {message} y nada mas (chat-route.ts:64). C1 en particular es un hallazgo real: el guardrail esta bien escrito y el agente, bien obedecido, NO PUEDE contestar 'cuanto gaste en X'. Las dos salidas son malas.\n\n2. LA DEPENDENCIA DE TASK-047 ERA FALSA PARA LA MITAD DE SERVER. spendingSummary, las tres tools nuevas y GET /api/spending/summary no tocan una linea de Vue: mejoran el chat que YA se usa hoy por MCP y por web/. Se puede entregar solo, en cualquier momento, sin panel. Cuando este ticket vuelva, PARTIRLO EN DOS -- motor (independiente, ~1 dia) y P7 en Vue (depende del panel). Por eso depends_on baja a TASK-046 solamente.\n\nDato del ledger real que conviene tener a mano al retomarlo: la tabla conversations tiene 0 filas. El chat nunca se uso contra el ledger de verdad, asi que agregarle una columna de dueno hoy no migra nada.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

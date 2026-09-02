@@ -5,26 +5,35 @@
   "acceptance_criteria": [
     "Existe el workspace `panel/` (Vue 3 + <script setup> + TypeScript + Vite) declarado en `workspaces` de package.json, y `panel/src/**/*.test.ts` está agregado al `include` de vitest.config.ts — sin eso los tests del panel no corren.",
     "`web/` (React) NO se modifica en ningún commit de este ticket: sigue construyendo y sus tests siguen verdes. El retiro de web/ es otro ticket.",
-    "La capa `panel/src/api/` está portada desde web/src/api/ e incluye el `Authorization: Bearer` de TASK-046 en toda llamada, leído de configuración del cliente y NUNCA horneado en el bundle.",
-    "El modo demostración está portado desde web/src/demo/demoFetch.ts: `VITE_API_BASE_URL=demo` opera la UI entera con datos inventados, y el backend real se elige con `?api=` desde el navegador. El artefacto publicado no contiene ningún dato real ni ninguna URL privada.",
-    "El reloj de refresco es un composable + store de Pinia con las tres propiedades portadas de web/src/lib/refresh.tsx: uno solo para todo el panel, se detiene con la pestaña oculta y dispara un tick al volver, y expone `refreshNow()` que se llama tras cada mutación. Con test que verifique la pausa y el tick al volver.",
+    "La capa `panel/src/api/` se COPIA desde web/src/api/ -- no se reescribe. base.ts (108), client.ts (249), types.ts (183), demo/demoFetch.ts (192) y lib/{dates,countdown,freshness,spending}.ts (151) son 883 lineas con CERO imports de React: entran tal cual. El unico cambio permitido es agregar la credencial de TASK-046 en las cabeceras, leida de configuracion del cliente y NUNCA horneada en el bundle.",
+    "El modo demostración está copiado desde web/src/demo/demoFetch.ts: `VITE_API_BASE_URL=demo` opera la UI entera con datos inventados, y el backend real se elige con `?api=` desde el navegador. El artefacto publicado no contiene ningún dato real ni ninguna URL privada. Se le agregan las rutas que hoy no cubre (hoy cubre 8, demoFetch.ts:163-191) sólo cuando una pantalla las necesite.",
+    "El reloj de refresco es un composable con las tres propiedades portadas de web/src/lib/refresh.tsx (117 líneas): uno solo para todo el panel, se detiene con la pestaña oculta y dispara un tick al volver, y expone `refreshNow()` que se llama tras cada mutación. Con test que verifique la pausa y el tick al volver. PINIA NO ES OBLIGATORIO: es una dependencia entera por un setInterval y un booleano. Se agrega si aparece estado compartido que lo justifique, no de entrada.",
     "P2 Resumen consume `GET /api/overview`, `GET /api/brief` y `GET /api/sync/status`, y NO calcula ningún total, proyección ni categoría en el cliente. `next_payday: null` se muestra como 'Sin leer'.",
-    "`amount: null` se muestra como 'sin leer' en toda la UI, nunca como cero; `0` se muestra como cifra. Las filas en needs_review se muestran marcadas y excluidas de los totales, igual que el motor las excluye.",
+    "Las filas en needs_review se muestran marcadas y excluidas de los totales, igual que el motor las excluye. NOTA QUE CORRIGE LA VERSION ANTERIOR DE ESTE CRITERIO: `transactions.amount` es REAL NOT NULL (db/schema.ts:13) y el motor escribe UNKNOWN_AMOUNT_PLACEHOLDER = 0 cuando el parser no leyó el monto (db/repository.ts:37,137) — la API NUNCA devuelve `amount: null`. Lo que significa 'no pude leerlo' es el PAR (0, needs_review=1), no el 0 solo. El panel rotula 'sin leer' con esa condición, nunca comparando contra null. En el ledger real hoy hay 0 filas con amount=0.",
     "P3 Sincronización y el SyncButton cubren los ocho estados del diseño (al día / atrasado / nunca / a medias / corriendo / 409 sync_already_running / 503 gmail_not_configured / 500). `last_sync_ts: null` se muestra como 'nunca sincronizaste', NO como una fecha; `progress.complete === false` ofrece 'Seguir' con el conteo real.",
     "`POST /api/sync` acepta `{batch_size?}` validado con zod y lo pasa al runner (H19), con su test. Es el único cambio de server de esta fase.",
     "'Detener' se rotula 'se detiene al terminar este lote' y sólo corta el auto-encadenado (H18 no se construye). El registro de lotes se rotula como registro de esta sesión que se pierde al recargar (H17 no se construye).",
     "El estado del sync se rehidrata de `GET /api/sync/status` al montar: recargar la página en medio de un backlog muestra el backlog, no un estado limpio falso.",
-    "Cuando un lote deja filas en needs_review, el panel muestra un aviso PERSISTENTE (franja no cerrable, no un toast) que no desaparece hasta que la cola queda vacía. Mientras P5 no exista (TASK-049), la franja dice el conteo y que la cola se resuelve por terminal — no linkea a una pantalla ausente.",
+    "Cuando un lote deja filas en needs_review, el panel muestra un aviso que dice el conteo y adónde se resuelve. NO es una franja persistente no cerrable: la cola real es de 4 filas sobre 1.159 (0,35 por ciento) y no tiene urgencia que justifique un cartel permanente. El aviso es cerrable y reaparece si la cola crece. Mientras P5 no exista, dice que la cola se resuelve por terminal — no linkea a una pantalla ausente.",
     "Hay indicador de frescura permanente ('actualizado hace X') y cartel de desconexión cuando el backend no responde: el panel nunca muestra números viejos con cara de actuales.",
     "Ninguna pantalla dibuja una acción sin respaldo backend: lo que quedó como hueco no resuelto no se dibuja, o se dibuja explícitamente deshabilitado diciendo POR QUÉ no está disponible todavía.",
     "Ningún valor personal se loguea ni se hornea: los fixtures del panel usan nombres ficticios.",
-    "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
+    "`npm run build` y `npm test` en verde, con los tests del panel incluidos.",
+    "La configuración de Vitest deja correr los tests del panel: `panel/src/**/*.test.ts` en el `include`, y el entorno jsdom para los tests de componente (vitest.config.ts declara `environment: \"node\"` de forma global — sin resolver esto los tests de Vue no corren y nadie se entera)."
   ],
   "status": "todo",
   "priority": "high",
-  "labels": ["panel", "fase-1", "vue3", "frontend", "sync"],
+  "labels": [
+    "panel",
+    "fase-1",
+    "vue3",
+    "frontend",
+    "sync"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-046"],
+  "depends_on": [
+    "TASK-046"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [
@@ -32,10 +41,15 @@
       "author": "orquestador",
       "body": "Fase 1 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 8-10 turnos, 3-4 días, riesgo bajo-medio. El riesgo real no es técnico sino de alcance: es tentador construir P4 acá porque 'la tabla es fácil'. No lo es — necesita total, filtro por categoría y endpoint de contrapartes, y va en TASK-049.",
       "created_at": "2026-09-02T00:00:00.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "WARGAMING (docs/panel-prep-implementacion.md, seccion 1 puntos 5, 6, 8 y 15; seccion 2.4).\n\nCUATRO CORRECCIONES, ninguna de alcance -- de exactitud.\n\n1. LA CAPA DE API NO SE 'PORTA', SE COPIA. Se midio archivo por archivo: demoFetch.ts, base.ts, client.ts, types.ts y los cuatro lib/*.ts suman 883 lineas con CERO imports de React. Solo refresh.tsx (117) es React. El roadmap trataba esto como trabajo sustantivo dentro de una fase de 3-4 dias; es copiar ocho archivos mas una linea de cabecera.\n\n2. PINIA DEJA DE SER OBLIGATORIO. refresh.tsx son 117 lineas: un intervalo, un booleano de visibilidad y un refreshNow(). Un composable con singleton de modulo hace lo mismo sin agregar una dependencia.\n\n3. EL AC7 ANTERIOR ERA IMPOSIBLE DE CUMPLIR. Decia 'amount: null se muestra sin leer, 0 se muestra como cifra'. transactions.amount es REAL NOT NULL (db/schema.ts:13) y el motor escribe 0 como placeholder (db/repository.ts:37,137): la API nunca devuelve null y el panel no tiene con que distinguir. El criterio esta reescrito sobre el par (0, needs_review), que es como el propio repository.ts lo documenta. Dato: en el ledger real hoy hay 0 filas con amount = 0.\n\n4. LA FRANJA PERSISTENTE NO CERRABLE ES DESPROPORCIONADA. Se dimensiono contra el ledger real: 4 filas en revision sobre 1.159, y 50 resoluciones ya registradas por el flujo de terminal. Un cartel que no se puede cerrar, permanente, por eso. Pasa a aviso cerrable que reaparece si la cola crece.\n\nY UN CRITERIO NUEVO que faltaba y garantizaba un tropiezo: vitest.config.ts declara environment 'node' global, asi que los tests de componentes Vue no arrancan hasta que alguien lo resuelva.\n\nEstimacion: baja de 3-4 dias a 2-3, casi entera por el punto 1.",
+      "created_at": "2026-09-02T12:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T00:00:00.000Z",
-  "updated_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T12:00:00.000Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
