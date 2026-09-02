@@ -105,14 +105,18 @@ que consume, dato que muestra, y qué puede **hacer** Mato.
 
 - **Propósito:** poner un límite antes de que la API deje de estar en
   `127.0.0.1`. Un solo usuario, sin registro público.
-- **Componentes:** `AccessGate.vue`, `PassphraseField.vue`,
-  `BackendPicker.vue` (URL del backend / modo demo).
+- **El acceso es exclusivamente con Gmail.** Una sola acción en la pantalla:
+  **Continuar con Google** (OAuth de Google). **No hay formulario manual de
+  usuario y contraseña**, ni campo de frase de acceso. La identidad del panel
+  es la misma cuenta de Gmail cuyos correos alimentan el ledger: una sola
+  credencial, la que el usuario ya tiene y ya sabe revocar.
+- **Componentes:** `AccessGate.vue`, `GoogleSignInButton.vue`.
 - **Habilidad:** ninguna del agente. `GET /api/health` como sonda.
-- **Muestra:** a qué backend está apuntando, si responde, y si el modo demo
-  está activo.
-- **Acciones:** *Entrar*, *Usar modo demostración*, *Cambiar backend*.
+- **Muestra:** el botón de Google, qué autoriza esa cuenta, y —si aplica— que
+  el modo demostración está activo.
+- **Acciones:** una. *Continuar con Google*.
 - **Honestidad:** en modo demo esta pantalla es decorativa y lo dice. Sólo
-  tiene sentido real cuando el server exija el token (sección 7).
+  tiene sentido real cuando el server valide la sesión (sección 7).
 
 ### P1 — Alta y perfil
 
@@ -284,9 +288,11 @@ Se lista para que quede planificado, no para la primera versión.
 
 ```
                     ┌──────────────────┐
-                    │  P0 Acceso       │  (sólo si el backend pide token)
+                    │  P0 Acceso       │  (sólo si no hay sesión de Google)
+                    │  [Continuar con  │
+                    │      Google]     │
                     └────────┬─────────┘
-                             │  token ok / modo demo
+                             │  sesión ok / modo demo
                              ▼
                  ¿onboarding completo?
                     │                 │
@@ -388,28 +394,33 @@ que esto sea simple:
 
 ### (a) Acceso — quién puede hablarle a la API
 
-Hoy: **nadie está autenticado y todos pueden todo**. La propuesta mínima
-honesta, en el server (no en el panel):
+Hoy: **nadie está autenticado y todos pueden todo**. La decisión de diseño
+(confirmada por Mato) es que **el acceso al panel es login con Gmail y sólo
+eso**:
 
-- Una variable nueva `WALLET_ACCESS_TOKEN` en `.env`. Mato la escribe a mano
-  una vez — ése es el "alta manual".
-- Un middleware en `server/src/api/` que exige `Authorization: Bearer <token>`
-  en todo `/api/*` salvo `/api/health`.
-- **Si la variable está vacía, el server sólo acepta conexiones de
-  `127.0.0.1`** — o sea, el comportamiento de hoy sigue siendo el default y
-  nada se rompe. El token es lo que *habilita* exponerse, no un agregado
-  cosmético.
-- P0 pide la frase, la guarda en `localStorage` (misma mecánica que la URL
-  del backend, ver `web/src/api/base.ts`) y la manda en cada request.
+- P0 muestra **un botón: *Continuar con Google***. Sin usuario, sin
+  contraseña, sin frase de acceso, sin campo de backend a la vista.
+- La cuenta que abre el panel es **la misma cuenta de Gmail cuyos correos
+  alimentan el ledger**. No hay una segunda identidad que administrar: el
+  "alta manual" es autorizar esa cuenta una vez.
+- Se revoca desde la cuenta de Google, no desde el panel. Eso es una
+  propiedad, no un detalle: el usuario ya sabe hacerlo y no depende de que la
+  app funcione.
+- **El default sigue siendo local.** Mientras el server no valide sesión, sólo
+  acepta `127.0.0.1` — el comportamiento de hoy no se rompe. Autenticar es lo
+  que *habilita* exponerse.
 
-Sin usuario, sin contraseña, sin hash, sin sesiones: **un secreto compartido
-para un solo humano**. Un login con formulario de usuario y contraseña contra
-una tabla de un solo registro sería más código, más superficie y exactamente
-la misma seguridad.
+**Lo que todavía no existe en el backend.** El OAuth de Google que el repo ya
+tiene (`docs/oauth-para-humanos.md`) es para **leer correos** desde el CLI: un
+flujo de aplicación de escritorio con refresh token en disco, no un mecanismo
+de sesión para una SPA. Convertirlo en login del panel pide piezas nuevas
+—verificación del `id_token` en el server, una sesión, y la lista de cuentas
+permitidas (una)— y **ninguna está construida**. Hasta entonces P0 es una
+maqueta y así se rotula (hueco H1 en `docs/panel-viabilidad.md`).
 
 Lo que hay que decir en voz alta: **una pantalla de login en la SPA no
 protege nada por sí sola.** La API se llama directo con `curl`. El límite lo
-pone el middleware del server; P0 es sólo el lugar donde se tipea el secreto.
+pone el middleware del server; P0 es sólo la puerta que el humano ve.
 
 ### (b) Perfil — quién es Mato para el motor
 
@@ -532,7 +543,7 @@ server.
 ## 9. Orden de construcción sugerido
 
 1. **Server primero:** las rutas HTTP faltantes (onboarding, reglas,
-   ahorro) + `WALLET_ACCESS_TOKEN`. Sin esto, tres pantallas no existen.
+   ahorro). Sin esto, tres pantallas no existen.
 2. **Esqueleto del panel:** workspace `panel/`, router, capa `api/`
    portada, modo demo, `vitest.config.ts` actualizado.
 3. **P2 + P3 + P5** — el núcleo operativo: ver, sincronizar, revisar. Con
@@ -540,7 +551,7 @@ server.
 4. **P4 + P7** — movimientos y chat.
 5. **P8 + P9** — estrategia y ahorro.
 6. **P1 + P6 + P10** — alta, reglas y configuración (dependen del punto 1).
-7. **P0** — cuando exista el token.
+7. **P0** — cuando el server valide la sesión de Google (sección 6a).
 8. **Retiro de `web/`** — decisión aparte, con el panel ya probado en uso
    real. No entra en este plan.
 

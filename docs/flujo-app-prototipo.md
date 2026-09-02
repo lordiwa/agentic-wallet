@@ -23,21 +23,21 @@ El prototipo es **de interacción, no de datos**. Todo número que aparezca en
 ```
         ┌───────────────────────────────────────────────┐
         │ arranque del panel                            │
-        │ (leer localStorage: backend, demo, frase)     │
+        │ (leer sesión de Google + backend guardado)    │
         └───────────────────┬───────────────────────────┘
                             │
                    GET /api/health
                             │
               ┌─────────────┴─────────────┐
-              │ auth_required = true      │ auth_required = false
+              │ sin sesión de Google      │ sesión válida
               ▼                           │   (o modo demo)
       ┌───────────────┐                   │
       │ P0 Acceso     │                   │
-      │ frase + back- │                   │
-      │ end + demo    │                   │
+      │ [Continuar    │                   │
+      │  con Google]  │                   │
       └───────┬───────┘                   │
-              │ frase aceptada / "usar    │
-              │ modo demostración"        │
+              │ un solo click:            │
+              │ consentimiento de Google  │
               └─────────────┬─────────────┘
                             │
                 GET /api/onboarding/status
@@ -54,10 +54,19 @@ El prototipo es **de interacción, no de datos**. Todo número que aparezca en
 
 Reglas de la entrada:
 
-- **P0 sólo aparece si el server pide token.** Si `auth_required` es `false`,
-  la pantalla se saltea entera: pedir una frase que no sirve enseña una
-  mentira. En modo demostración P0 se puede visitar desde P10, y se rotula
-  como decorativa.
+- **P0 es login con Gmail y nada más.** Una sola acción en toda la pantalla:
+  *Continuar con Google* (OAuth de Google). **No hay formulario manual de
+  usuario y contraseña**, ni campo de frase de acceso: la identidad del panel
+  es la misma cuenta de Gmail cuyos correos alimentan el ledger. Pedir dos
+  credenciales para un solo humano es superficie de más.
+- **P0 se saltea si ya hay sesión.** Con la sesión de Google viva —o en modo
+  demostración— la pantalla no se muestra; se puede visitar desde P10, y ahí
+  se rotula como decorativa.
+- **En el prototipo, P0 es clickeable.** *Continuar con Google* navega a
+  **P2 Resumen** (§4.2): el prototipo no simula la ventana de consentimiento
+  de Google, salta directo al destino. Es el único atajo que el prototipo se
+  permite en la entrada, y está ahí para que el recorrido se pueda hacer a
+  click, no leyendo el diagrama.
 - **P1 no bloquea.** *Saltar por ahora* siempre está disponible y lleva a P2.
   El panel no retiene a nadie en un formulario.
 - **P2 es el hogar.** Toda sesión posterior abre directo ahí.
@@ -367,7 +376,7 @@ por qué. **Un botón que no hace nada es peor que un botón ausente.**
 
 | Pantalla / componente | Elemento sin respaldo | Hueco | Cómo lo representa el prototipo |
 |---|---|---|---|
-| P0 | la frase de acceso, `auth_required` | H1 | pantalla completa con banda: *"maqueta — el server todavía no exige token"* |
+| P0 | la sesión de Google (login con Gmail) | H1 | pantalla completa con el botón único *Continuar con Google*, clickeable hacia P2, y banda: *"maqueta — el server todavía no valida sesión de Google"*. El OAuth de Gmail que ya existe es para **leer correos** desde el CLI, no para abrir sesión en el panel: esa parte es diseño, no backend construido |
 | P1 | todo el checklist y el guardado | H2, H4 | checklist ficticio, banda: *"requiere rutas HTTP de onboarding"*. El paso dibujado como "Cuentas" se renombra a **Titular** (H3) |
 | P6 | toda la pantalla, y el contador "matchea N" | H5, H6 | flujo completo con contador simulado, banda: *"requiere rutas de reglas + `countMatchingTransactions`"* |
 | P6 | borrar una regla, previsualizar la aplicación | H7, H8 | ambos botones presentes y rotulados como pendientes de motor |
@@ -405,7 +414,7 @@ están en `/opt/data/home/wallet-panel-ds-previews/`.
 | Tarjeta | Preview | Rol en el flujo |
 |---|---|---|
 | Fundamentos | `00-fundamentos.html` | color semántico, tipografía tabular, los 9 estados, las 4 reglas de contenido. **No es una pantalla**: es la referencia que gobierna todas |
-| P0 Acceso | `p0-acceso.html` | entrada condicional (§1.1) |
+| P0 Acceso | `p0-acceso.html` | entrada condicional (§1.1): botón único *Continuar con Google*, clickeable hacia P2 |
 | P1 Alta y perfil | `p1-alta-perfil.html` | entrada condicional (§1.1) |
 | P2 Resumen | `p2-resumen.html` | el hogar (§1.2) |
 | P3 Sincronización | `p3-sincronizacion.html` | flujo de sync (§2.1) |
@@ -429,12 +438,22 @@ están en `/opt/data/home/wallet-panel-ds-previews/`.
 Cada paso de los flujos de §2, con la tarjeta que le corresponde. Éste es el
 orden en que se enlazan las tarjetas en Claude Design.
 
+**El prototipo se recorre a click.** Cada flecha de este mapa es un enlace
+real entre tarjetas: se navega pulsando el elemento de la pantalla, no
+abriendo la tarjeta destino a mano. El primer enlace ya está construido —
+*Continuar con Google* en `p0-acceso.html` apunta a `p2-resumen.html`.
+
 **Entrada**
 
 ```
-P0 ──(frase / demo)──▶ P1 ──(guardar | saltar)──▶ P2
- └──(auth_required = false)───────────────────────▶ P2
+P0 ──(click en "Continuar con Google")──▶ P2
+ │                                         ▲
+ └─(primera vez: checklist incompleto)──▶ P1 ──(guardar | saltar)──┘
 ```
+
+En el prototipo, el enlace de P0 va **directo a P2**: el desvío por P1 depende
+del checklist de onboarding, que es estado de backend y no se puede evaluar en
+una maqueta. P1 se alcanza desde el mapa de flujo y desde P10.
 
 **Flujo de sync (§2.1)**
 

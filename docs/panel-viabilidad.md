@@ -87,19 +87,20 @@ habla MCP por stdio: para el panel, esas seis habilidades **no existen**.
 ### P0 — Acceso · **NO VIABLE**
 
 - **Dónde vive:** ruta `/acceso`. Es la entrada; sale a P1 (si el onboarding
-  está incompleto) o a P2. Sólo se muestra si el backend pide token.
-- **Con qué se alimenta:** `GET /api/health` como sonda de vida. El resto
-  (URL del backend, modo demo, frase de acceso) es `localStorage` del navegador,
-  portado de `web/src/api/base.ts`.
-- **Por qué NO VIABLE:** el diseño dice que la frase "viaja como
-  `Authorization: Bearer` en cada request" y que "mientras `WALLET_ACCESS_TOKEN`
-  esté vacío el server sólo acepta 127.0.0.1". **Ninguna de las dos cosas
-  existe**: no hay `WALLET_ACCESS_TOKEN` en `config.ts`, no hay middleware, y
-  `WALLET_BIND_HOST` es una variable de binding que no autentica nada. La
-  pantalla se puede *dibujar* hoy y el propio preview admite que es decorativa —
-  pero como control de acceso no tiene respaldo. Además el panel no tiene cómo
-  saber si el server exige token o no: `GET /api/health` devuelve `{status}` y
-  nada más.
+  está incompleto) o a P2. Sólo se muestra si no hay sesión de Google.
+- **Qué es, desde que Mato lo confirmó:** **login con Gmail y nada más**. Un
+  botón —*Continuar con Google*— y ningún formulario manual de usuario y
+  contraseña.
+- **Con qué se alimenta:** `GET /api/health` como sonda de vida. La sesión la
+  daría el OAuth de Google.
+- **Por qué NO VIABLE:** el server no autentica nada. No hay verificación de
+  `id_token`, no hay sesión, no hay lista de cuentas permitidas, y
+  `WALLET_BIND_HOST` es una variable de binding que no autentica. El OAuth de
+  Google que sí existe (`docs/oauth-para-humanos.md`) es un flujo de escritorio
+  para **leer correos** desde el CLI, con refresh token en disco: no sirve como
+  sesión de una SPA sin piezas nuevas del lado del server. La pantalla se puede
+  *dibujar* hoy y el propio preview admite que es decorativa — pero como control
+  de acceso no tiene respaldo.
 - **Huecos:** H1.
 
 ### P1 — Alta y perfil · **NO VIABLE**
@@ -313,12 +314,12 @@ habla MCP por stdio: para el panel, esas seis habilidades **no existen**.
   navegador y texto.
 - **Lo que falta:**
   - **El checklist de conexiones** (Gmail conectado / Claude / base de datos /
-    `WALLET_ACCESS_TOKEN`) y "Volver a correr el checklist": es
+    sesión de acceso) y "Volver a correr el checklist": es
     `onboarding_status`, que no tiene ruta HTTP. Es el contenido principal de la
     pantalla.
   - **"Probar" Gmail** como acción propia: no hay endpoint que pruebe la
     credencial sin disparar un sync. El estado de Gmail sale del checklist.
-  - **El estado de `WALLET_ACCESS_TOKEN`:** la variable no existe todavía (H1).
+  - **El estado del acceso:** el login con Gmail no existe todavía (H1).
   - **La zona de riesgo — "Rehacer el ledger desde cero":** no hay endpoint, y
     **se recomienda que siga sin haberlo** (§4).
 - **Huecos:** H2 (mismo que P1), H1, H26.
@@ -405,7 +406,7 @@ propio test, nunca en la ruta.
 
 | # | Hueco | Propuesta | Reutiliza | Tipo |
 |---|---|---|---|---|
-| H1 | No hay autenticación (P0, P10) | `WALLET_ACCESS_TOKEN` en `config.ts` + middleware `Authorization: Bearer` sobre `/api/*` salvo `/api/health`; con la variable vacía, sólo 127.0.0.1. Y `GET /api/health` pasa a devolver `{status, auth_required}` para que P0 sepa si la frase sirve o es decorativa | — | middleware + motor |
+| H1 | No hay autenticación (P0, P10) | Login con Gmail: verificar el `id_token` de Google en el server, una sesión, y una lista de cuentas permitidas (una). Middleware sobre `/api/*` salvo `/api/health`; sin sesión configurada, sólo 127.0.0.1. Y `GET /api/health` pasa a devolver `{status, auth_required}` para que P0 sepa si la puerta sirve o es decorativa | — | middleware + motor |
 | H2 | Onboarding sin HTTP (P1, P10) | `GET /api/onboarding/status`, `GET /api/onboarding/suggestions`, `GET /api/onboarding/profile`, `POST /api/onboarding/profile` | `onboardStatus`, `buildSuggestions`, `getStrategyConfig`, `setStrategyConfig` | ruta |
 | H3 | El paso "Cuentas" no corresponde a nada (P1) | Renombrar el paso a **Titular** en el diseño. Si se quiere la lista: `GET /api/accounts` (DISTINCT `account_holder`/`account`, ya enmascarado por el parser) | `suggestTitular` | diseño + ruta |
 | H4 | El checklist dibujado ≠ los pasos del motor (P1, P10) | Ninguna ruta: el panel renderiza los `steps` que devuelva H2, sin lista escrita a mano | `onboardStatus` | diseño |
@@ -465,7 +466,7 @@ en un `computed`.
 ## 5. Consecuencia para el orden de construcción
 
 `panel-manejo-flujo.md` §9 pone "server primero: las rutas HTTP faltantes
-(onboarding, reglas, ahorro) + `WALLET_ACCESS_TOKEN`". La auditoría confirma ese
+(onboarding, reglas, ahorro)". La auditoría confirma ese
 orden y **agrega tres bloques de server que no estaban en la cuenta**:
 
 - **La cola de revisión necesita trabajo de motor, no sólo de ruta** (H9, H10).
