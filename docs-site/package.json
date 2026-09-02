@@ -1,0 +1,15 @@
+{
+  "name": "agentic-wallet-docs-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sitio estatico de documentacion del panel de manejo. Genera HTML desde los .md de docs/ sin modificarlos.",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node --run build && npx --yes serve dist"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^15.0.12"
+  }
+}
