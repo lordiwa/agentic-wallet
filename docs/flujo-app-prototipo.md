@@ -397,7 +397,7 @@ prototipo es una promesa y qué parte es una realidad ya construible.
 ## 4. Mapeo del flujo a las tarjetas del design system
 
 Design system: **Agentic Wallet Panel — Design System**
-(`d509acfb-b4ad-480d-aa67-1b09b16a13c2`), 18 tarjetas. Los previews locales
+(`d509acfb-b4ad-480d-aa67-1b09b16a13c2`), 19 tarjetas. Los previews locales
 están en `/opt/data/home/wallet-panel-ds-previews/`.
 
 ### 4.1 Tarjetas y su archivo
@@ -422,6 +422,7 @@ están en `/opt/data/home/wallet-panel-ds-previews/`.
 | C4 TransactionsTable | `c4-tabla-transacciones.html` | el ledger |
 | C5 ChatPanel | `c5-panel-chat.html` | el cajón |
 | C6 FilterBar | `c6-selector-filtros.html` | el encabezado de P4 |
+| [Mapa de flujo](https://claude.ai/design/p/d509acfb-b4ad-480d-aa67-1b09b16a13c2?file=pf-mapa-de-flujo.html) | `pf-mapa-de-flujo.html` | mapa visual de todas las páginas y sus conexiones, con los estados de viabilidad marcados. **No es una pantalla**: es el índice navegable del prototipo |
 
 ### 4.2 Orden de conexión de las tarjetas en el prototipo
 
