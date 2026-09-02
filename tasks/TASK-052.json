@@ -1,0 +1,35 @@
+{
+  "key": "TASK-052",
+  "title": "Fase 6 del panel — P0 Acceso: login con Gmail (verificación de id_token, sesión y cuenta permitida)",
+  "description": "Última fase del roadmap de docs/panel-roadmap-implementacion.md. Cierra el hueco H1 en su forma completa.\n\nPOR QUÉ NO ES URGENTE: el token de TASK-046 YA RESUELVE EL PROBLEMA DE SEGURIDAD. P0 resuelve el problema de comodidad — que Mato no tenga que pegar una frase larga cada vez. Si algo se recorta del roadmap entero, es esta fase.\n\nQUÉ ES P0, desde que Mato lo confirmó: login con Gmail y nada más. Un botón —Continuar con Google— y ningún formulario manual de usuario y contraseña. La cuenta que abre el panel es la misma cuenta de Gmail cuyos correos alimentan el ledger: no hay una segunda identidad que administrar. Se revoca desde la cuenta de Google, no desde el panel — eso es una propiedad, no un detalle: el usuario ya sabe hacerlo y no depende de que la app funcione.\n\nPOR QUÉ NO ALCANZA CON LO QUE HAY: el OAuth de Google que el repo ya tiene (docs/oauth-para-humanos.md) es un flujo de aplicación de escritorio para LEER CORREOS desde el CLI, con refresh token en disco. No es un mecanismo de sesión para una SPA. Convertirlo pide piezas nuevas — verificación del id_token en el server, una sesión, y la lista de cuentas permitidas (una) — y ninguna está construida.\n\nLO QUE HAY QUE DECIR EN VOZ ALTA: una pantalla de login en la SPA no protege nada por sí sola. La API se llama directo con curl. El límite lo pone el middleware del server; P0 es sólo la puerta que el humano ve.\n\nRIESGO ALTO EN PROPORCIÓN A SU VALOR: es la única fase que toca OAuth de verdad.",
+  "acceptance_criteria": [
+    "El server verifica el `id_token` de Google contra las claves públicas de Google (firma, `aud`, `iss` y expiración), no se limita a decodificarlo. Con test contra un token firmado por una clave de prueba — ningún test hace una llamada de red real.",
+    "Existe una lista de cuentas permitidas (una sola en la práctica) configurada por variable de entorno. Un `id_token` válido de una cuenta que no está en la lista se rechaza con 403, con su test.",
+    "Existe una sesión del lado del server (cookie httpOnly, sameSite y secure cuando corresponde) con expiración explícita y cierre de sesión que la invalida. Con tests.",
+    "El middleware de TASK-046 acepta sesión O Bearer: el token sigue funcionando para las llamadas de terminal y para el propio panel cuando no hay sesión. Con la sesión configurada, `GET /api/health` sigue siendo la única ruta abierta.",
+    "P0 muestra UN botón —Continuar con Google— sin formulario de usuario y contraseña, sin frase de acceso y sin campo de backend a la vista. Es la entrada: sale a P1 si el onboarding está incompleto, o a P2.",
+    "`GET /api/health` sigue informando `auth_required` para que P0 sepa si la puerta sirve o es decorativa, y el panel lo consulta antes de dibujarla.",
+    "El default sigue siendo local: mientras el server no tenga ni token ni sesión configurados, sólo acepta 127.0.0.1 (WALLET_BIND_HOST) y el comportamiento de hoy no se rompe. Autenticar es lo que HABILITA exponerse.",
+    "Ni el `id_token`, ni el identificador de sesión, ni la dirección de correo se loguean en ningún span, métrica ni mensaje de error.",
+    "docs/ explica cómo se autoriza la cuenta la primera vez y cómo se revoca desde la cuenta de Google.",
+    "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": ["panel", "fase-6", "oauth", "seguridad", "riesgo-alto", "recortable"],
+  "assignee": null,
+  "depends_on": ["TASK-046"],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Fase 6 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 5-6 turnos, ~2 días, riesgo ALTO en proporción a su valor: es la única fase que toca OAuth de verdad, y lo que resuelve es comodidad, no seguridad — de eso ya se encarga TASK-046. Es el primer candidato a recortar si el presupuesto aprieta.",
+      "created_at": "2026-09-02T00:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T00:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

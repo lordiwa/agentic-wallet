@@ -1,0 +1,35 @@
+{
+  "key": "TASK-046",
+  "title": "Fase 0 del panel — Acceso real: WALLET_ACCESS_TOKEN, middleware Bearer y tailscale serve",
+  "description": "Primera fase del roadmap de docs/panel-roadmap-implementacion.md. Bloquea a todas las demás.\n\nHoy la API HTTP no autentica nada: createApp monta CORS y nada más (hueco H1 de docs/panel-viabilidad.md). Toda fase posterior agrega endpoints que leen o escriben el ledger; construirlos antes del middleware crea una ventana en la que cada endpoint nuevo nace sin llave.\n\nY el endpoint más caro de dejar abierto no es el que lee: es POST /api/chat, que además de leer el ledger entero gasta la credencial de Claude de Mato en cada llamada. Cualquiera que alcance el puerto puede facturarle tokens.\n\nRESTRICCIÓN DURA DE MATO, que este ticket respeta: el server sigue escuchando sólo en 127.0.0.1 (WALLET_BIND_HOST, config.ts:44). NO se abre ningún puerto. NO se usa tailscale funnel. El camino a datos reales es tailscale serve hacia localhost (sólo dentro de la tailnet) + WALLET_ACCESS_TOKEN.\n\nDETALLE TÉCNICO QUE IMPORTA PARA EL CHAT: EventSource, la API estándar del navegador para SSE, no permite mandar cabeceras, así que no puede autenticarse con Bearer. No es un problema: el cliente actual (web/src/api/client.ts, streamChat) ya usa fetch + getReader() en vez de EventSource. El panel porta ese mismo camino y hereda la autenticación gratis. Verificar que sigue siendo así antes de dar el ticket por cerrado.\n\nNOTA DE NOMBRES: la variable de binding se llama WALLET_BIND_HOST. No existe BOLSILLO_BIND_HOST. BOLSILLO_DB_PATH sí existe, pero es la ruta de la base, aceptada por compatibilidad con la migración desde iwa-wallet (config.ts:95).",
+  "acceptance_criteria": [
+    "`WALLET_ACCESS_TOKEN` existe en server/src/config.ts (opcional, sin default) y en .env.example con su explicación.",
+    "Un middleware exige `Authorization: Bearer <token>` en todo `/api/*` salvo `GET /api/health`. Con la variable VACÍA el comportamiento es exactamente el de hoy — el server sigue aceptando sólo 127.0.0.1 por WALLET_BIND_HOST y ninguna request se rechaza. El token es lo que HABILITA exponerse, no es cosmético.",
+    "Tests que verifican: 401 sin cabecera con el token configurado, 401 con token incorrecto, 200 con token correcto, 200 en `/api/health` sin token en cualquier caso, y que con la variable vacía ninguna ruta pide token.",
+    "La comparación del token es en tiempo constante (timingSafeEqual o equivalente), no `===` sobre strings.",
+    "`GET /api/health` devuelve `{status, auth_required}` — no sólo `{status:\"ok\"}` — para que P0 y P10 sepan si la puerta sirve o es decorativa. El token NUNCA se devuelve ni se refleja en ninguna respuesta.",
+    "El token no se loguea en ningún span, métrica ni mensaje de error: la telemetría registra a lo sumo que la request fue rechazada, nunca el valor recibido (db/telemetry.ts, regla de no loguear valores personales).",
+    "El middleware NO rompe el SSE de `POST /api/chat`: existe un test que verifica que una request de chat con Bearer válido abre el stream y recibe sus eventos, y que sin Bearer devuelve 401 ANTES de escribir cabeceras de SSE.",
+    "docs/ documenta el camino de despliegue con `tailscale serve` hacia localhost, y deja escrito por qué NO se usa `tailscale funnel` (publicaría en internet) ni se cambia WALLET_BIND_HOST.",
+    "No se construye ningún endpoint que borre o rehaga el ledger, ni uno que marque a mano una fila como needs_review (H26, docs/panel-viabilidad.md §4).",
+    "`npm run build` y `npm test` en verde; el bundle MCP regenerado en el mismo commit si se tocó server/src/mcp/."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": ["panel", "fase-0", "seguridad", "api", "bloqueante"],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Fase 0 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 2-3 turnos, ~1 día, riesgo bajo. Es la única fase que bloquea a todas las demás y la única que no se puede recortar: recortarla es dejar el ledger y la credencial de Claude sin llave, y ninguna fase posterior lo arregla retroactivamente.",
+      "created_at": "2026-09-02T00:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T00:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

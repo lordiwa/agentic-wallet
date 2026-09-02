@@ -1,0 +1,38 @@
+{
+  "key": "TASK-050",
+  "title": "Fase 4 del panel — P8 Estrategia y P9 Ahorro: listar deudas, calendario de pagos y objetivo de colchón",
+  "description": "Quinta fase del roadmap de docs/panel-roadmap-implementacion.md. Rutas sobre funciones que ya existen; la única trampa está identificada.\n\nHuecos que cierra: H11 (listar deudas y deshacer el pagado), H12 (calendario de pagos), H14 (el objetivo del colchón escrito donde el motor lo lee), y opcionalmente H15.\n\nLA TRAMPA FINA, H14: POST /api/buffer escribe savings.reserved. Pero el OBJETIVO que muestra colchonStatus no sale de savings.target — sale de strategy_config.colchonObjetivo (strategy/balance.ts). O sea que el botón más visible de P9 apunta hoy a la columna equivocada: escribe una columna que el motor no lee, y la clave que el motor sí lee sólo se puede escribir por MCP o CLI. El objetivo se escribe por la ruta de perfil (H2, que llega con TASK-051) o por una ruta equivalente creada acá; POST /api/buffer se queda con reserved y su doc lo dice.\n\nEL ABSURDO DE H11: existe POST /api/debts/:id/paid y ningún GET. Hay un botón que escribe por id y ninguna forma de conocer los ids.\n\nRECORTES DELIBERADOS, que se rotulan en vez de construirse:\n- La columna 'Vence' de la tabla de deudas NO se dibuja: la tabla debts tiene person, amount, kind, status y note, y no tiene fecha de vencimiento. Agregarla es una migración aditiva que puede ir en otro ticket si Mato la quiere.\n- 'Simular' se limita a `abono`, el único parámetro que proyeccionSinDeuda sabe proyectar (H13). Las perillas de gasto mensual y aporte al colchón son aritmética financiera nueva: van en strategy/ con sus tests, en su propio ticket, JAMÁS en un computed del cliente.\n- H16 (metas, flexiahorro, saldos) queda fuera: las tablas existen en el esquema y ningún código las lee. Los dos bloques de P9 no se dibujan y la pantalla dice que las tablas están sin exponer.",
+  "acceptance_criteria": [
+    "Existe `GET /api/debts` que lista las deudas con sus ids, sobre la tabla `debts`, con su test (H11). Sin esto el botón de 'marcar pagada' no tiene de dónde sacar los ids.",
+    "Existe el deshacer del pagado (`POST /api/debts/:id/unpaid` o `PATCH /api/debts/:id {status}`) con su test — hoy `markDebtPaid` sólo sabe escribir 'paid'.",
+    "Existe `GET /api/strategy/calendar?from=&to=` que compone cobros (`paydaysBetween`) y corte/vencimiento de tarjeta (`tarjetaStatus`), validando y serializando — cero aritmética nueva en la ruta (H12). Con su test.",
+    "El objetivo del colchón se escribe en `strategy_config.colchonObjetivo`, que es la clave que `colchonStatus` lee (strategy/balance.ts), y NO por `POST /api/buffer` (H14). `POST /api/buffer` se queda con `reserved` y su comentario de código dice explícitamente que el objetivo no va por ahí.",
+    "Si se ofrece 'Registrar aporte', la suma la hace el server (`POST /api/buffer/contributions {amount}`) y deja rastro. NUNCA se suma en el cliente: eso es aritmética de plata en la UI (H15). Si no se construye, el botón se quita y queda 'fijar reservado'.",
+    "P8 Estrategia: las cuatro OverviewCard (saldo de corte, mínimo, fecha máxima, requerido por quincena) salen de `card_status` de `GET /api/overview` y no se recalculan; el indicador a tiempo / atrasado sale de `aTiempo`.",
+    "La perilla 'Abono' está rotulada 'simulación, no se guarda' y no escribe nada. 'Marcar deuda pagada' pide confirmación por ser escritura y llama a `refreshNow()` al confirmar.",
+    "La columna 'Vence' NO se dibuja mientras la tabla `debts` no tenga fecha de vencimiento. Las perillas de gasto mensual y aporte al colchón NO se dibujan (H13).",
+    "P9 Ahorro: el anillo del colchón entero (objetivo, reservado, financiado, faltante) sale de `buffer_status` de `GET /api/overview`.",
+    "Las 'sugerencias de ahorro' se rotulan como respuesta del agente (chat), no como un cálculo del sistema — no se inventa un motor de ahorro que no existe (no hay strategy/savings.ts).",
+    "Los bloques de metas e histórico de aportes NO se dibujan y la pantalla dice que esas tablas están sin exponer (H16).",
+    "Ninguna pantalla calcula un total, una proyección o una categoría en el cliente.",
+    "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": ["panel", "fase-4", "estrategia", "ahorro", "api"],
+  "assignee": null,
+  "depends_on": ["TASK-047"],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Fase 4 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 6-8 turnos, 2-3 días, riesgo bajo — son rutas sobre funciones existentes. La única trampa es H14 (el objetivo del colchón escrito en la columna que el motor no lee) y ya está identificada arriba.",
+      "created_at": "2026-09-02T00:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T00:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

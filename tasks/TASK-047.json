@@ -1,0 +1,41 @@
+{
+  "key": "TASK-047",
+  "title": "Fase 1 del panel — Esqueleto panel/ + P2 Resumen + P3 Sincronización",
+  "description": "Segunda fase del roadmap de docs/panel-roadmap-implementacion.md. Levanta el andamio del panel y entrega las dos pantallas que lo hacen útil desde el primer día.\n\nP2 es la única pantalla del diseño que se construye SIN tocar el server (docs/panel-viabilidad.md: VIABLE, sin huecos), así que valida el andamio entero — workspace, capa api, reloj de refresco, modo demo, despliegue — sin quedar bloqueada por nada. Y el sync es lo que mantiene el ledger vivo: sin él, todo lo demás muestra datos viejos.\n\nÚNICO HUECO DE BACKEND QUE SE CIERRA ACÁ: H19, batch_size en el body de POST /api/sync. La tool MCP ya lo acepta; la ruta HTTP llama a runner() sin opciones. Es una línea de zod.\n\nDOS RECORTES DELIBERADOS, que se rotulan en la UI en vez de construirse:\n- H18 (cancelar un sync en vuelo): no se construye. 'Detener' corta el auto-encadenado y dice la verdad — 'se detiene al terminar este lote'. No promete abortar el lote en curso.\n- H17 (historial de lotes persistido): no se construye. El registro vive en Pinia y se rotula como registro de esta sesión que se pierde al recargar. No se dibuja una tabla histórica que en realidad vive en memoria.\n\nLa franja de revisión pendiente ya se dibuja acá aunque P5 llegue en la fase 3 (TASK-049): hasta entonces dice cuántas filas hay y que se resuelven por terminal.",
+  "acceptance_criteria": [
+    "Existe el workspace `panel/` (Vue 3 + <script setup> + TypeScript + Vite) declarado en `workspaces` de package.json, y `panel/src/**/*.test.ts` está agregado al `include` de vitest.config.ts — sin eso los tests del panel no corren.",
+    "`web/` (React) NO se modifica en ningún commit de este ticket: sigue construyendo y sus tests siguen verdes. El retiro de web/ es otro ticket.",
+    "La capa `panel/src/api/` está portada desde web/src/api/ e incluye el `Authorization: Bearer` de TASK-046 en toda llamada, leído de configuración del cliente y NUNCA horneado en el bundle.",
+    "El modo demostración está portado desde web/src/demo/demoFetch.ts: `VITE_API_BASE_URL=demo` opera la UI entera con datos inventados, y el backend real se elige con `?api=` desde el navegador. El artefacto publicado no contiene ningún dato real ni ninguna URL privada.",
+    "El reloj de refresco es un composable + store de Pinia con las tres propiedades portadas de web/src/lib/refresh.tsx: uno solo para todo el panel, se detiene con la pestaña oculta y dispara un tick al volver, y expone `refreshNow()` que se llama tras cada mutación. Con test que verifique la pausa y el tick al volver.",
+    "P2 Resumen consume `GET /api/overview`, `GET /api/brief` y `GET /api/sync/status`, y NO calcula ningún total, proyección ni categoría en el cliente. `next_payday: null` se muestra como 'Sin leer'.",
+    "`amount: null` se muestra como 'sin leer' en toda la UI, nunca como cero; `0` se muestra como cifra. Las filas en needs_review se muestran marcadas y excluidas de los totales, igual que el motor las excluye.",
+    "P3 Sincronización y el SyncButton cubren los ocho estados del diseño (al día / atrasado / nunca / a medias / corriendo / 409 sync_already_running / 503 gmail_not_configured / 500). `last_sync_ts: null` se muestra como 'nunca sincronizaste', NO como una fecha; `progress.complete === false` ofrece 'Seguir' con el conteo real.",
+    "`POST /api/sync` acepta `{batch_size?}` validado con zod y lo pasa al runner (H19), con su test. Es el único cambio de server de esta fase.",
+    "'Detener' se rotula 'se detiene al terminar este lote' y sólo corta el auto-encadenado (H18 no se construye). El registro de lotes se rotula como registro de esta sesión que se pierde al recargar (H17 no se construye).",
+    "El estado del sync se rehidrata de `GET /api/sync/status` al montar: recargar la página en medio de un backlog muestra el backlog, no un estado limpio falso.",
+    "Cuando un lote deja filas en needs_review, el panel muestra un aviso PERSISTENTE (franja no cerrable, no un toast) que no desaparece hasta que la cola queda vacía. Mientras P5 no exista (TASK-049), la franja dice el conteo y que la cola se resuelve por terminal — no linkea a una pantalla ausente.",
+    "Hay indicador de frescura permanente ('actualizado hace X') y cartel de desconexión cuando el backend no responde: el panel nunca muestra números viejos con cara de actuales.",
+    "Ninguna pantalla dibuja una acción sin respaldo backend: lo que quedó como hueco no resuelto no se dibuja, o se dibuja explícitamente deshabilitado diciendo POR QUÉ no está disponible todavía.",
+    "Ningún valor personal se loguea ni se hornea: los fixtures del panel usan nombres ficticios.",
+    "`npm run build` y `npm test` en verde, con los tests del panel incluidos."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": ["panel", "fase-1", "vue3", "frontend", "sync"],
+  "assignee": null,
+  "depends_on": ["TASK-046"],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orquestador",
+      "body": "Fase 1 del roadmap (docs/panel-roadmap-implementacion.md §2). Estimación: 8-10 turnos, 3-4 días, riesgo bajo-medio. El riesgo real no es técnico sino de alcance: es tentador construir P4 acá porque 'la tabla es fácil'. No lo es — necesita total, filtro por categoría y endpoint de contrapartes, y va en TASK-049.",
+      "created_at": "2026-09-02T00:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-09-02T00:00:00.000Z",
+  "updated_at": "2026-09-02T00:00:00.000Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

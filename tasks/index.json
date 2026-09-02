@@ -12,6 +12,48 @@
       "title": "Panel de manejo en Vue 3: consola para operar las habilidades del agente",
       "status": "todo",
       "priority": "high"
+    },
+    {
+      "key": "TASK-046",
+      "title": "Fase 0 del panel — Acceso real: WALLET_ACCESS_TOKEN, middleware Bearer y tailscale serve",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-047",
+      "title": "Fase 1 del panel — Esqueleto panel/ + P2 Resumen + P3 Sincronización",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-048",
+      "title": "Fase 2 del panel — Chat con gastos reales: motor de resumen de gasto, tools del agente y P7",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-049",
+      "title": "Fase 3 del panel — P4 Movimientos y P5 Revisión, con review_reason y claude_amount persistidos",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-050",
+      "title": "Fase 4 del panel — P8 Estrategia y P9 Ahorro: listar deudas, calendario de pagos y objetivo de colchón",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-051",
+      "title": "Fase 5 del panel — P1 Alta, P6 Reglas y P10 Configuración: las rutas HTTP que hoy sólo existen en MCP",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-052",
+      "title": "Fase 6 del panel — P0 Acceso: login con Gmail (verificación de id_token, sesión y cuenta permitida)",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }
