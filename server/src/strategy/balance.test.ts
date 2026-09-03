@@ -120,21 +120,21 @@ describe("colchonStatus (spec §9.3)", () => {
   it("reports the config objetivo against the savings 'colchon' row's reserved amount", () => {
     seedFixture(db); // colchonObjetivo: 1200, savings.colchon.reserved: 0
 
-    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 0, financiado: false, faltante: 1200 });
+    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 0, financiado: false, faltante: 1200, fijado: true });
   });
 
   it("marks financiado true and faltante 0 once reserved meets the objetivo exactly", () => {
     seedFixture(db);
     db.prepare("UPDATE savings SET reserved = 1200 WHERE label = 'colchon'").run();
 
-    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 1200, financiado: true, faltante: 0 });
+    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 1200, financiado: true, faltante: 0, fijado: true });
   });
 
   it("clamps faltante at 0 (never negative) when reserved exceeds the objetivo", () => {
     seedFixture(db);
     db.prepare("UPDATE savings SET reserved = 1500 WHERE label = 'colchon'").run();
 
-    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 1500, financiado: true, faltante: 0 });
+    expect(colchonStatus(db)).toEqual({ objetivo: 1200, reservado: 1500, financiado: true, faltante: 0, fijado: true });
   });
 
   it("degrades to reservado 0 without crashing when there is no savings row at all", () => {
@@ -146,6 +146,28 @@ describe("colchonStatus (spec §9.3)", () => {
     expect(status.objetivo).toBe(DEFAULT_STRATEGY_CONFIG.colchonObjetivo);
     expect(status.objetivo).toBe(0);
     expect(status.faltante).toBe(0);
+  });
+
+  /**
+   * **R25 fuera del panel** (wargaming ronda 4, W32; deuda abierta de la ronda
+   * 3). "No fijé objetivo" y "cumplí mi objetivo" contestaban campo por campo lo
+   * mismo —`financiado: true, faltante: 0`— y el único que sabía distinguirlos
+   * era el panel, en su propia capa. Un agente por MCP, el chat y el brief leen
+   * esta función directo: para ellos el colchón de una billetera recién
+   * instalada estaba financiado.
+   *
+   * `financiado` NO cambia de significado —es la fórmula de la §9.3 y el brief
+   * dispara su alerta con ella; invertirla haría sonar "colchón no financiado"
+   * en todas las billeteras sin objetivo—. Lo que se agrega es el campo que
+   * faltaba para poder decir la verdad.
+   */
+  it("un objetivo en cero no está fijado, aunque financiado siga siendo lo que dice la fórmula", () => {
+    const sinObjetivo = colchonStatus(db);
+
+    expect(sinObjetivo.objetivo).toBe(0);
+    expect(sinObjetivo.fijado).toBe(false);
+    // La fórmula no se toca: 0 >= 0.
+    expect(sinObjetivo.financiado).toBe(true);
   });
 });
 

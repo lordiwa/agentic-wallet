@@ -35,7 +35,13 @@ export const CLAVES_DEL_PERFIL = ["diasPago", "colchonObjetivo"] as const;
 export interface OnboardingProfile {
   /** Ventanas de día de pago, en el formato que `parseDiasPago` consume. */
   diasPago: string[];
-  /** Lista vacía = nunca se configuró. Sin esto no hay safe-to-spend (R7). */
+  /**
+   * **Fijado es "el calendario puede leer una ventana", no "hay algo escrito"**
+   * (wargaming ronda 4, W30). Sin esto no hay safe-to-spend (R7), y una base
+   * escrita por un `--set` o una tool MCP anteriores al arreglo puede tener un
+   * `"15"` guardado: `parseDiasPago` lo descarta, `nextPayday` queda en `null` y
+   * la pantalla decía igual *"Día de pago: 15"*.
+   */
   diaDePagoFijado: boolean;
   colchonObjetivo: number;
   /**
@@ -131,7 +137,7 @@ export function readProfile(db: Database.Database): OnboardingProfile {
 
   return {
     diasPago,
-    diaDePagoFijado: diasPago.length > 0,
+    diaDePagoFijado: parseDiasPago(diasPago).length > 0,
     colchonObjetivo: config.colchonObjetivo,
     colchonFijado: config.colchonObjetivo > 0,
   };

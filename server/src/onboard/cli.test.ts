@@ -187,6 +187,31 @@ describe("--set", () => {
     expect(await runOnboardCli(["--set", "{not json"], deps())).toBe(1);
     expect(printedJson().error).toContain("JSON valido");
   });
+
+  /**
+   * Wargaming ronda 4, W30. `--set` no pasa por `writeProfile`, así que hasta
+   * esta ronda guardaba cualquier string como día de pago. Un `"15"` —el día
+   * suelto, lo más natural que un agente puede escribir— quedaba guardado, el
+   * checklist daba el perfil por hecho y `nextPayday` era `null` para siempre:
+   * el safe-to-spend en `0` como cifra, no como guarda.
+   *
+   * El rechazo tiene que decir qué escribir en su lugar: el que lo lee es un
+   * agente que va a reintentar.
+   */
+  it("rejects a payday the calendar cannot read, and says what to write instead", async () => {
+    const conDiaSuelto = JSON.stringify({
+      sueldo: { fuente: "EMPRESA", cadencia: "mensual", montoEstimado: 1000, diasPago: ["15"] },
+    });
+
+    expect(await runOnboardCli(["--set", conDiaSuelto], deps())).toBe(1);
+    expect(printedJson().error).toContain("15-15");
+    expect(getStrategyConfig(db).sueldo.diasPago).toEqual([]);
+  });
+
+  it("rejects a negative colchon: R25 says zero already means 'not set'", async () => {
+    expect(await runOnboardCli(["--set", JSON.stringify({ colchonObjetivo: -500 })], deps())).toBe(1);
+    expect(getStrategyConfig(db).colchonObjetivo).toBe(0);
+  });
 });
 
 describe("--rule", () => {

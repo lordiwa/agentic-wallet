@@ -229,7 +229,7 @@ describe("checkAffordability -- boundary locks", () => {
     setConfig("colchonObjetivo", 500);
     db.prepare("INSERT INTO savings (label, target, reserved, updated_at) VALUES ('colchon', 500, 100, datetime('now'))").run();
     const verdict = checkAffordability(db, { amount: 10, date: "2026-07-10" });
-    expect(verdict.bufferStatus).toEqual({ objetivo: 500, reservado: 100, financiado: false, faltante: 400 });
+    expect(verdict.bufferStatus).toEqual({ objetivo: 500, reservado: 100, financiado: false, faltante: 400, fijado: true });
     expect(verdict.cardStatus).toBeNull(); // no statement loaded
   });
 

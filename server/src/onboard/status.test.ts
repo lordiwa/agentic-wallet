@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "../db/schema.js";
 import { insertTransaction } from "../db/repository.js";
 import { startSyncProgress, advanceSyncProgress } from "../db/sync-progress.js";
-import { onboardStatus, type OnboardStatus, type StepId } from "./status.js";
+import { setStrategyConfig } from "../db/strategy-config.js";
+import { onboardStatus, profileConfigured, type OnboardStatus, type StepId } from "./status.js";
 
 let db: Database.Database;
 let dir: string;
@@ -142,5 +143,29 @@ describe("onboardStatus: paso sync", () => {
 
     expect(result.complete).toBe(false);
     expect(result.next?.id).toBe("sync");
+  });
+});
+
+/**
+ * Wargaming ronda 4, W30. El paso del perfil cerraba con `diasPago.length > 0`,
+ * así que un `--set '{"sueldo":{…,"diasPago":["15"]}}'` —un día suelto, que
+ * `parseDiasPago` descarta— dejaba el onboarding **completo** sobre un
+ * calendario mudo: sin `nextPayday` no hay safe-to-spend, que es la única razón
+ * por la que este paso existe.
+ */
+describe("profileConfigured — el día de pago tiene que servirle al calendario", () => {
+  it("no da el perfil por hecho con un día que el calendario no lee", () => {
+    const sueldo = { fuente: "EMPRESA", cadencia: "mensual", montoEstimado: 100, diasPago: ["15"] };
+    db.prepare(
+      "INSERT INTO strategy_config (key, value) VALUES ('sueldo', @v) ON CONFLICT(key) DO UPDATE SET value = @v"
+    ).run({ v: JSON.stringify(sueldo) });
+    db.prepare(
+      "INSERT INTO strategy_config (key, value) VALUES ('titular', @v) ON CONFLICT(key) DO UPDATE SET value = @v"
+    ).run({ v: JSON.stringify("PERSONA EJEMPLO") });
+
+    expect(profileConfigured(db)).toBe(false);
+
+    setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["15-15"] } });
+    expect(profileConfigured(db)).toBe(true);
   });
 });

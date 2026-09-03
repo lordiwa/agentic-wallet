@@ -107,3 +107,38 @@ export function daysBetween(from: Date, to: Date): number {
 export function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * MS_PER_DAY);
 }
+
+/**
+ * Un `YYYY-MM-DD` pelado en un filtro es un **día local**, no un instante UTC.
+ *
+ * `ts` se guarda en UTC y todo el motor bucketea por día local, pero las
+ * consultas comparan strings: `from=2026-09-01` deja entrar las compras de la
+ * noche del 31 de agosto y `to=…T23:59:59.999Z` deja afuera las de la noche del
+ * 30 de septiembre. Sobre el ledger real 233 de 1140 filas caen en un día
+ * distinto del que el Resumen les asigna (wargaming ronda 3, W26).
+ *
+ * Vive **acá** y no en el borde HTTP porque qué es un día lo decide el motor, y
+ * porque tenerlo en un solo borde es lo que dejó a la tool MCP
+ * `query_transactions` cortando en UTC mientras el panel cortaba en local: la
+ * misma pregunta, dos ventanas, sin un solo error (ronda 4, W29).
+ *
+ * Un instante ISO con hora se respeta tal cual — quien manda una hora está
+ * pidiendo esa hora.
+ */
+const DIA_PELADO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** El primer instante del día local `valor`, o `valor` intacto si no es un día
+ * pelado. */
+export function instanteDesde(valor: string | undefined): string | undefined {
+  if (valor === undefined || !DIA_PELADO.test(valor)) return valor;
+  return parseLocalDay(valor)?.toISOString() ?? valor;
+}
+
+/** El último instante del día local `valor` (las consultas comparan con `<=`),
+ * o `valor` intacto si no es un día pelado. */
+export function instanteHasta(valor: string | undefined): string | undefined {
+  if (valor === undefined || !DIA_PELADO.test(valor)) return valor;
+  const inicio = parseLocalDay(valor);
+  if (inicio === null) return valor;
+  return new Date(addDays(inicio, 1).getTime() - 1).toISOString();
+}

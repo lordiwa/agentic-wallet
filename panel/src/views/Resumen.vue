@@ -56,6 +56,14 @@ const cola = ref<ClassifyProgressResponse | null>(null);
 const gastosFijos = ref<RecurringResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
+/**
+ * **Cuándo se leyó bien** (wargaming ronda 4, W31), que es lo único que el
+ * rótulo *"actualizado hace X"* puede decir con verdad. El reloj compartido late
+ * igual con el backend caído: usar su `lastRefreshAt` hacía que la cabecera
+ * dijera *"actualizado recién"* al lado del cartel rojo, sobre las cifras de la
+ * última lectura buena.
+ */
+const ultimaLecturaOk = ref<Date | null>(null);
 
 /** Esta pestaña disparó un lote y todavía no volvió. */
 const enVuelo = ref(false);
@@ -72,6 +80,7 @@ async function cargar(): Promise<void> {
     estadoSync.value = sync;
     cola.value = progreso;
     errorCarga.value = null;
+    ultimaLecturaOk.value = new Date();
     // Aparte de las tres de arriba y con su propio catch: un server anterior a
     // N4 devuelve 404 en esta ruta, y eso no puede tumbar el hogar entero. Sin
     // respuesta, la tarjeta de entrada simplemente no se dibuja.
@@ -148,9 +157,13 @@ onMounted(() => {
   void cargar();
 });
 
-const actualizado = computed(() =>
-  reloj.lastRefreshAt.value === null ? null : timeAgo(reloj.lastRefreshAt.value.toISOString())
-);
+// El rótulo cuelga de la última lectura BUENA, no del tick: ver
+// `ultimaLecturaOk`. Sigue dependiendo del reloj para volver a calcularse
+// —cada tick lo envejece un minuto más— pero no para fecharse.
+const actualizado = computed(() => {
+  void reloj.tick.value;
+  return ultimaLecturaOk.value === null ? null : timeAgo(ultimaLecturaOk.value.toISOString());
+});
 
 /* ---- Las cifras. Ninguna se calcula acá: todas llegan del motor. ---- */
 

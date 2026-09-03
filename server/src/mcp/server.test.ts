@@ -160,7 +160,7 @@ describe("MCP server del wallet", () => {
   it("get_colchon_status reporta el faltante contra el objetivo", async () => {
     const result = parse(await client.callTool({ name: "get_colchon_status", arguments: {} }));
 
-    expect(result).toEqual({ objetivo: 1000, reservado: 0, financiado: false, faltante: 1000 });
+    expect(result).toEqual({ objetivo: 1000, reservado: 0, financiado: false, faltante: 1000, fijado: true });
   });
 
   it("query_transactions excluye reversados por defecto y los incluye si se piden", async () => {
@@ -181,6 +181,71 @@ describe("MCP server del wallet", () => {
     );
 
     expect(result.transactions.map((t: any) => t.gmail_msg_id).sort()).toEqual(["m1", "m2"]);
+  });
+
+  /**
+   * Wargaming ronda 4, W29. `to`/`from` son **dias locales**, igual que en el
+   * filtro del panel desde W26: `ts` se guarda en UTC y todo el motor bucketea
+   * por dia local, asi que cortar el rango en `T00:00:00Z`/`T23:59:59Z` corre la
+   * ventana las horas del offset por los dos extremos.
+   *
+   * La compra de las 23:00 del 11 (04:00Z del 12) es del 11 para el motor, para
+   * el Resumen y para el filtro del panel. La tool la dejaba afuera de
+   * `to: "2025-03-11"` y la metia dentro de `from: "2025-03-12"`.
+   */
+  it("query_transactions corta los dias como el motor, no en UTC", async () => {
+    insertTransaction(db, {
+      direction: "out",
+      type: "debito",
+      currency: "USD",
+      account: "Persona Ejemplo",
+      source: "test",
+      gmail_msg_id: "m5",
+      ts: "2025-03-12T04:00:00.000Z",
+      amount: 9,
+      counterparty: "COMPRA DE LA NOCHE",
+    });
+
+    const hastaEl11 = parse(
+      await client.callTool({ name: "query_transactions", arguments: { from: "2025-03-10", to: "2025-03-11" } })
+    );
+    expect(hastaEl11.transactions.map((t: any) => t.gmail_msg_id).sort()).toEqual(["m1", "m2", "m5"]);
+
+    const desdeEl12 = parse(
+      await client.callTool({ name: "query_transactions", arguments: { from: "2025-03-12" } })
+    );
+    expect(desdeEl12.transactions.map((t: any) => t.gmail_msg_id)).not.toContain("m5");
+  });
+
+  /**
+   * W29, la otra mitad: las dos tools que aceptan `from`/`to` tienen que
+   * contestar por el mismo periodo. `get_spending_by_category` ya cortaba por
+   * dia local (`resolvePeriodo`) y `query_transactions` no, asi que el mismo
+   * "del 10 al 11" nombraba dos ventanas distintas dentro del mismo server.
+   */
+  it("query_transactions y get_spending_by_category leen el mismo dia", async () => {
+    insertTransaction(db, {
+      direction: "out",
+      type: "debito",
+      currency: "USD",
+      account: "Persona Ejemplo",
+      source: "test",
+      gmail_msg_id: "m5",
+      ts: "2025-03-12T04:00:00.000Z",
+      amount: 9,
+      counterparty: "COMPRA DE LA NOCHE",
+    });
+
+    const rango = { from: "2025-03-10", to: "2025-03-11" };
+    const filas = parse(await client.callTool({ name: "query_transactions", arguments: rango }));
+    const gasto = parse(await client.callTool({ name: "get_spending_by_category", arguments: rango }));
+
+    const sumaDeLasFilas = filas.transactions.reduce((total: number, t: any) => total + t.amount, 0);
+    const sumaDelGasto = Object.values(gasto.spending_by_category as Record<string, number>).reduce(
+      (total, monto) => total + monto,
+      0
+    );
+    expect(sumaDeLasFilas).toBe(sumaDelGasto);
   });
 
   it("get_spending_by_category usa el mes local en curso cuando no se dan fechas", async () => {
@@ -337,6 +402,39 @@ describe("MCP server del wallet", () => {
     const result = (await client.callTool({ name: "set_profile", arguments: {} })) as { isError?: boolean };
 
     expect(result.isError).toBe(true);
+  });
+
+  /**
+   * Wargaming ronda 4, W30. El regex de la tool acepta `\d{1,2}` a los dos
+   * lados, asi que `"0-0"` y `"99-99"` pasaban por aca y `localCalendarDate` los
+   * clampeaba en silencio al primero o al ultimo dia del mes: una fecha de cobro
+   * inventada, sin un solo error. Que 1..31 sea un dia del mes lo decide el
+   * motor, y esta tool tiene que chocarse con eso como cualquier otra superficie.
+   */
+  it("set_profile rechaza un dia de pago que ningun mes tiene", async () => {
+    const sueldo = { fuente: "EMPRESA", cadencia: "mensual", montoEstimado: 1000 };
+
+    for (const diasPago of [["0-0"], ["99-99"], ["<=0"]]) {
+      const result = (await client.callTool({
+        name: "set_profile",
+        arguments: { sueldo: { ...sueldo, diasPago } },
+      })) as { isError?: boolean };
+      expect(result.isError).toBe(true);
+    }
+
+    // La ventana buena sigue entrando, y es la que quedo escrita.
+    const ok = parse(await client.callTool({ name: "set_profile", arguments: { sueldo: { ...sueldo, diasPago: ["28-28"] } } }));
+    expect(ok).toEqual({ ok: true, written: ["sueldo"] });
+  });
+
+  it("set_profile rechaza un colchon negativo (R25 por la puerta de atras)", async () => {
+    const result = (await client.callTool({
+      name: "set_profile",
+      arguments: { colchonObjetivo: -500 },
+    })) as { isError?: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(parse(await client.callTool({ name: "get_colchon_status", arguments: {} })).objetivo).toBe(1000);
   });
 
   it("onboarding_status marca el .env segun exista en la raiz del proyecto", async () => {

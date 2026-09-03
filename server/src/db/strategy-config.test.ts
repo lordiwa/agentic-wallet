@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "./schema.js";
-import { getStrategyConfig } from "./strategy-config.js";
+import { getStrategyConfig, setStrategyConfig } from "./strategy-config.js";
 import { DEFAULT_STRATEGY_CONFIG } from "../seed/default-config.js";
 import { seedFixture } from "../seed/seed.fixture.js";
 
@@ -167,5 +167,67 @@ describe("getStrategyConfig (TASK-021 AC4)", () => {
       expect(config.moneda).toBe("USD");
       expect(config.titular).toBe("PEREZ GOMEZ ANA MARIA");
     });
+  });
+});
+
+/**
+ * Wargaming ronda 4, W30.
+ *
+ * `setStrategyConfig` es el borde que comparten **las tres** superficies de
+ * escritura: el panel (por `writeProfile`), la tool MCP `set_profile` y
+ * `npm run onboard -- --set`. La regla de qué día de pago es válido vivía sólo
+ * en `writeProfile`, así que las otras dos escribían lo que quisieran:
+ *
+ * - `--set '{"sueldo":{…,"diasPago":["15"]}}'` guardaba un día suelto que
+ *   `parseDiasPago` descarta en silencio. El perfil quedaba "configurado", el
+ *   panel mostraba *"Día de pago: 15"*, `nextPayday` era `null` y el
+ *   safe-to-spend valía `0` para siempre — el guarda de R7 dibujado como cifra.
+ * - `set_profile` con `["0-0"]` o `["99-99"]` pasaba el regex de la tool y
+ *   `localCalendarDate` lo clampeaba al 1 o al último día del mes.
+ * - Un `colchonObjetivo` negativo entraba por las dos, y `colchonStatus`
+ *   contestaba `financiado: true, faltante: 0` — R25 por la puerta de atrás.
+ *
+ * La validación de forma se queda donde estaba; lo que se agrega es que un
+ * valor que el motor no sabe leer no se pueda escribir por ninguna puerta.
+ */
+describe("setStrategyConfig — lo que ninguna superficie puede escribir (W30)", () => {
+  it("rechaza un día de pago que el calendario no sabe leer", () => {
+    seedFixture(db);
+    const sueldo = getStrategyConfig(db).sueldo;
+
+    // El día suelto: lo más natural que alguien escribe, y lo que deja mudo al
+    // calendario. El mensaje tiene que decir qué escribir en su lugar.
+    expect(() => setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["15"] } })).toThrow(/15-15/);
+    expect(() => setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["banana"] } })).toThrow(/diasPago/);
+    expect(() => setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["0-0"] } })).toThrow(/diasPago/);
+    expect(() => setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["99-99"] } })).toThrow(/diasPago/);
+    expect(() => setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["30-20"] } })).toThrow(/diasPago/);
+
+    // Y nada de eso quedó escrito: la validación corre antes de la transacción.
+    expect(getStrategyConfig(db).sueldo.diasPago).toEqual(["<=5", "18-20"]);
+  });
+
+  it("deja pasar las ventanas que el calendario sí lee, y la lista vacía", () => {
+    seedFixture(db);
+    const sueldo = getStrategyConfig(db).sueldo;
+
+    setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: ["<=5", "18-20"] } });
+    expect(getStrategyConfig(db).sueldo.diasPago).toEqual(["<=5", "18-20"]);
+
+    // Vacío es "todavía no lo configuré", que es el estado del seed y un valor
+    // legítimo: no se puede rechazar sin romper la instalación nueva.
+    setStrategyConfig(db, { sueldo: { ...sueldo, diasPago: [] } });
+    expect(getStrategyConfig(db).sueldo.diasPago).toEqual([]);
+  });
+
+  it("rechaza un colchón objetivo negativo", () => {
+    seedFixture(db);
+
+    expect(() => setStrategyConfig(db, { colchonObjetivo: -500 })).toThrow(/colchonObjetivo/);
+    expect(getStrategyConfig(db).colchonObjetivo).toBe(1200);
+
+    // Cero sí: es "no fijé objetivo", y lo distingue `colchonStatus.fijado`.
+    setStrategyConfig(db, { colchonObjetivo: 0 });
+    expect(getStrategyConfig(db).colchonObjetivo).toBe(0);
   });
 });

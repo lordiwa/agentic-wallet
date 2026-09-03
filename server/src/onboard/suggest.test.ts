@@ -138,6 +138,24 @@ describe("suggestSalary", () => {
     ]);
   });
 
+  /**
+   * Wargaming ronda 4, W34 — la clase de W26/W29 en el proponente.
+   *
+   * El día del mes salía de `getUTCDate()`, y **el motor que después lee esa
+   * ventana bucketea por día local** (`historicalPaydayDays` usa `localDayKey`).
+   * Un depósito de las 23:00 del 15 es el 16 en UTC: la propuesta decía
+   * *"cobrás el 16"*, el usuario la confirmaba, y `refineWindowDay` no
+   * encontraba ningún cobro histórico dentro de esa ventana — el mismo instante
+   * leído de dos maneras dentro del mismo producto.
+   */
+  it("propone el día LOCAL del cobro, que es el que el calendario después lee", () => {
+    // 23:00 del 15 en -05:00 = 04:00Z del 16.
+    insertTransaction(db, salary("2026-05-16T04:00:00Z", 1000));
+    insertTransaction(db, salary("2026-06-16T04:00:00Z", 1000));
+
+    expect(suggestSalary(db)?.diasPago).toEqual(["15-15"]);
+  });
+
   it("returns null with no salary rows instead of guessing a payday", () => {
     insertTransaction(db, tx({ amount: 50 }));
     expect(suggestSalary(db)).toBeNull();

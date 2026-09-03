@@ -133,7 +133,7 @@ describe("GET /api/overview (strategy indicators)", () => {
           5
         );
 
-        expect(res.body.buffer_status).toEqual({ objetivo: 1000, reservado: 200, financiado: false, faltante: 800 });
+        expect(res.body.buffer_status).toEqual({ objetivo: 1000, reservado: 200, financiado: false, faltante: 800, fijado: true });
       });
   });
 
@@ -257,7 +257,7 @@ describe("POST /api/buffer", () => {
           .get("/api/overview")
           .expect(200)
           .then((res2) => {
-            expect(res2.body.buffer_status).toEqual({ objetivo: 1000, reservado: 500, financiado: false, faltante: 500 });
+            expect(res2.body.buffer_status).toEqual({ objetivo: 1000, reservado: 500, financiado: false, faltante: 500, fijado: true });
           });
       });
   });

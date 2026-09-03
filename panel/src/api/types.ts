@@ -76,6 +76,12 @@ export interface ColchonStatus {
   reservado: number;
   financiado: boolean;
   faltante: number;
+  /**
+   * **R25**, ahora dicho por el motor (wargaming ronda 4, W32). Opcional porque
+   * un server anterior no lo manda, y ausente **no es `false`**: es "no sé", y
+   * ahí `vistaColchon` vuelve a mirar el objetivo, que es lo que hacía antes.
+   */
+  fijado?: boolean;
 }
 
 export interface CardStatus {

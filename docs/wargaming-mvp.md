@@ -1128,3 +1128,286 @@ angosto que su inversa no leería.
   hay un test que falle si alguien sube el `batch_size` máximo por encima del
   tope de ids.** Los dos números viven en `api/schemas.ts` y valen 500; nada los
   ata.
+
+---
+
+# Wargaming del MVP — ronda 4 (FINAL)
+
+Cuarta y última pasada. La ronda 3 atacó por clase dentro de las pantallas; ésta
+mantiene el método y lo mueve a **las superficies que ninguna ronda había
+tocado**: el servidor MCP, la CLI de onboarding, el escritor de configuración, el
+modo demostración y el brief. La pregunta de la ronda no fue *"¿se puede esquivar
+W26?"* sino:
+
+> "¿qué otra superficie contesta esta misma pregunta, y contesta lo mismo?"
+
+Porque las tres rondas anteriores dejaron el mismo saldo: el arreglo alcanzó la
+superficie donde se encontró el caso, y la de al lado siguió con la versión
+vieja de la regla.
+
+**Punto de partida:** `966d799`, 121 archivos / 1631 tests.
+**Punto de llegada:** 121 archivos / **1650 tests**, `npm run build` limpio.
+**Seis `ROMPE` nuevos**, ninguno de ellos en el manejo del dinero: los seis son
+de la misma familia —*el producto afirma algo más preciso de lo que sabe, o dos
+superficies contestan distinto la misma pregunta*—. **Cinco de los seis son la
+clase de un hallazgo anterior viva en una superficie nueva**, y los otros dos
+cierran las dos deudas que la ronda 3 dejó abiertas por escrito (R25 en el motor,
+el candado de `batch_size`).
+
+> Sobre los datos: mismo criterio que las tres rondas anteriores. El ledger real
+> se leyó sobre una **copia**, y de acá sólo salen conteos y proporciones.
+
+---
+
+## 1. Veredicto por fase
+
+| Fase / superficie | R2 | R3 | Ronda 4 | Qué se cayó ahora |
+|---|---|---|---|---|
+| N0 — la puerta mínima | ROMPE (leve) | ROMPE | **SÓLIDO** | Único frente de esta ronda sin un solo hallazgo. El modo demostración no produjo ni una corrección (`panel/src/demo/` queda sin tocar), y de yapa **ejercita en vivo** el fallback de W32: `demoFetch.ts:106` no manda `fijado` y la barra se dibuja igual. |
+| N1 — el motor de la pregunta | ROMPE | ROMPE | **SÓLIDO** | Sin hallazgos nuevos. Las asimetrías conocidas (substring vs igualdad, lote vs ledger) siguen documentadas como limitaciones, no como roturas. |
+| N2 — el hogar y el sync | SÓLIDO | ROMPE (leve) | **ACEPTABLE** | El acoplamiento que la ronda 3 dejó escrito y sin candado ya no se puede romper con un cambio de una línea (W33). No es un `ROMPE` nuevo: es una deuda cerrada. |
+| N3 — la cola de preguntas | ROMPE | ROMPE | **SÓLIDO** | Sin hallazgos nuevos. |
+| N4 — el análisis del historial | ROMPE | ROMPE | **ROMPE** | El proponente leía el día de cobro en UTC y el calendario que después lo consume lo lee en día local: *"cobrás el 16"* sobre un depósito de las 23:00 del 15, confirmado de buena fe y con el calendario sin encontrar un solo cobro dentro de esa ventana (W34). |
+| N5 — movimientos y el Resumen | ROMPE (leve) | ROMPE | **ROMPE (leve)** | El rótulo *"actualizado hace X"* colgaba del reloj compartido, que late con el backend caído: *"actualizado recién"* arriba del cartel rojo y de una tabla vacía (W31). |
+| **MCP** (nunca atacado) | — | — | **ROMPE** | `query_transactions` cortaba el rango en UTC mientras `get_spending_by_category` cortaba en día local: la misma pregunta, dos ventanas, sin un solo error (W29). Y `set_profile` escribía días de pago que el calendario después no sabe leer (W30). |
+| **CLI onboard** (nunca atacada) | — | — | **ROMPE** | `--set` no pasa por el validador del panel: entraba un `"15"` pelado, un `"99-99"` y un colchón negativo, y el paso del perfil se daba por cerrado sobre un `nextPayday` en `null` (W30). |
+| **Motor / brief** | — | — | **ROMPE (leve)** | R25 vivía sólo en el panel: para el chat, el brief y cualquier agente por MCP, una billetera recién instalada tenía el colchón *financiado* (W32). |
+
+**Las clases anteriores, en las superficies nuevas:**
+
+| Clase | ¿Sobrevivió? |
+|---|---|
+| W26 — un día del filtro no es un día del motor | **NO** — viva en MCP (W29) y en el proponente de sueldo (W34) |
+| W20/W5/W11 — no afirmar sobre una lectura que falló | **NO** — viva en el rótulo de frescura de las dos pantallas (W31) |
+| W8/W14/W24 — una regla del motor puesta en un transporte | **NO** — viva en el escritor de configuración (W30) |
+| R25 — "no fijé meta" no es "cumplí mi meta" | deuda abierta de la ronda 3, **cerrada** (W32) |
+| `batch_size ≤ MAX_TRANSACTION_IDS` sin candado | deuda abierta de la ronda 3, **cerrada** (W33) |
+
+---
+
+## 2. Los hallazgos
+
+### W29 — La misma pregunta, dos ventanas, según por qué puerta entre
+
+**ROMPE.** `mcp/server.ts` traducía `from`/`to` a `T00:00:00.000Z` y
+`T23:59:59.999Z`, mientras `get_spending_by_category` —la tool de al lado, con
+los mismos dos argumentos— resuelve por `localMonthRange`/`parseLocalDay`, o sea
+en día local. Un agente que pide *"los movimientos de septiembre"* y *"el gasto
+por categoría de septiembre"* recibía **dos períodos distintos**, corridos las
+horas del offset por los dos extremos, sin un solo error y con las dos listas
+completas.
+
+Es W26 otra vez, y es exactamente la lección de W8/W14: la corrección de la
+ronda 3 se hizo en el borde HTTP (`api/routes.ts`) y ahí se quedó. Qué es un día
+no lo decide un transporte.
+
+**Corregido:** las dos traducciones se mudaron al motor —`instanteDesde` /
+`instanteHasta` en `strategy/dates.ts:132-144`, con el porqué escrito ahí— y
+ahora las comparten el borde HTTP (`api/routes.ts:58`) y la tool MCP
+(`mcp/server.ts:218-228`). **Tests:** `mcp/server.test.ts:187` (la ventana es
+local) y `:221` (las dos tools contestan por el mismo período con el mismo
+argumento).
+
+### W30 — Tres superficies escriben el perfil y sólo una validaba
+
+**ROMPE (el más grave de la ronda).** `setStrategyConfig` es el borde que
+comparten los tres escritores —el panel por `writeProfile`, la tool MCP
+`set_profile` y `npm run onboard -- --set`— y hasta esta ronda validaba la
+**forma** y no el **significado**. La regla de qué día de pago es válido vivía en
+`writeProfile`, es decir en el camino del panel y en ninguno de los otros dos.
+
+| lo que entraba por MCP o por `--set` | qué hacía el motor después |
+|---|---|
+| `diasPago: ["15"]` | `parseDiasPago` lo descarta en silencio: calendario mudo, perfil "configurado" |
+| `diasPago: ["99-99"]` | `localCalendarDate` clampea al último día del mes: una fecha inventada con cara de configuración |
+| `colchonObjetivo: -100` | `colchonStatus` responde `financiado: true` |
+
+Y del lado de la lectura, el mismo error en espejo: `profileConfigured`
+(`onboard/status.ts:83`) y `readProfile` (`onboard/profile.ts:140`) contaban
+*"hay algo escrito"* en vez de *"el calendario lo puede leer"*, así que el paso
+del onboarding se cerraba sobre el único cálculo por el que ese paso existe,
+valiendo `null`.
+
+**Corregido:** `esDiaDelMes`/`esVentanaDePago` en `strategy/calendar.ts:16-18` y
+`:61` —qué día del mes existe lo decide la lectura, y así vale para todas las
+superficies—, `writeSchemas` en `db/strategy-config.ts:65-77`, y las dos lecturas
+pasando por `parseDiasPago`. El mensaje de error nombra el campo exacto
+(`strategy_config.sueldo.diasPago`), porque *"valor inválido en sueldo"* no le
+dice a un agente cuál de los cuatro corregir. **Lo que deliberadamente NO se
+endureció es la lectura:** una base ya escrita con un `"15"` haría fallar el
+schema entero de `sueldo` y se leería el default, perdiendo el monto y la fuente
+que el usuario sí confirmó. **Tests:** `db/strategy-config.test.ts:193`,
+`strategy/calendar.test.ts:61`, `onboard/status.test.ts:150`,
+`onboard/cli.test.ts:192`, `onboard/profile.test.ts:93`, `mcp/server.test.ts:408`
+— uno por cada superficie que podía escribirlo.
+
+### W31 — "Actualizado recién", arriba del cartel rojo
+
+**ROMPE (leve).** El rótulo de frescura de las dos pantallas principales salía de
+`reloj.lastRefreshAt`, o sea del **tick compartido**, que late igual cuando el
+backend está caído. El resultado: *"actualizado recién"* en la cabecera, el
+cartel rojo de error abajo, y en Movimientos una tabla vacía entre los dos. La
+única hora que ese rótulo puede decir con verdad es la de la última lectura que
+salió bien.
+
+Es la clase de W20 —celebrar al lado del cartel rojo— en la pieza que W20 no
+miró.
+
+**Corregido:** `ultimaLecturaOk` en `panel/src/views/Resumen.vue:66,83,165` y
+`panel/src/views/Movimientos.vue:75,117,203`. El rótulo se sigue **recalculando**
+con cada tick (envejece un minuto por minuto) pero ya no se **fecha** con él.
+**Tests:** `Resumen.test.ts:461` y `Movimientos.test.ts:316` — diez minutos de
+backend caído y el rótulo dice *"hace 10 minutos"*, no *"recién"*.
+
+### W32 — El colchón financiado de una billetera recién instalada
+
+**ROMPE (leve).** Deuda abierta y por escrito de la ronda 3. `colchonStatus`
+devolvía `financiado: true, faltante: 0` con el objetivo en cero, porque
+`0 >= 0`. El panel lo distinguía en su propia capa (`panel/src/lib/colchon.ts`),
+así que la pantalla estaba bien; **el chat, el brief y cualquier agente por MCP
+no**: para ellos una billetera sin configurar tenía el fondo de emergencia
+cumplido.
+
+**Corregido:** el motor publica `fijado` (`strategy/balance.ts:76,98`), la tool
+MCP lo dice en su descripción para que el agente mire ese campo antes que
+`financiado` (`mcp/server.ts:171-174`), y el panel pasó de deducirlo a
+**consumirlo**, con el objetivo como fallback para un server anterior
+(`panel/src/lib/colchon.ts:51`, `panel/src/api/types.ts:80`; ausente **no es**
+`false`, es *"no sé"*). **Por qué se agrega un campo en vez de invertir
+`financiado`:** `financiado` es la fórmula de la especificación §9.3 y el brief
+dispara su alerta con ella (`brief/build-brief.ts:204`); invertirla haría sonar
+*"colchón no financiado"* en toda billetera que todavía no fijó objetivo, que es
+justo el usuario al que no hay que alarmar. **Test:**
+`strategy/balance.test.ts:152`.
+
+### W33 — El acoplamiento escrito y sin candado
+
+**ROMPE (leve).** La otra deuda por escrito de la ronda 3. El lote de un sync es
+el único productor legítimo de `?transaction_ids=` (D7-b), así que un
+`batch_size` por encima del tope de ids produce un lote **cuya propia cola no se
+puede pedir**: el aviso post-sync del Resumen lleva a un 400. Los dos números
+vivían en `api/schemas.ts` valiendo 500 y nada los ataba: subir uno solo era un
+cambio de una línea que ningún test veía.
+
+**Corregido:** `MAX_SYNC_BATCH_SIZE` exportada (`api/schemas.ts:84`) y dos tests
+que fallan si alguien la sube por encima de `MAX_TRANSACTION_IDS`
+(`api/sync-route.test.ts:183`). Es la clase de W24 tratada como corresponde: no
+alcanza con escribir la regla en un comentario.
+
+### W34 — "Cobrás el 16", sobre un cobro del 15
+
+**ROMPE.** El día del mes de la propuesta de sueldo salía de `getUTCDate()`, y el
+motor que después lee esa ventana bucketea por **día local**
+(`historicalPaydayDays` usa `localDayKey`, `strategy/calendar.ts:91`). Un
+depósito de las 23:00 del 15 es el 16 en UTC: la propuesta decía *"cobrás el
+16"*, el usuario la confirmaba tal cual vía `--set` —la sugerencia sale ya en el
+formato que el motor consume, ése es su contrato— y `refineWindowDay` no
+encontraba **ningún** cobro histórico dentro de la ventana que el propio producto
+acababa de proponer.
+
+Es W26/W29 una tercera vez, ahora en el proponente. Afecta a cualquiera cuyo
+sueldo caiga de noche, que con acreditaciones bancarias no es un caso raro.
+
+**Corregido:** `onboard/suggest.ts:131` lee el día con `localParts`. **Test:**
+`onboard/suggest.test.ts:142`.
+
+---
+
+## 3. Lo que aguantó el ataque
+
+**El modo demostración, sin una sola corrección.** Es el único frente de esta
+ronda que no produjo un hallazgo: `panel/src/demo/` queda sin tocar. Y de paso
+resultó ser la prueba en vivo del fallback de W32 — `demoFetch.ts:106` y
+`:574-580` no emiten `fijado`, exactamente como un server anterior al arreglo, y
+la barra del colchón se sigue leyendo bien.
+
+**El brief, por la razón correcta.** `build-brief.ts:204` dispara
+`colchon_no_financiado` con `!colchon.financiado`, y con objetivo en cero la
+alerta **no** suena. Eso es lo correcto —no se alarma a quien no fijó una meta— y
+es precisamente por eso que W32 se resolvió agregando un campo en lugar de
+invertir la fórmula: invertirla habría convertido este acierto en un falso
+positivo para todo usuario nuevo.
+
+**La idempotencia del ledger.** La persistencia es idempotente por
+`gmail_msg_id` (`ingest/pipeline.ts:131`, AC4), con sus tests. Importa para el
+veredicto final: ninguna de las seis roturas de esta ronda toca el ledger, y el
+ledger además se reconstruye desde Gmail.
+
+---
+
+## 4. Limitaciones aceptables (ronda 4)
+
+- **`WALLET_UTC_OFFSET_HOURS` es un offset fijo, no una zona IANA.** Los tres
+  arreglos de día local de este proyecto (W26, W29, W34) descansan sobre él.
+  Para Ecuador el default (`-5`) ya es correcto y no hay DST, así que el piloto
+  funciona sin configurarlo; en una zona con DST los bordes de día quedan
+  corridos una hora parte del año. `strategy/dates.ts:13-24` lo documenta y el
+  onboarding tiene su propio paso (`huso`, `onboard/status.ts:19`).
+- **Lo que se escribe se valida más duro que lo que se lee** (W30), a propósito:
+  una base vieja con un día de pago que no parsea se sigue leyendo, y el producto
+  lo reporta honestamente en vez de perder el monto y la fuente que el usuario sí
+  confirmó.
+- **`financiado` sigue siendo `reservado >= objetivo`**, incluso con objetivo en
+  cero. Quien lea ese campo solo, sin mirar `fijado`, sigue pudiendo sacar la
+  conclusión equivocada; lo que cambió es que ahora **existe** con qué
+  distinguirlo y las tres superficies pueden hacerlo.
+- **Todas las limitaciones de la ronda 3 siguen vigentes** salvo las dos que esta
+  ronda cerró: el alcance por substring, la asimetría entre silenciar y
+  responder, `diaTipico` pudiendo ser 31, la precarga del colchón redondeando a
+  dos decimales, el aviso de `montosPendientes` en modo lote, el deep link a una
+  categoría sin filas, y el `"USD"` cableado en la demo y en una descripción de
+  tool.
+
+---
+
+## 5. Veredicto final del MVP
+
+**Qué tan difícil es romperlo hoy, sin adornos.** Cuatro rondas, 34 hallazgos.
+La curva de gravedad bajó de forma clara: la ronda 3 encontró trece, entre ellos
+montos guardados mal (`"1.500"` entrando como 1,5); la ronda 4 encontró seis y
+**ninguno toca el dinero**. Los seis son de una sola familia: *el producto afirma
+algo más preciso de lo que sabe, o dos superficies contestan distinto la misma
+pregunta*. La invariante dura del proyecto —el monto sale del parser, Claude es
+verificación cruzada, el desacuerdo va a `needs_review`— no fue rota por ninguna
+de las cuatro rondas.
+
+**Lo que también hay que decir:** cinco de los seis hallazgos de esta ronda son
+la clase de un hallazgo anterior, viva en una superficie que no se había mirado.
+Es el cuarto resultado consecutivo con ese patrón. La conclusión honesta no es
+*"ya no quedan roturas"*, es: **quedan, y son de esta forma** — una regla del
+motor que una superficie nueva no heredó. Una ronda 5 sobre otra superficie
+encontraría más. Lo que sí cambió es el costo de cada una: hoy son roturas de
+afirmación y de consistencia, no de datos.
+
+**¿Listo para el piloto con datos reales? Sí, con condiciones.** El riesgo
+residual es que el producto diga algo impreciso, no que corrompa o pierda plata:
+el ledger es local, la ingesta es idempotente por `gmail_msg_id`, y se
+reconstruye desde Gmail. Ese es el argumento entero, y es suficiente para un
+piloto de un usuario. **No** lo es para varios usuarios ni para exponerlo fuera
+de la máquina.
+
+Condiciones, todas fuera del código:
+
+1. **Tailscale + `WALLET_ACCESS_TOKEN`.** El server no se expone de otra forma.
+2. **El checklist D14 de TASK-054**, que sigue sin marcar: son tareas en la
+   máquina de Mato y nadie más las puede hacer.
+3. **Una pasada visual manual** por las pantallas principales. Sin navegador
+   headless en este entorno, ninguna réplica del design system se comparó con su
+   preview en ninguna de las cuatro rondas. Es la deuda más vieja del proyecto y
+   se cierra mirando, no testeando.
+4. **Confirmar el huso** en el onboarding aunque el default ya sirva para
+   Ecuador: es el parámetro del que cuelgan tres de los arreglos.
+
+**Deudas que quedan abiertas al cierre del wargaming:**
+
+- La verificación visual (arriba).
+- El checklist D14 (arriba).
+- **Silenciar sigue sin vuelta atrás desde el panel.** La salida existe en las
+  otras dos superficies (`DELETE /api/classify/silence` y la tool MCP con
+  `undo: true`); falta la pantalla. Es la única deuda de funcionalidad que
+  sobrevive a las cuatro rondas.
+- Las limitaciones aceptables de §4, que están documentadas porque son
+  decisiones, no olvidos.
+
+R25 y el candado de `batch_size` —las dos deudas que la ronda 3 dejó por
+escrito— quedan cerradas acá (W32, W33).

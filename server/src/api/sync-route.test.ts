@@ -4,6 +4,7 @@ import request from "supertest";
 import { migrate } from "../db/schema.js";
 import { createApp } from "../index.js";
 import type { IngestSummary } from "../ingest/index.js";
+import { MAX_SYNC_BATCH_SIZE, MAX_TRANSACTION_IDS } from "./schemas.js";
 import type { SyncRunner } from "./sync-route.js";
 
 function summary(overrides: Partial<IngestSummary> = {}): IngestSummary {
@@ -166,5 +167,28 @@ describe("POST /api/sync: inserted_ids (D7-b)", () => {
     const res = await request(app).post("/api/sync").expect(200);
 
     expect(res.body.inserted_ids).toEqual([]);
+  });
+});
+
+/**
+ * El acoplamiento que la ronda 3 dejó escrito y sin candado (wargaming ronda 4,
+ * W33 — clase de W24).
+ *
+ * El lote de un sync es el único productor legítimo de `?transaction_ids=` (la
+ * cola post-sync, D7-b), así que un `batch_size` por encima del tope de ids
+ * produce un lote cuya cola NO se puede pedir: el aviso del Resumen lleva a un
+ * 400. Los dos números viven en `schemas.ts` y valen 500; hasta acá nada los
+ * ataba, y subir uno solo era un cambio de una línea que ningún test veía.
+ */
+describe("batch_size no puede pasarse del tope de ids (W33)", () => {
+  it("el lote más grande que el server acepta sigue cabiendo en un ?transaction_ids=", () => {
+    expect(MAX_SYNC_BATCH_SIZE).toBeLessThanOrEqual(MAX_TRANSACTION_IDS);
+  });
+
+  it("y el schema rechaza exactamente ese tope, no uno más", async () => {
+    const app = makeApp(async () => summary());
+
+    await request(app).post("/api/sync").send({ batch_size: MAX_SYNC_BATCH_SIZE }).expect(200);
+    await request(app).post("/api/sync").send({ batch_size: MAX_SYNC_BATCH_SIZE + 1 }).expect(400);
   });
 });

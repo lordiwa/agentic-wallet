@@ -88,6 +88,27 @@ describe("readProfile", () => {
       colchonFijado: true,
     });
   });
+
+  /**
+   * Wargaming ronda 4, W30. Desde que `setStrategyConfig` valida (ver su test),
+   * esto no se puede escribir; lo que queda es la base **ya envenenada** por un
+   * `--set` o una tool MCP anteriores al arreglo, y ahí `diasPago.length > 0`
+   * afirmaba lo que el calendario no podía sostener: la pantalla decía *"Día de
+   * pago: 15"* sobre un `nextPayday` en `null`.
+   *
+   * Fijado no es "hay algo escrito": es "el calendario puede leer una ventana".
+   */
+  it("un día de pago guardado que el calendario no lee NO está fijado", () => {
+    const sueldo = getStrategyConfig(db).sueldo;
+    // Se escribe por debajo del validador, que es exactamente como llegó a las
+    // bases que ya existen.
+    db.prepare("INSERT INTO strategy_config (key, value) VALUES ('sueldo', @v) ON CONFLICT(key) DO UPDATE SET value = @v").run({
+      v: JSON.stringify({ ...sueldo, diasPago: ["15"] }),
+    });
+
+    expect(readProfile(db)).toMatchObject({ diasPago: ["15"], diaDePagoFijado: false });
+    expect(parseDiasPago(readProfile(db).diasPago)).toEqual([]);
+  });
 });
 
 describe("writeProfile — exactamente dos campos (criterio 6)", () => {

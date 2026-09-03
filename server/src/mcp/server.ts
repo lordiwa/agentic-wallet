@@ -50,6 +50,8 @@ import {
   addDays,
   balanceActual,
   colchonStatus,
+  instanteDesde,
+  instanteHasta,
   localMonthRange,
   nextPayday,
   parseLocalDay,
@@ -166,7 +168,10 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
     {
       title: "Estado del colchon",
       description:
-        "Objetivo del colchon (fondo de emergencia), cuanto hay reservado, si ya esta financiado y cuanto falta.",
+        "Objetivo del colchon (fondo de emergencia), cuanto hay reservado, si ya esta financiado y cuanto falta. " +
+        "Mira `fijado` antes que `financiado`: con `fijado: false` el usuario NO configuro ningun objetivo, y " +
+        "`financiado: true` ahi solo dice que cero es mayor o igual que cero. No le digas que cumplio una meta " +
+        "que no fijo (R25).",
       inputSchema: {},
     },
     async () => json(colchonStatus(deps.getDb()))
@@ -192,8 +197,8 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         "Lista movimientos del ledger, mas recientes primero. Por defecto excluye reversados e internos " +
         "(transferencias del usuario a si mismo), que es lo correcto para cualquier total.",
       inputSchema: {
-        from: z.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (inclusive)"),
-        to: z.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (inclusive)"),
+        from: z.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (dia local, inclusive)"),
+        to: z.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (dia local, inclusive)"),
         type: z.string().optional().describe("Tipo de movimiento, p.ej. debito, transferencia, servicio, retiro"),
         direction: z.enum(["in", "out"]).optional().describe("in = entra plata, out = sale plata"),
         counterparty: z.string().optional().describe("Contraparte exacta como la escribe el banco"),
@@ -208,11 +213,15 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       },
     },
     async (args) => {
-      // `to` llega como dia inclusivo; el filtro compara contra el `ts`
-      // completo, asi que sin el final-del-dia se perderia todo lo de esa fecha.
+      // `from`/`to` son DIAS LOCALES, con `to` inclusivo, y qué es un día local
+      // lo decide el motor: son las mismas dos funciones que usa el filtro del
+      // panel. Cortar aca en `T00:00:00Z`/`T23:59:59Z` corria la ventana las
+      // horas del offset por los dos extremos, asi que esta tool y
+      // `get_spending_by_category` contestaban por periodos distintos con el
+      // mismo argumento (wargaming ronda 4, W29).
       const rows = queryTransactions(deps.getDb(), {
-        from: args.from ? `${args.from}T00:00:00.000Z` : undefined,
-        to: args.to ? `${args.to}T23:59:59.999Z` : undefined,
+        from: instanteDesde(args.from),
+        to: instanteHasta(args.to),
         type: args.type,
         direction: args.direction,
         counterparty: args.counterparty,
@@ -296,8 +305,8 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         "Suma solo gasto (direction='out') agrupado por categoria. Sin fechas usa el mes local en curso. " +
         "Solo aparecen las categorias con al menos un movimiento.",
       inputSchema: {
-        from: z.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (inclusive)"),
-        to: z.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (inclusive)"),
+        from: z.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (dia local, inclusive)"),
+        to: z.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (dia local, inclusive)"),
       },
     },
     async ({ from, to }) => {
@@ -430,10 +439,12 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
             montoEstimado: z.number(),
             // El motor lee ventanas, no dias sueltos: "15-15" es el 15,
             // "18-20" es "entre el 18 y el 20", "<=5" es "los primeros 5".
-            // Un "15" pelado NO parsea y deja el calendario de pagos en null.
+            // Un "15" pelado NO parsea y deja el calendario de pagos en null,
+            // y por eso el motor lo RECHAZA en vez de guardarlo (W30): el dia
+            // tiene que estar entre 1 y 31, que es lo unico que un mes tiene.
             diasPago: z
               .array(z.string().regex(/^(<=\d{1,2}|\d{1,2}-\d{1,2})$/))
-              .describe('Ventanas de pago: ["15-15", "30-30"], ["18-20"] o ["<=5"]'),
+              .describe('Ventanas de pago con dias entre 1 y 31: ["15-15", "30-30"], ["18-20"] o ["<=5"]'),
           })
           .optional(),
         balanceSnapshot: z

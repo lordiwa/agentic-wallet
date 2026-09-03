@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { DEFAULT_STRATEGY_CONFIG } from "../seed/default-config.js";
+import { esVentanaDePago } from "../strategy/calendar.js";
 import { logInfo, withSpanSync } from "./telemetry.js";
 
 /** Rejects NaN/Infinity too -- money arithmetic on either is silent garbage. */
@@ -36,6 +37,46 @@ export type StrategyBalanceSnapshot = StrategyConfig["balanceSnapshot"];
 
 /** Per-field schemas, so a single mistyped field defaults on its own without invalidating the rest. */
 const fieldSchemas = strategyConfigSchema.shape;
+
+/**
+ * **Lo que se escribe se valida más duro que lo que se lee** (wargaming ronda 4,
+ * W30).
+ *
+ * `setStrategyConfig` es el borde que comparten las tres superficies de
+ * escritura —el panel por `writeProfile`, la tool MCP `set_profile` y
+ * `npm run onboard -- --set`—, y hasta esta ronda sólo validaba la FORMA. La
+ * regla de qué día de pago es válido vivía en `writeProfile`, o sea en el
+ * camino del panel y en ninguno de los otros dos: por MCP y por CLI entraba un
+ * `"15"` que `parseDiasPago` descarta en silencio (calendario mudo, perfil
+ * "configurado"), un `"99-99"` que `localCalendarDate` clampea al último día del
+ * mes, y un colchón negativo que deja `colchonStatus` diciendo
+ * `financiado: true`.
+ *
+ * Por qué acá y no en cada superficie: porque el arreglo de la ronda 2 fue
+ * arreglar el caso y el de la ronda 3 fue encontrarlo vivo en otra superficie.
+ * El único lugar donde la guarda las cubre a todas es el escritor.
+ *
+ * Por qué NO se endurece también la lectura: una base ya escrita con un
+ * `diasPago: ["15"]` fallaría el schema entero de `sueldo` y se leería el
+ * default, perdiendo el monto y la fuente que el usuario sí confirmó. Lo viejo
+ * se sigue leyendo tal cual y se reporta honestamente (`readProfile`,
+ * `profileConfigured`: fijado = el calendario puede leer una ventana).
+ */
+const writeSchemas: Partial<{ [K in keyof StrategyConfig]: z.ZodType<StrategyConfig[K]> }> = {
+  colchonObjetivo: financeNumber.nonnegative({
+    message: "colchonObjetivo no puede ser negativo: cero es 'no fijé objetivo'",
+  }),
+  sueldo: fieldSchemas.sueldo.extend({
+    diasPago: z.array(
+      z.string().refine(esVentanaDePago, {
+        message:
+          "cada dia de pago es una ventana que el calendario sepa leer: \"15-15\" (el 15), " +
+          "\"18-20\" (entre el 18 y el 20) o \"<=5\" (los primeros 5), con dias entre 1 y 31. " +
+          "Un dia suelto como \"15\" no parsea y deja el calendario de pagos mudo",
+      })
+    ),
+  }),
+};
 
 interface StrategyConfigRow {
   key: string;
@@ -124,9 +165,13 @@ export function setStrategyConfig(db: Database.Database, patch: Partial<Strategy
     // Validate everything BEFORE opening the write transaction, so an invalid
     // field is a plain throw rather than a rollback.
     const validated = entries.map(([key, value]) => {
-      const result = fieldSchemas[key].safeParse(value);
+      const result = (writeSchemas[key] ?? fieldSchemas[key]).safeParse(value);
       if (!result.success) {
-        throw new Error(`strategy_config.${key}: valor invalido (${result.error.issues[0]?.message ?? "shape"})`);
+        const issue = result.error.issues[0];
+        // El campo exacto, no sólo la clave: `sueldo` tiene cuatro adentro y
+        // "valor invalido en sueldo" no le dice a un agente cuál corregir.
+        const campo = [key, ...(issue?.path ?? [])].join(".");
+        throw new Error(`strategy_config.${campo}: valor invalido (${issue?.message ?? "shape"})`);
       }
       return { key, value: JSON.stringify(result.data) };
     });

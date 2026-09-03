@@ -55,7 +55,10 @@ import {
   silenceCounterparty,
   unsilenceCounterparty,
 } from "../classify/index.js";
-import { addDays, parseLocalDay } from "../strategy/dates.js";
+// Qué es un día lo decide el motor (W26/W29): las dos traducciones de
+// `YYYY-MM-DD` a instante viven en `strategy/dates.ts` y las comparte con la
+// tool MCP `query_transactions`.
+import { instanteDesde, instanteHasta } from "../strategy/dates.js";
 import {
   colchonStatus,
   localMonthRange,
@@ -143,38 +146,6 @@ export interface ApiRouterOptions {
    * router montado solo (un test de estas rutas) no tiene un sync en vuelo.
    */
   isSyncRunning?: () => boolean;
-}
-
-/**
- * Un `YYYY-MM-DD` pelado del filtro es un **día local**, no un instante UTC.
- *
- * `ts` se guarda en UTC y todo el motor bucketea por día local
- * (`strategy/dates.ts`, offset configurable), pero `queryTransactions` compara
- * strings: `from=2026-09-01` dejaba entrar las compras de la noche del 31 de
- * agosto y `to=...T23:59:59.999Z` dejaba afuera las de la noche del 30 de
- * septiembre. Sobre el ledger real 233 de 1140 filas caen en un día distinto del
- * que el Resumen les asigna, y filtrar "el mes" difería del mes del motor en 6
- * filas — sin un solo error, con la lista dibujada entera y con su conteo
- * (wargaming ronda 3, W26).
- *
- * Es la clase de W17 en el otro eje: el mismo dato con dos lecturas. La salida
- * es la de siempre en este proyecto: **qué es un día lo decide el motor**. Un
- * instante ISO con hora se respeta tal cual — quien manda una hora está pidiendo
- * esa hora.
- */
-const DIA_PELADO = /^\d{4}-\d{2}-\d{2}$/;
-
-function instanteDesde(valor: string | undefined): string | undefined {
-  if (valor === undefined || !DIA_PELADO.test(valor)) return valor;
-  return parseLocalDay(valor)?.toISOString() ?? valor;
-}
-
-function instanteHasta(valor: string | undefined): string | undefined {
-  if (valor === undefined || !DIA_PELADO.test(valor)) return valor;
-  const inicio = parseLocalDay(valor);
-  if (inicio === null) return valor;
-  // El último instante del día local: `queryTransactions` compara con `<=`.
-  return new Date(addDays(inicio, 1).getTime() - 1).toISOString();
 }
 
 export function createApiRouter(getDb: () => Database.Database, options: ApiRouterOptions = {}): Router {

@@ -81,8 +81,10 @@ export const classifyBodySchema = z.object({
  * Ausente significa "el default del motor" (`DEFAULT_SYNC_BATCH_SIZE`), nunca
  * un numero elegido en esta capa.
  */
+export const MAX_SYNC_BATCH_SIZE = 500;
+
 export const syncBodySchema = z.object({
-  batch_size: z.coerce.number().int().positive().max(500).optional(),
+  batch_size: z.coerce.number().int().positive().max(MAX_SYNC_BATCH_SIZE).optional(),
 });
 
 /** POST /classify/silence y DELETE /classify/silence/:counterparty (H33, M5). */
@@ -103,6 +105,12 @@ export const silenceBodySchema = z.object({
  * limite es el mismo `batch_size` maximo de un sync, que es el unico productor
  * legitimo de esta lista (D7-b): pedir mas ids que movimientos puede traer un
  * sync no es un caso de uso, es una lista armada a mano.
+ *
+ * Ese acoplamiento **no es una coincidencia y ahora tiene candado**: un lote mas
+ * grande que este tope produciria ids que despues no se pueden consultar, y el
+ * aviso post-sync del Resumen llevaria a un 400. Lo verifica
+ * `sync-route.test.ts` (wargaming ronda 4, W33); si alguien sube
+ * `MAX_SYNC_BATCH_SIZE`, ese test falla.
  */
 export const MAX_TRANSACTION_IDS = 500;
 

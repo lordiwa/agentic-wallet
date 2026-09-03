@@ -1,7 +1,9 @@
 /** @vitest-environment jsdom */
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent } from "vue";
 import Movimientos from "./Movimientos.vue";
+import { provideRefresh } from "../composables/useRefresh";
 import type { TransactionRow } from "../api/types";
 
 const { endpoints } = vi.hoisted(() => ({
@@ -302,5 +304,37 @@ describe("lo que NO se construye, y es una decisión escrita", () => {
 
     expect(texto).not.toContain("Mandar a revisión");
     expect(texto).not.toContain("Recuperar contraparte");
+  });
+});
+
+/**
+ * Wargaming ronda 4, W31 — la misma clase que en el Resumen. El rótulo salía de
+ * `lastRefreshAt`, la hora del **tick**: con el backend caído el reloj late
+ * igual, así que la cabecera decía *"actualizado recién"* arriba del cartel rojo
+ * y de una tabla vacía. Frescura es la hora de la última lectura buena.
+ */
+describe("el rótulo de frescura (W31)", () => {
+  it("no dice 'recién' cuando el último refresco falló", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T12:00:00Z"));
+
+    const padre = defineComponent({
+      components: { Movimientos },
+      setup: () => ({ reloj: provideRefresh(0) }),
+      template: "<Movimientos />",
+    });
+    const w = mount(padre);
+    await flushPromises();
+    expect(w.get('[data-testid="movimientos-actualizado"]').text()).toContain("recien");
+
+    vi.setSystemTime(new Date("2026-09-03T12:10:00Z"));
+    endpoints.fetchTransactions.mockRejectedValue(new Error("ECONNREFUSED"));
+    (w.vm as unknown as { reloj: { refreshNow: () => void } }).reloj.refreshNow();
+    await flushPromises();
+
+    expect(w.find('[data-testid="movimientos-error"]').exists()).toBe(true);
+    expect(w.get('[data-testid="movimientos-actualizado"]').text()).toContain("hace 10 minutos");
+
+    vi.useRealTimers();
   });
 });

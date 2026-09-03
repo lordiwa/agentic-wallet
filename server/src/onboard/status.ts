@@ -12,6 +12,7 @@ import type Database from "better-sqlite3";
 import { classifyClaudeCredential } from "../claude-credential.js";
 import { getStrategyConfig } from "../db/strategy-config.js";
 import { getSyncProgress } from "../db/sync-progress.js";
+import { parseDiasPago } from "../strategy/calendar.js";
 
 export type StepId = "env" | "claude" | "gmail" | "sync" | "huso" | "profile";
 
@@ -69,11 +70,17 @@ export function ledgerSize(db: Database.Database | null): number {
  * internal) and when they get paid (every "days until payday" figure depends
  * on it). A colchon of 0 is a legitimate choice, so it is deliberately NOT
  * part of this check.
+ *
+ * El dia de pago cuenta cuando el CALENDARIO lo puede leer, no cuando hay algo
+ * escrito (wargaming ronda 4, W30): un `diasPago: ["15"]` —lo que escribia un
+ * `--set` antes de que `setStrategyConfig` validara— cerraba este paso sobre un
+ * `nextPayday` en `null`, o sea sobre el unico calculo por el que el paso
+ * existe.
  */
 export function profileConfigured(db: Database.Database | null): boolean {
   if (!db) return false;
   const config = getStrategyConfig(db);
-  return config.titular.trim() !== "" && config.sueldo.diasPago.length > 0;
+  return config.titular.trim() !== "" && parseDiasPago(config.sueldo.diasPago).length > 0;
 }
 
 /**

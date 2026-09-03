@@ -12,6 +12,12 @@ export interface PayWindow {
   maxDay: number;
 }
 
+/** Los días que un mes puede tener. Fuera de esto no hay ventana: ver
+ * `esDiaDelMes` y el comentario de `parseDiasPago`. */
+function esDiaDelMes(day: number): boolean {
+  return Number.isInteger(day) && day >= 1 && day <= 31;
+}
+
 /**
  * Parses one `sueldo.diasPago` entry into an inclusive day-of-month window:
  *   - `"<=N"` -> `{minDay: 1, maxDay: N}` (paid on or before day N)
@@ -19,6 +25,14 @@ export interface PayWindow {
  * An entry matching neither shape -- or an inverted range (A > B) -- is
  * skipped rather than guessed at or thrown on (AC9: "sin datos -> null/0 sin
  * crashear ni inventar").
+ *
+ * **Un día fuera de 1..31 tampoco es una ventana** (wargaming ronda 4, W30).
+ * `localCalendarDate` clampea el día al mes real, así que `"40-40"` predecía en
+ * silencio el último día de cada mes y `"0-0"` el primero: una fecha inventada
+ * con cara de configuración. `normalizarDiasPago` (onboard/profile.ts) ya
+ * rechazaba el rango, pero es el validador de UNA superficie —el panel—, y ni
+ * `set_profile` (MCP) ni `--set` (CLI) pasan por él. Qué día del mes existe lo
+ * decide la lectura, que es este archivo, y así vale para todas.
  */
 export function parseDiasPago(diasPago: string[]): PayWindow[] {
   const windows: PayWindow[] = [];
@@ -27,7 +41,8 @@ export function parseDiasPago(diasPago: string[]): PayWindow[] {
 
     const le = /^<=(\d{1,2})$/.exec(spec);
     if (le) {
-      windows.push({ minDay: 1, maxDay: Number(le[1]) });
+      const maxDay = Number(le[1]);
+      if (esDiaDelMes(maxDay)) windows.push({ minDay: 1, maxDay });
       continue;
     }
 
@@ -35,10 +50,16 @@ export function parseDiasPago(diasPago: string[]): PayWindow[] {
     if (range) {
       const minDay = Number(range[1]);
       const maxDay = Number(range[2]);
-      if (minDay <= maxDay) windows.push({ minDay, maxDay });
+      if (esDiaDelMes(minDay) && esDiaDelMes(maxDay) && minDay <= maxDay) windows.push({ minDay, maxDay });
     }
   }
   return windows;
+}
+
+/** Si el calendario sabe leer esta entrada de `diasPago`. Es la definición que
+ * comparten los tres escritores de perfil (W30). */
+export function esVentanaDePago(spec: string): boolean {
+  return parseDiasPago([spec]).length === 1;
 }
 
 /** Best-guess day-of-month for a window with no matching ledger history: the

@@ -56,8 +56,24 @@ export function balanceActual(db: Database.Database, now: Date = new Date()): nu
 export interface ColchonStatus {
   objetivo: number;
   reservado: number;
+  /** La formula de la §9.3: `reservado >= objetivo`. **Sola no alcanza para
+   * decir "cumpliste"** — ver `fijado`. */
   financiado: boolean;
   faltante: number;
+  /**
+   * **R25.** Hay una meta contra la que medir (`objetivo > 0`).
+   *
+   * Sin esto, "no fije objetivo" y "cumpli mi objetivo" contestan identico
+   * —`financiado: true, faltante: 0`—, y el unico que sabia distinguirlos era el
+   * panel en su propia capa (`panel/src/lib/colchon.ts`): para el chat, el brief
+   * y cualquier agente por MCP, una billetera recien instalada tenia el colchon
+   * financiado (wargaming ronda 4, W32).
+   *
+   * Va aca y no cambiando `financiado` porque `financiado` es la formula de la
+   * especificacion y el brief dispara su alerta con ella: invertirla haria sonar
+   * "colchon no financiado" en toda billetera que todavia no fijo objetivo.
+   */
+  fijado: boolean;
 }
 
 /** colchonStatus (spec §9.3): the "colchon" savings goal against
@@ -79,6 +95,7 @@ export function colchonStatus(db: Database.Database): ColchonStatus {
     reservado: fromCents(reservadoCents),
     financiado,
     faltante: fromCents(faltanteCents),
+    fijado: objetivoCents > 0,
   };
 }
 

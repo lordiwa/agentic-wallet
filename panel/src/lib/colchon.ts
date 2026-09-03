@@ -9,11 +9,18 @@
  * "cumplí mi objetivo" —las dos dicen `financiado: true, faltante: 0`— y lo
  * único que las distingue es el objetivo en cero.
  *
- * Por qué se arregla acá y no en el motor: `colchonStatus` es la fórmula de la
- * especificación (§9.3) y tiene sus tests; cambiar qué significa `financiado`
- * ahí movería el brief, el chat y MCP por una decisión que es de la pantalla.
- * Lo que la pantalla necesita no es otra fórmula, es **no dibujar una barra
- * llena cuando no hay meta contra la que compararse**, y eso es esta función.
+ * Por qué no se cambia `financiado` en el motor: es la fórmula de la
+ * especificación (§9.3) y el brief dispara su alerta con ella; invertirla haría
+ * sonar *"colchón no financiado"* en toda billetera que todavía no fijó
+ * objetivo. Lo que la pantalla necesita no es otra fórmula, es **no dibujar una
+ * barra llena cuando no hay meta contra la que compararse**, y eso es esta
+ * función.
+ *
+ * Lo que sí cambió (ronda 4, W32): el motor publica `fijado`, así que la
+ * distinción dejó de ser una regla que sólo el panel conocía —el chat, el brief
+ * y cualquier agente por MCP veían el colchón de una billetera recién instalada
+ * como *financiado*—. Acá se **consume** ese campo; el objetivo se sigue mirando
+ * sólo cuando el server no lo manda.
  *
  * Pura y sin dependencias: recibe lo que el motor calculó y decide cómo se
  * dibuja. No suma, no promedia, no deriva plata.
@@ -41,7 +48,8 @@ export const SIN_FIJAR = "Sin fijar";
  * misma que separa `Sin leer` de `0,00` en todo el panel.
  */
 export function vistaColchon(colchon: ColchonStatus | null | undefined): VistaColchon {
-  if (!colchon || colchon.objetivo <= 0) {
+  const fijado = colchon ? (colchon.fijado ?? colchon.objetivo > 0) : false;
+  if (!colchon || !fijado || colchon.objetivo <= 0) {
     return { fijado: false, financiado: false, ancho: 0, etiqueta: SIN_FIJAR, tag: "neu" };
   }
 

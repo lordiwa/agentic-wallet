@@ -49187,6 +49187,17 @@ function daysBetween(from, to) {
 function addDays(date3, days) {
   return new Date(date3.getTime() + days * MS_PER_DAY);
 }
+var DIA_PELADO = /^\d{4}-\d{2}-\d{2}$/;
+function instanteDesde(valor) {
+  if (valor === void 0 || !DIA_PELADO.test(valor)) return valor;
+  return parseLocalDay(valor)?.toISOString() ?? valor;
+}
+function instanteHasta(valor) {
+  if (valor === void 0 || !DIA_PELADO.test(valor)) return valor;
+  const inicio = parseLocalDay(valor);
+  if (inicio === null) return valor;
+  return new Date(addDays(inicio, 1).getTime() - 1).toISOString();
+}
 
 // src/rules/reconcile.ts
 var REVERSAL_CROSS_MIDNIGHT_WINDOW_HOURS = 6;
@@ -49717,6 +49728,18 @@ var strategyConfigSchema = external_exports.object({
   })
 });
 var fieldSchemas = strategyConfigSchema.shape;
+var writeSchemas = {
+  colchonObjetivo: financeNumber.nonnegative({
+    message: "colchonObjetivo no puede ser negativo: cero es 'no fij\xE9 objetivo'"
+  }),
+  sueldo: fieldSchemas.sueldo.extend({
+    diasPago: external_exports.array(
+      external_exports.string().refine(esVentanaDePago, {
+        message: 'cada dia de pago es una ventana que el calendario sepa leer: "15-15" (el 15), "18-20" (entre el 18 y el 20) o "<=5" (los primeros 5), con dias entre 1 y 31. Un dia suelto como "15" no parsea y deja el calendario de pagos mudo'
+      })
+    )
+  })
+};
 function getStrategyConfig(db) {
   return withSpanSync("strategy_config.get", {}, () => {
     const rows = db.prepare("SELECT key, value FROM strategy_config").all();
@@ -49754,9 +49777,11 @@ function setStrategyConfig(db, patch) {
   return withSpanSync("strategy_config.set", {}, () => {
     const entries = Object.entries(patch).filter(([, value]) => value !== void 0);
     const validated = entries.map(([key, value]) => {
-      const result = fieldSchemas[key].safeParse(value);
+      const result = (writeSchemas[key] ?? fieldSchemas[key]).safeParse(value);
       if (!result.success) {
-        throw new Error(`strategy_config.${key}: valor invalido (${result.error.issues[0]?.message ?? "shape"})`);
+        const issue2 = result.error.issues[0];
+        const campo = [key, ...issue2?.path ?? []].join(".");
+        throw new Error(`strategy_config.${campo}: valor invalido (${issue2?.message ?? "shape"})`);
       }
       return { key, value: JSON.stringify(result.data) };
     });
@@ -49776,23 +49801,30 @@ function setStrategyConfig(db, patch) {
 }
 
 // src/strategy/calendar.ts
+function esDiaDelMes(day) {
+  return Number.isInteger(day) && day >= 1 && day <= 31;
+}
 function parseDiasPago(diasPago) {
   const windows = [];
   for (const raw of diasPago) {
     const spec = raw.trim();
     const le = /^<=(\d{1,2})$/.exec(spec);
     if (le) {
-      windows.push({ minDay: 1, maxDay: Number(le[1]) });
+      const maxDay = Number(le[1]);
+      if (esDiaDelMes(maxDay)) windows.push({ minDay: 1, maxDay });
       continue;
     }
     const range = /^(\d{1,2})-(\d{1,2})$/.exec(spec);
     if (range) {
       const minDay = Number(range[1]);
       const maxDay = Number(range[2]);
-      if (minDay <= maxDay) windows.push({ minDay, maxDay });
+      if (esDiaDelMes(minDay) && esDiaDelMes(maxDay) && minDay <= maxDay) windows.push({ minDay, maxDay });
     }
   }
   return windows;
+}
+function esVentanaDePago(spec) {
+  return parseDiasPago([spec]).length === 1;
 }
 function fallbackDayForWindow(window2) {
   return window2.maxDay;
@@ -49908,7 +49940,8 @@ function colchonStatus(db) {
     objetivo: fromCents(objetivoCents),
     reservado: fromCents(reservadoCents),
     financiado,
-    faltante: fromCents(faltanteCents)
+    faltante: fromCents(faltanteCents),
+    fijado: objetivoCents > 0
   };
 }
 var ESSENTIAL_TYPES = ["debito", "servicio", "retiro"];
@@ -50318,8 +50351,9 @@ var classifyBodySchema = external_exports.object({
   /** El glosario **menos los dos fallbacks** — ver `RESPONDABLE_CATEGORIES`. */
   category: external_exports.enum(RESPONDABLE_CATEGORIES)
 });
+var MAX_SYNC_BATCH_SIZE = 500;
 var syncBodySchema = external_exports.object({
-  batch_size: external_exports.coerce.number().int().positive().max(500).optional()
+  batch_size: external_exports.coerce.number().int().positive().max(MAX_SYNC_BATCH_SIZE).optional()
 });
 var silenceBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1)
@@ -50461,7 +50495,7 @@ function ledgerSize(db) {
 function profileConfigured(db) {
   if (!db) return false;
   const config2 = getStrategyConfig(db);
-  return config2.titular.trim() !== "" && config2.sueldo.diasPago.length > 0;
+  return config2.titular.trim() !== "" && parseDiasPago(config2.sueldo.diasPago).length > 0;
 }
 function syncStep(db) {
   const pending = db ? getSyncProgress(db) : void 0;
@@ -50562,7 +50596,7 @@ function suggestSalary(db) {
   if (rows.length === 0) return null;
   const dayCounts = /* @__PURE__ */ new Map();
   for (const row of rows) {
-    const day = String(new Date(row.ts).getUTCDate());
+    const day = String(localParts(new Date(row.ts)).day);
     dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
   }
   const recurring = [...dayCounts.entries()].filter(([, count]) => count > 1).map(([day]) => day);
@@ -51789,7 +51823,7 @@ function createWalletMcpServer(deps) {
     "get_colchon_status",
     {
       title: "Estado del colchon",
-      description: "Objetivo del colchon (fondo de emergencia), cuanto hay reservado, si ya esta financiado y cuanto falta.",
+      description: "Objetivo del colchon (fondo de emergencia), cuanto hay reservado, si ya esta financiado y cuanto falta. Mira `fijado` antes que `financiado`: con `fijado: false` el usuario NO configuro ningun objetivo, y `financiado: true` ahi solo dice que cero es mayor o igual que cero. No le digas que cumplio una meta que no fijo (R25).",
       inputSchema: {}
     },
     async () => json(colchonStatus(deps.getDb()))
@@ -51809,8 +51843,8 @@ function createWalletMcpServer(deps) {
       title: "Consultar movimientos",
       description: "Lista movimientos del ledger, mas recientes primero. Por defecto excluye reversados e internos (transferencias del usuario a si mismo), que es lo correcto para cualquier total.",
       inputSchema: {
-        from: external_exports.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (inclusive)"),
-        to: external_exports.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (inclusive)"),
+        from: external_exports.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (dia local, inclusive)"),
+        to: external_exports.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (dia local, inclusive)"),
         type: external_exports.string().optional().describe("Tipo de movimiento, p.ej. debito, transferencia, servicio, retiro"),
         direction: external_exports.enum(["in", "out"]).optional().describe("in = entra plata, out = sale plata"),
         counterparty: external_exports.string().optional().describe("Contraparte exacta como la escribe el banco"),
@@ -51823,8 +51857,8 @@ function createWalletMcpServer(deps) {
     },
     async (args) => {
       const rows = queryTransactions(deps.getDb(), {
-        from: args.from ? `${args.from}T00:00:00.000Z` : void 0,
-        to: args.to ? `${args.to}T23:59:59.999Z` : void 0,
+        from: instanteDesde(args.from),
+        to: instanteHasta(args.to),
         type: args.type,
         direction: args.direction,
         counterparty: args.counterparty,
@@ -51887,8 +51921,8 @@ function createWalletMcpServer(deps) {
       title: "Gasto por categoria",
       description: "Suma solo gasto (direction='out') agrupado por categoria. Sin fechas usa el mes local en curso. Solo aparecen las categorias con al menos un movimiento.",
       inputSchema: {
-        from: external_exports.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (inclusive)"),
-        to: external_exports.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (inclusive)")
+        from: external_exports.string().regex(DAY).optional().describe("Desde, YYYY-MM-DD (dia local, inclusive)"),
+        to: external_exports.string().regex(DAY).optional().describe("Hasta, YYYY-MM-DD (dia local, inclusive)")
       }
     },
     async ({ from, to }) => {
@@ -51985,8 +52019,10 @@ function createWalletMcpServer(deps) {
           montoEstimado: external_exports.number(),
           // El motor lee ventanas, no dias sueltos: "15-15" es el 15,
           // "18-20" es "entre el 18 y el 20", "<=5" es "los primeros 5".
-          // Un "15" pelado NO parsea y deja el calendario de pagos en null.
-          diasPago: external_exports.array(external_exports.string().regex(/^(<=\d{1,2}|\d{1,2}-\d{1,2})$/)).describe('Ventanas de pago: ["15-15", "30-30"], ["18-20"] o ["<=5"]')
+          // Un "15" pelado NO parsea y deja el calendario de pagos en null,
+          // y por eso el motor lo RECHAZA en vez de guardarlo (W30): el dia
+          // tiene que estar entre 1 y 31, que es lo unico que un mes tiene.
+          diasPago: external_exports.array(external_exports.string().regex(/^(<=\d{1,2}|\d{1,2}-\d{1,2})$/)).describe('Ventanas de pago con dias entre 1 y 31: ["15-15", "30-30"], ["18-20"] o ["<=5"]')
         }).optional(),
         balanceSnapshot: external_exports.object({ amount: external_exports.number(), at: external_exports.string().describe("YYYY-MM-DD") }).optional().describe("Saldo real del banco en una fecha, base de todo calculo de saldo")
       }

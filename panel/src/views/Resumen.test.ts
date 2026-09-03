@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent } from "vue";
+import { provideRefresh } from "../composables/useRefresh";
 import Resumen from "./Resumen.vue";
 import { ROTULO_SIN_LEER } from "../lib/formato";
 import type {
@@ -441,5 +443,45 @@ describe("R6/X8/X11 — un saldo de tarjeta que no se pudo leer no es un cero", 
 
     expect(tarjeta?.text()).toContain(ROTULO_SIN_LEER);
     expect(tarjeta?.text()).not.toContain("0,00");
+  });
+});
+
+/**
+ * Wargaming ronda 4, W31 — la clase de W20 en la pantalla principal.
+ *
+ * El rótulo *"actualizado hace X"* salía de `lastRefreshAt`, que es la hora del
+ * **tick del reloj**, no la de la última lectura que salió bien. Con el backend
+ * caído el reloj sigue latiendo cada 30 segundos, así que el Resumen decía
+ * *"actualizado recién"* al lado del cartel rojo, sobre cifras de hace diez
+ * minutos: el mismo *dato viejo con cara de dato fresco* que W20 cerró en la
+ * tarjeta de avance de Preguntas, en la superficie que se mira todo el día.
+ *
+ * El rótulo dice **cuándo se leyó bien**. Nada más puede decir.
+ */
+describe("el rótulo de frescura no puede envejecer solo (W31)", () => {
+  it("no dice 'recién' cuando el último refresco falló", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T12:00:00Z"));
+
+    const padre = defineComponent({
+      components: { Resumen },
+      setup: () => ({ reloj: provideRefresh(0) }),
+      template: "<Resumen />",
+    });
+    const wrapper = mount(padre);
+    await flushPromises();
+    expect(wrapper.get(".topr").text()).toContain("recien");
+
+    // Diez minutos después el backend se cae y el reloj late igual.
+    vi.setSystemTime(new Date("2026-09-03T12:10:00Z"));
+    endpoints.fetchOverview.mockRejectedValue(new Error("Failed to fetch"));
+    (wrapper.vm as unknown as { reloj: { refreshNow: () => void } }).reloj.refreshNow();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="resumen-error"]').exists()).toBe(true);
+    expect(wrapper.get(".topr").text()).toContain("hace 10 minutos");
+    expect(wrapper.get(".topr").text()).not.toContain("recien");
+
+    vi.useRealTimers();
   });
 });

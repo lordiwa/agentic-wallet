@@ -70,6 +70,9 @@ const plataDeLaBarra = ref<number | null>(null);
 const cargando = ref(true);
 const cargandoMas = ref(false);
 const errorCarga = ref<string | null>(null);
+/** La hora de la última lectura que salió bien — lo único que el rótulo de
+ * frescura puede decir con verdad (W31). */
+const ultimaLecturaOk = ref<Date | null>(null);
 
 const filtros = ref<FiltrosMovimientos>({ ...SIN_FILTROS });
 
@@ -111,6 +114,7 @@ async function traer(offset: number, acumular: boolean, limite = TAMANO_MOVIMIEN
     totalDeLaBarra.value = respuesta.total ?? null;
     plataDeLaBarra.value = respuesta.amount ?? null;
     errorCarga.value = null;
+    ultimaLecturaOk.value = new Date();
   } catch (err) {
     // No se dejan filas viejas con cara de actuales (`c4`, estado *Sin
     // conexión*): si el backend no responde, la tabla se vacía y se dice.
@@ -191,9 +195,13 @@ async function clasificar(fila: TransactionRow, category: Category): Promise<voi
 
 /* ---- Lo que la pantalla dice ---- */
 
-const actualizado = computed(() =>
-  reloj.lastRefreshAt.value === null ? null : timeAgo(reloj.lastRefreshAt.value.toISOString())
-);
+// Cuándo se leyó BIEN, no cuándo latió el reloj (wargaming ronda 4, W31): con
+// el backend caído el tick sigue corriendo, y la cabecera decía "actualizado
+// recién" arriba del cartel rojo y de una tabla vacía.
+const actualizado = computed(() => {
+  void reloj.tick.value;
+  return ultimaLecturaOk.value === null ? null : timeAgo(ultimaLecturaOk.value.toISOString());
+});
 
 const aplicados = computed(() => filtrosAplicados(filtros.value));
 

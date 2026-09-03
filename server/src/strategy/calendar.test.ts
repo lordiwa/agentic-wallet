@@ -56,6 +56,28 @@ describe("parseDiasPago", () => {
   it("returns an empty array for an empty input", () => {
     expect(parseDiasPago([])).toEqual([]);
   });
+
+  /**
+   * Wargaming ronda 4, W30. Un día que ningún mes tiene no es una ventana: es
+   * un valor que `localCalendarDate` clampea en silencio. `"40-40"` predecía el
+   * último día de cada mes y `"0-0"` el primero, **sin un solo error** — y los
+   * dos entraban por `set_profile` (MCP) y por `--set` (CLI), que no pasan por
+   * `normalizarDiasPago`. Que 1..31 sea la definición de "día del mes" tiene que
+   * decidirse acá, donde vive la lectura, y no en cada escritor.
+   */
+  it("skips a day no month has, instead of clamping it silently", () => {
+    expect(parseDiasPago(["0-0"])).toEqual([]);
+    expect(parseDiasPago(["40-40"])).toEqual([]);
+    expect(parseDiasPago(["<=0"])).toEqual([]);
+    expect(parseDiasPago(["99-99"])).toEqual([]);
+    expect(parseDiasPago(["0-31"])).toEqual([]);
+    expect(parseDiasPago(["<=99"])).toEqual([]);
+  });
+
+  it("still parses the extremes that a month does have", () => {
+    expect(parseDiasPago(["1-31"])).toEqual([{ minDay: 1, maxDay: 31 }]);
+    expect(parseDiasPago(["<=31"])).toEqual([{ minDay: 1, maxDay: 31 }]);
+  });
 });
 
 describe("paydaysAfter / nextPayday (spec §9.1, no ledger history)", () => {

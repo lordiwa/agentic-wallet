@@ -14,6 +14,7 @@
  */
 import type Database from "better-sqlite3";
 import { topUncategorizedCounterparties, type UncategorizedCounterparty } from "../category/rules-repository.js";
+import { localParts } from "../strategy/dates.js";
 
 export interface SalarySuggestion {
   /** Where the deposits come from, as the bank writes it. */
@@ -121,8 +122,13 @@ export function suggestSalary(db: Database.Database): SalarySuggestion | null {
 
   const dayCounts = new Map<string, number>();
   for (const row of rows) {
-    // ts is an ISO instant; the day-of-month is what payday means to a human.
-    const day = String(new Date(row.ts).getUTCDate());
+    // ts is an ISO instant; the day-of-month is what payday means to a human --
+    // y "humano" acá es el día LOCAL, porque es el que el calendario después lee
+    // (`historicalPaydayDays` bucketea con `localDayKey`). Proponer el día UTC
+    // hacía que un cobro de las 23:00 del 15 se propusiera como "16", el usuario
+    // lo confirmara, y `refineWindowDay` no encontrara ningún cobro dentro de la
+    // ventana que él mismo acababa de escribir (wargaming ronda 4, W34).
+    const day = String(localParts(new Date(row.ts)).day);
     dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
   }
 
