@@ -18,7 +18,7 @@ import AccessKeyScreen from "./components/AccessKeyScreen.vue";
 import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
 import AltaPerfil from "./views/AltaPerfil.vue";
-import Pendiente from "./views/Pendiente.vue";
+import Movimientos from "./views/Movimientos.vue";
 import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
 import { probeHealth } from "./api/client";
@@ -70,12 +70,10 @@ onMounted(async () => {
     <!-- El análisis del historial (N4). No está en la barra a propósito: se
          entra por una tarjeta del Resumen y se sale a la cola. -->
     <AltaPerfil v-else-if="ruta.pantalla === 'alta'" />
-    <Pendiente
-      v-else
-      titulo="Movimientos"
-      fase="N5"
-      que="Todo lo que el ledger tiene, con dos filtros y sin paginador."
-    />
+    <!-- Movimientos (N5). La `key` remonta cuando cambia la categoría: tocar
+         otra barra del gráfico estando ya acá tiene que traer la lista de esa
+         barra, no dejar la anterior en pantalla. -->
+    <Movimientos v-else :key="ruta.params.categoria ?? ''" :categoria="ruta.params.categoria" />
   </AppShell>
 </template>
 

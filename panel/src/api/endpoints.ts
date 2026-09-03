@@ -40,7 +40,8 @@ import type {
   ReviewResolveResponse,
   SyncResponse,
   SyncStatusResponse,
-  TransactionsFilter,
+  TransactionsListResponse,
+  TransactionsQuery,
   TransactionsResponse,
 } from "./types";
 
@@ -69,17 +70,22 @@ async function getJSON<T>(op: string, path: string): Promise<T> {
   }
 }
 
-export function fetchTransactions(filter: TransactionsFilter = {}): Promise<TransactionsResponse> {
+/**
+ * N5 le agrega un parámetro y ningún comportamiento: `category`, la categoría
+ * recalculada de una barra del gráfico (H21). El resto queda como estaba.
+ */
+export function fetchTransactions(filter: TransactionsQuery = {}): Promise<TransactionsListResponse> {
   const params = new URLSearchParams();
   if (filter.from) params.set("from", filter.from);
   if (filter.to) params.set("to", filter.to);
   if (filter.type) params.set("type", filter.type);
   if (filter.direction) params.set("direction", filter.direction);
   if (filter.counterparty) params.set("counterparty", filter.counterparty);
+  if (filter.category) params.set("category", filter.category);
   if (filter.limit != null) params.set("limit", String(filter.limit));
   if (filter.offset != null) params.set("offset", String(filter.offset));
   const qs = params.toString();
-  return getJSON<TransactionsResponse>("transactions.list", `/api/transactions${qs ? `?${qs}` : ""}`);
+  return getJSON<TransactionsListResponse>("transactions.list", `/api/transactions${qs ? `?${qs}` : ""}`);
 }
 
 export function fetchReview(): Promise<TransactionsResponse> {

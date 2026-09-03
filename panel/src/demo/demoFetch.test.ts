@@ -206,3 +206,62 @@ describe("N3 — la demo puede responder, no sólo mirar", () => {
     expect(despues.counts.needs_review).toBe(antes.counts.needs_review - 1);
   });
 });
+
+/**
+ * N5. Lo que se prueba acá es la coherencia, no los números: la demo puede
+ * tener datos inventados, pero no un comportamiento inventado. Si la lista de
+ * una barra no coincidiera con la barra, el modo demo estaría publicando
+ * justamente el error que H21 existe para cerrar.
+ */
+describe("GET /api/transactions con lo que la pantalla de Movimientos pide", () => {
+  it("la lista de una categoría trae el mismo conteo y la misma plata que la barra del gráfico", async () => {
+    const overview = await json<{ spending_by_category: Record<string, number> }>("/api/overview");
+    const [categoria, plataDeLaBarra] = Object.entries(overview.spending_by_category)[0];
+
+    const lista = await json<{ transactions: unknown[]; total: number; amount: number }>(
+      `/api/transactions?category=${categoria}`
+    );
+
+    expect(lista.amount).toBe(plataDeLaBarra);
+    expect(lista.total).toBe(lista.transactions.length);
+  });
+
+  it("sin categoría no manda `total`: con cargar más no hace falta (H20)", async () => {
+    const lista = await json<{ total?: number }>("/api/transactions");
+    expect(lista.total).toBeUndefined();
+  });
+
+  it("filtra por dirección: entrada y salida son conjuntos distintos", async () => {
+    const entradas = await json<{ transactions: { direction: string }[] }>("/api/transactions?direction=in");
+    const salidas = await json<{ transactions: { direction: string }[] }>("/api/transactions?direction=out");
+    const todas = await json<{ count: number }>("/api/transactions");
+
+    expect(entradas.transactions.every((tx) => tx.direction === "in")).toBe(true);
+    expect(salidas.transactions.every((tx) => tx.direction === "out")).toBe(true);
+    expect(entradas.transactions.length + salidas.transactions.length).toBe(todas.count);
+  });
+
+  it("filtra por rango: nada anterior al `from` se cuela", async () => {
+    const todas = await json<{ transactions: { ts: string }[] }>("/api/transactions");
+    const corte = todas.transactions[Math.floor(todas.transactions.length / 2)].ts;
+
+    const acotadas = await json<{ transactions: { ts: string }[] }>(`/api/transactions?from=${corte}`);
+    expect(acotadas.transactions.every((tx) => tx.ts >= corte)).toBe(true);
+    expect(acotadas.transactions.length).toBeLessThan(todas.transactions.length);
+  });
+
+  it("`limit`/`offset` paginan de verdad: cargar más trae lo que sigue, no lo mismo", async () => {
+    const primera = await json<{ transactions: { id: number }[] }>("/api/transactions?limit=3&offset=0");
+    const segunda = await json<{ transactions: { id: number }[] }>("/api/transactions?limit=3&offset=3");
+
+    expect(primera.transactions).toHaveLength(3);
+    const idsPrimera = primera.transactions.map((tx) => tx.id);
+    expect(segunda.transactions.every((tx) => !idsPrimera.includes(tx.id))).toBe(true);
+  });
+
+  it("más recientes primero, igual que el motor", async () => {
+    const lista = await json<{ transactions: { ts: string }[] }>("/api/transactions");
+    const fechas = lista.transactions.map((tx) => tx.ts);
+    expect([...fechas].sort((a, b) => (a < b ? 1 : -1))).toEqual(fechas);
+  });
+});

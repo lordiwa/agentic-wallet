@@ -356,3 +356,37 @@ export interface RecurringResponse {
   meses_minimos: number;
   suficiente_historial: boolean;
 }
+
+/* ==========================================================================
+ * Lo que N5 agrega: los dos campos que `GET /api/transactions` devuelve **sólo**
+ * cuando se le pide una categoría recalculada.
+ * ========================================================================== */
+
+/**
+ * La lista de una barra del gráfico (H21) — `server/src/classify/movements.ts`.
+ *
+ * `total` y `amount` son opcionales porque el motor sólo los manda en ese caso,
+ * y eso **no** es una omisión que haya que arreglar: sin categoría no hay total
+ * y no se pide (H20, *cargar más*). Un `total` en el listado general sería un
+ * `COUNT` en cada tecleo de filtro para dibujar un número que nadie mira.
+ *
+ * `total` es, literalmente, **el número que contó la barra**: `amount` es su
+ * plata. De ahí sale que la lista y el gráfico no puedan discrepar.
+ */
+export interface TransactionsListResponse extends TransactionsResponse {
+  total?: number;
+  amount?: number;
+}
+
+/**
+ * `TransactionsFilter` más `category`. Es un tipo nuevo y no un campo agregado
+ * al de arriba por la misma razón que el resto de este archivo: lo copiado de
+ * `web/` queda como está, y lo que el panel necesita de más vive en su bloque.
+ */
+export interface TransactionsQuery extends TransactionsFilter {
+  /** La categoría **recalculada** de una barra del gráfico (H21). No es un
+   * `WHERE category = ?`: el motor rehace el cálculo con `categorize()` + las
+   * reglas del usuario, que es lo único que hace que la lista tenga las filas
+   * que la barra contó. Cuando viene, el resto de los filtros no aplica. */
+  category?: Category;
+}

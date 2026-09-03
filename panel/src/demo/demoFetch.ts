@@ -190,6 +190,13 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
       buffer_status: demoBufferStatus(),
       next_payday: demoPerfil.dias_pago.length > 0 ? DEMO_OVERVIEW.next_payday : null,
       safe_to_spend_hoy: demoPerfil.dias_pago.length > 0 ? DEMO_OVERVIEW.safe_to_spend_hoy : 0,
+      // N5: el gráfico sale de las MISMAS filas que la lista de una barra
+      // (`demoGastoPorCategoria` / `demoFilasDeCategoria`), no de una constante
+      // aparte. Es el punto entero de H21 llevado a la demo: si los dos números
+      // pudieran salir de dos lugares distintos, podrían discrepar, y tocar una
+      // barra para ver otra cosa es la incoherencia que la fase existe para
+      // cerrar.
+      spending_by_category: demoGastoPorCategoria(),
     });
   }
 
@@ -198,10 +205,7 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
     return jsonResponse({ transactions: rows, count: rows.length });
   }
 
-  if (pathname === "/api/transactions") {
-    const rows = DEMO_TRANSACTIONS.map(fullRow);
-    return jsonResponse({ transactions: rows, count: rows.length });
-  }
+  if (pathname === "/api/transactions") return demoTransactions(path);
 
   if (pathname === "/api/sync/status") return jsonResponse(demoSyncStatus());
 
@@ -459,6 +463,17 @@ function demoClassify(init?: RequestInit): Response {
   if (!grupo) return jsonResponse({ error: "counterparty_not_found" }, 400);
 
   demoRespondidas.add(grupo.pattern);
+
+  // N5: la regla también mueve la columna `category` de los movimientos de esa
+  // contraparte, igual que `classify/apply.ts`. Sin esto, responder desde el
+  // detalle de una fila no movería la lista ni el gráfico de la demo, y la
+  // pantalla diría "reclasificaste 4 movimientos" sin que se vea uno solo.
+  if (typeof category === "string") {
+    for (const tx of DEMO_TRANSACTIONS) {
+      if (patronDe(tx.counterparty) === patron) tx.category = category;
+    }
+  }
+
   const desdeElMes = new Date();
   desdeElMes.setDate(1);
   const delMes = DEMO_TRANSACTIONS.filter(
@@ -656,4 +671,78 @@ function demoRecurring() {
     meses_minimos: 3,
     suficiente_historial: true,
   };
+}
+
+/* ==========================================================================
+ * Lo que N5 agrega: `GET /api/transactions` deja de devolver siempre la lista
+ * entera.
+ *
+ * Sin esto la pantalla de Movimientos en modo demo dibujaría dos filtros que no
+ * filtran, un *Cargar más* que trae siempre lo mismo y —peor— una lista de
+ * categoría que no coincide con la barra que se tocó. La demo puede tener datos
+ * inventados; no puede tener un comportamiento inventado.
+ * ========================================================================== */
+
+/** Céntimos, para que sumar montos no deje `77.50000000000001` en pantalla. */
+function redondear(monto: number): number {
+  return Math.round(monto * 100) / 100;
+}
+
+/** Las filas de una barra del gráfico: gasto (`direction: "out"`) con esa
+ * categoría, más recientes primero. Es la única definición de "las filas de una
+ * categoría" que tiene la demo, y de ella salen tanto el gráfico como la lista. */
+function demoFilasDeCategoria(category: string): DemoTx[] {
+  return DEMO_TRANSACTIONS.filter((tx) => tx.direction === "out" && tx.category === category).sort((a, b) =>
+    a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0
+  );
+}
+
+/** El gráfico del Resumen, derivado de las mismas filas. Una categoría sin
+ * ninguna fila no aparece, igual que en el motor. */
+function demoGastoPorCategoria(): Record<string, number> {
+  const total: Record<string, number> = {};
+  for (const tx of DEMO_TRANSACTIONS) {
+    if (tx.direction !== "out" || tx.category === null) continue;
+    total[tx.category] = redondear((total[tx.category] ?? 0) + tx.amount);
+  }
+  return total;
+}
+
+/**
+ * `GET /api/transactions` con los parámetros que N5 usa.
+ *
+ * Con `category` responde como `classify/movements.ts`: la selección de la barra
+ * más `total` y `amount`, que son el conteo y la plata que la barra dibujó. Sin
+ * ella, los dos filtros de la pantalla —rango y dirección— y el `limit`/`offset`
+ * de *cargar más*, **sin `total`**: el motor tampoco lo manda (H20).
+ */
+function demoTransactions(path: string): Response {
+  const query = new URLSearchParams(path.includes("?") ? path.slice(path.indexOf("?") + 1) : "");
+  const limit = Number(query.get("limit") ?? 100);
+  const offset = Number(query.get("offset") ?? 0);
+
+  const category = query.get("category");
+  if (category !== null) {
+    const todas = demoFilasDeCategoria(category);
+    const pagina = todas.slice(offset, offset + limit).map(fullRow);
+    return jsonResponse({
+      transactions: pagina,
+      count: pagina.length,
+      total: todas.length,
+      amount: redondear(todas.reduce((suma, tx) => suma + tx.amount, 0)),
+    });
+  }
+
+  const from = query.get("from");
+  const to = query.get("to");
+  const direction = query.get("direction");
+  const filtradas = DEMO_TRANSACTIONS.filter(
+    (tx) =>
+      (from === null || tx.ts >= from) &&
+      (to === null || tx.ts <= to) &&
+      (direction === null || tx.direction === direction)
+  ).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+
+  const pagina = filtradas.slice(offset, offset + limit).map(fullRow);
+  return jsonResponse({ transactions: pagina, count: pagina.length });
 }
