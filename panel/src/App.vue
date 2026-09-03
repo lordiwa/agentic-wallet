@@ -10,6 +10,13 @@
  * 2. **Sin llave no hay shell.** Si el server pide una y este navegador no la
  *    tiene, no se dibuja una barra lateral con tres pantallas que van a fallar
  *    todas: se pide la llave.
+ * 3. **Sin sesión tampoco**, en los builds que traen identidad. La puerta de
+ *    Google va ANTES que la de la llave: es la que dice quién sos, y el botón
+ *    "Conectar Gmail" no tiene nada que mandar sin ella.
+ *
+ * Las dos puertas conviven porque son dos despliegues distintos, no dos pasos:
+ * el panel local no trae config de Firebase y sólo ve la de la llave; el panel
+ * publicado la trae y arranca por la de Google. Ver `auth/config.ts`.
  *
  * El reloj compartido se monta acá, una vez, y lo heredan las pantallas.
  */
@@ -17,6 +24,9 @@ import { computed, onMounted, ref } from "vue";
 import AccessKeyScreen from "./components/AccessKeyScreen.vue";
 import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
+import EntrarConGoogle from "./components/EntrarConGoogle.vue";
+import SesionChip from "./components/SesionChip.vue";
+import { useSesion } from "./composables/useSesion";
 import AltaPerfil from "./views/AltaPerfil.vue";
 import Conectado from "./views/Conectado.vue";
 import Movimientos from "./views/Movimientos.vue";
@@ -29,6 +39,16 @@ import { useRuta } from "./router/ruta";
 
 const diagnostico = ref<DiagnosticoConexion | null>(null);
 const { ruta } = useRuta();
+const sesion = useSesion();
+
+/**
+ * "Miro sin entrar": la salida al modo demostración desde la pantalla de login.
+ *
+ * No se guarda en ningún lado —un F5 vuelve a la puerta— porque no es una
+ * preferencia sino una visita: el sitio publicado tiene que seguir mostrando
+ * qué es antes de pedirle la cuenta a nadie, y eso no se recuerda.
+ */
+const mirandoDemo = ref(false);
 
 provideRefresh();
 
@@ -36,7 +56,15 @@ function necesitaLlave(diag: DiagnosticoConexion | null): boolean {
   return diag !== null && (diag.estado === "sin-llave" || diag.estado === "llave-rechazada");
 }
 
-const pidiendoLlave = computed(() => necesitaLlave(diagnostico.value));
+/** Mientras la sesión no está resuelta no se dibuja ninguna puerta: un usuario
+ * ya entrado vería parpadear el login en cada F5. */
+const esperandoSesion = computed(() => sesion.configurado.value && !sesion.listo.value);
+
+const pidiendoSesion = computed(
+  () => sesion.configurado.value && sesion.listo.value && sesion.usuario.value === null && !mirandoDemo.value
+);
+
+const pidiendoLlave = computed(() => !pidiendoSesion.value && necesitaLlave(diagnostico.value));
 
 onMounted(async () => {
   diagnostico.value = await probeHealth();
@@ -44,7 +72,18 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="pidiendoLlave" class="puerta">
+  <div v-if="esperandoSesion" class="puerta espera" data-testid="app-esperando-sesion">
+    <p>Entrando…</p>
+  </div>
+
+  <div v-else-if="pidiendoSesion" class="puerta">
+    <header class="barra">
+      <BackendChip />
+    </header>
+    <EntrarConGoogle :sesion="sesion" @demo="mirandoDemo = true" />
+  </div>
+
+  <div v-else-if="pidiendoLlave" class="puerta">
     <header class="barra">
       <BackendChip />
     </header>
@@ -55,6 +94,7 @@ onMounted(async () => {
     <template #chip>
       <header class="barra">
         <BackendChip />
+        <SesionChip :sesion="sesion" />
       </header>
     </template>
 
@@ -96,10 +136,19 @@ onMounted(async () => {
   padding: 0 26px;
   flex: none;
 }
+.puerta.espera {
+  align-items: center;
+  justify-content: center;
+  color: var(--apagado);
+}
 /* Dentro del shell el chip no es una barra del ancho de la ventana: es la
  * primera fila de la columna de contenido. */
 .barra {
   border-bottom: 1px solid var(--linea);
   margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 </style>

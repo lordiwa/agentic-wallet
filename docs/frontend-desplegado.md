@@ -3,7 +3,11 @@
 **URL: <https://agentic-wallet-71314.web.app>** (Firebase Hosting, proyecto
 `agentic-wallet-71314`).
 
-Ese sitio arranca en **modo demostracion**: numeros inventados, y lo dice en
+Ese sitio **arranca pidiendo entrar con Google** (ver `docs/pivot-firebase.md`
+§D.5), y quien no quiera entrar puede mirarlo igual: la puerta tiene una salida
+al modo demostracion.
+
+En **modo demostracion** son numeros inventados, y lo dice en
 dos lugares fijos —el pie de la barra lateral ("Modo demostracion / Datos
 inventados") y el chip de backend de arriba—. No lleva adentro ni un dato
 tuyo. Este documento explica por que, y como apuntarlo a tu ledger de verdad.
@@ -92,21 +96,33 @@ Ahora son dos decisiones separadas, y ninguna es automatica:
 > mal: el chip del panel lo dice con todas las letras ("ese servidor no esta
 > autorizado").
 
-## Acceso: sin login, y por que esta bien
+## Acceso: ahora si hay login, y por que cambio
 
-**Decision: el sitio es publico y no pide contrasena.**
+**Hasta el pivot: el sitio era publico y no pedia nada.** No era pereza —no
+habia nada que proteger: el bundle no tiene datos, el modo demo es todo
+inventado, y la URL del backend la pone quien mira en su propio navegador.
+Poner un login para custodiar datos falsos habria sido teatro.
 
-No es pereza, es que hoy no hay nada que proteger ahi: el bundle publicado no
-tiene datos, el modo demo es todo inventado, y la URL del backend la pone
-quien mira en su propio navegador. Poner un login para custodiar datos falsos
-seria teatro.
+**Lo que cambio es que ahora hay un backend de verdad detras.** Las Cloud
+Functions del pivot (`gmailAuthStart`, `gmailAuthStatus`, ...) exigen un **ID
+token de Firebase** y sirven el ledger de quien lo presenta. Eso es un dato
+real y una credencial real, asi que el sitio publicado ahora **arranca en la
+pantalla de entrar con Google** (ver `docs/pivot-firebase.md` §D.5).
 
-**Esto cambia el dia que el sitio apunte a datos reales.** Si el backend pasa
-a ser accesible desde internet, el limite de acceso lo tiene que poner el
-backend (autenticacion de verdad en la API), no el frontend — una pantalla de
-login en la SPA no protege nada, porque la API se puede llamar directo con
-`curl`. Mientras la API siga sin auth, el unico limite valido es de red:
-`127.0.0.1` + tailnet.
+Dos cosas que no cambiaron, y conviene tenerlas claras:
+
+- **El limite de acceso lo sigue poniendo el backend, no esta pantalla.** Una
+  puerta en la SPA no protege nada por si sola —la API se llama con `curl`—;
+  lo que protege es que la funcion verifique el ID token y lea solo el ledger
+  de ese uid. La pantalla es la forma de conseguir el token, no el candado.
+- **El server viejo de `server/` sigue con su propia llave**
+  (`WALLET_ACCESS_TOKEN`) y su propio limite de red (`127.0.0.1` + tailnet).
+  Son dos credenciales distintas para dos backends distintos y no se mezclan:
+  el panel local ni siquiera descarga el SDK de Firebase.
+
+**Se puede mirar sin entrar.** La pantalla tiene una salida al modo
+demostracion — el sitio tiene que poder mostrar que es antes de pedirle la
+cuenta a nadie. Esa eleccion no se guarda: un F5 vuelve a la puerta.
 
 ## Como ver datos reales
 

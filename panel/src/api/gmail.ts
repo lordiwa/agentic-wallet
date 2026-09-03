@@ -75,9 +75,7 @@ const ESTADO_DEMO: EstadoGmail = {
 
 export class GmailApiError extends Error {}
 
-async function conIdToken(fetchImpl: typeof fetch, path: string, init: RequestInit): Promise<Response> {
-  const idToken = await obtenerIdToken();
-  if (idToken === null) throw new GmailApiError("sin sesión");
+function conIdToken(fetchImpl: typeof fetch, path: string, init: RequestInit, idToken: string): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${idToken}`);
   return fetchImpl(`${getFunctionsBase()}${path}`, { ...init, headers });
@@ -86,14 +84,22 @@ async function conIdToken(fetchImpl: typeof fetch, path: string, init: RequestIn
 /**
  * `GET /gmailAuthStatus`.
  *
- * En demo no sale a la red: devuelve el estado ficticio, igual que `demoFetch`
- * con el resto de los endpoints.
+ * **El modo demostración gobierna sólo mientras no hay sesión**, y ese orden
+ * importa en el sitio publicado: ahí el build trae `demo` como backend del
+ * ledger *y* la URL de las funciones, porque son dos backends distintos. Quien
+ * no entró ve la ficción de siempre; quien entró con su cuenta tiene una
+ * respuesta de verdad que darle, y seguir inventándola le mostraría un correo
+ * conectado que no es el suyo.
  */
 export async function consultarEstadoGmail(fetchImpl: typeof fetch = fetch): Promise<EstadoGmail> {
-  if (isDemoMode()) return ESTADO_DEMO;
+  const idToken = await obtenerIdToken();
+  if (idToken === null) {
+    if (isDemoMode()) return ESTADO_DEMO;
+    throw new GmailApiError("sin sesión");
+  }
   if (!gmailConfigurado()) throw new GmailApiError("falta VITE_FUNCTIONS_BASE_URL");
 
-  const res = await conIdToken(fetchImpl, "/gmailAuthStatus", { method: "GET" });
+  const res = await conIdToken(fetchImpl, "/gmailAuthStatus", { method: "GET" }, idToken);
   if (!res.ok) throw new GmailApiError(`gmailAuthStatus respondió ${res.status}`);
   return (await res.json()) as EstadoGmail;
 }
@@ -112,11 +118,19 @@ export async function iniciarConexionGmail(
 ): Promise<RespuestaStart> {
   if (!gmailConfigurado()) throw new GmailApiError("falta VITE_FUNCTIONS_BASE_URL");
 
-  const res = await conIdToken(fetchImpl, "/gmailAuthStart", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(returnTo === undefined ? {} : { returnTo }),
-  });
+  const idToken = await obtenerIdToken();
+  if (idToken === null) throw new GmailApiError("sin sesión");
+
+  const res = await conIdToken(
+    fetchImpl,
+    "/gmailAuthStart",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(returnTo === undefined ? {} : { returnTo }),
+    },
+    idToken
+  );
   if (!res.ok) throw new GmailApiError(`gmailAuthStart respondió ${res.status}`);
 
   const cuerpo = (await res.json()) as Partial<RespuestaStart>;

@@ -1426,19 +1426,20 @@ el guardián de colores ya cubre los nuevos y ninguno escribe un hex.
 
 Raíz: **1750** (eran 1683). `functions/`: **193**, intactos.
 
-### La variable que falta para que el botón hable con el deploy
+### La variable que le dice al botón dónde están las funciones
 
 `panel/src/api/gmail.ts` lee `VITE_FUNCTIONS_BASE_URL` y **por defecto está
 vacía** (CLAUDE.md, regla 3: nada precargado de un despliegue concreto). Con la
 variable vacía la tarjeta muestra "Gmail no está configurado" y no ofrece botón.
-Para el piloto, el build del panel tiene que llevar:
+
+Está fijada en `panel/.env.demo`, que es el env del build publicado:
 
 ```
 VITE_FUNCTIONS_BASE_URL=https://us-central1-agentic-wallet-71314.cloudfunctions.net
 ```
 
-El modo demostración es la excepción y no la necesita: no habla con ninguna
-función.
+`npm run dev` y `npm run build` siguen sin ella a propósito: el panel local no
+habla con las funciones.
 
 ## D.4 Lo que falta, y por qué no lo puede hacer un agente
 
@@ -1466,31 +1467,123 @@ Go to (unsafe)*, pero el refresh token ya no se vence a los 7 días. La
 verificación de Google recién hace falta para sacar ese aviso, y para eso hay
 tope de 100 usuarios sin verificar — de sobra para un piloto.
 
-### D.4.2 El login de Firebase en el panel — **no está cableado**
+### D.4.2 ~~El login de Firebase en el panel~~ — **hecho, ver §D.5**
 
-El botón necesita un **ID token de Firebase** y el panel todavía no tiene de
-dónde sacarlo:
+### D.4.3 ~~El hosting del panel~~ — **desplegado con el login, ver §D.5**
 
-- **No hay Web App registrada** en el proyecto: `firebase apps:sdkconfig WEB`
-  responde "There are no WEB apps associated with this Firebase project".
-- El panel autentica hoy con `WALLET_ACCESS_TOKEN` contra el server viejo, que
-  es otra cosa.
+---
 
-Por eso `api/gmail.ts` toma el ID token de un **proveedor inyectable**
-(`setProveedorIdToken`), que hoy devuelve `null` — y la tarjeta muestra "Entrá
-para conectar tu correo". Los tests inyectan el suyo, así que el ciclo entero
-está probado; lo que falta es el proveedor de verdad.
+## D.5 El login con Google en el panel — implementado y desplegado
 
-Para cerrarlo hace falta, en este orden: registrar la Web App
-(`firebase apps:create WEB`), agregar `firebase` a `panel/package.json`,
-inicializar el SDK en `main.ts` con `signInWithPopup(GoogleAuthProvider)`, y
-registrar `() => getAuth().currentUser?.getIdToken() ?? null` como proveedor.
-**Nada de eso cambia el código de esta fase**: es un `setProveedorIdToken` en
-`main.ts`.
+Rama `pivot-login-real`. Cierra §D.4.2 y §D.4.3: el proveedor inyectable de
+`api/gmail.ts` ya tiene detrás una sesión de verdad, y el sitio publicado la
+usa.
 
-### D.4.3 El hosting del panel — no se desplegó
+### D.5.1 Sin registrar ninguna Web App
 
-`firebase deploy --only hosting` **no se corrió**: el sitio público sigue
-sirviendo el panel en modo demostración, sin el botón. Es deliberado — el botón
-sin D.4.2 mostraría "Entrá para conectar tu correo" a cualquiera que abra el
-sitio. Conviene desplegarlo junto con el login, no antes.
+§D.4.2 daba por sentado que había que correr `firebase apps:create WEB`. **No
+hace falta, y no se corrió.** Firebase Auth necesita tres valores —`apiKey`,
+`authDomain`, `projectId`— y ninguno de los tres viene de tener una app
+registrada: `appId` y `measurementId`, que sí la necesitarían, los piden
+Analytics e Installations, que este panel no usa. `initializeApp()` acepta la
+config armada a mano.
+
+De dónde salió la `apiKey`, sin consola y sin `gcloud`:
+
+```
+apikeys.googleapis.com/v2/projects/<n>/locations/global/keys
+```
+
+con el access token del CLI de Firebase (que ya tiene scope `cloud-platform`).
+Es la **"Browser key (auto created by Firebase)"**, que el proyecto tiene desde
+que se creó, exista o no una app. `firebase apps:list` sigue diciendo *"No apps
+found"* — y el login anda igual.
+
+Se verificó contra Identity Toolkit con esa misma llave: `google.com` habilitado
+como proveedor y los dominios autorizados son `localhost`,
+`agentic-wallet-71314.firebaseapp.com` y `agentic-wallet-71314.web.app` — o sea
+que el popup funciona desde el sitio publicado y desde el dev local.
+
+### D.5.2 Qué es público y qué no
+
+`panel/.env.demo` lleva `VITE_FIREBASE_API_KEY` **versionada, a propósito**. La
+`apiKey` de Firebase no es un secreto: viaja en el bundle de cualquier
+navegador, identifica al proyecto y no autoriza nada. Lo que autoriza son los
+dominios permitidos de Auth y las reglas de Firestore. El `client_secret` del
+cliente OAuth es otra cosa por completo, vive en Secret Manager y no toca el
+navegador (§D.2).
+
+### D.5.3 Las piezas
+
+| Archivo | Qué hace |
+|---|---|
+| `panel/src/auth/config.ts` | Lee `VITE_FIREBASE_*`. Sin las tres obligatorias devuelve `null` y el panel no tiene identidad |
+| `panel/src/auth/sesion.ts` | El estado de la sesión, sin saber de Firebase. Tres valores: entrado, afuera, **y todavía no sé** |
+| `panel/src/auth/firebase.ts` | El único archivo que importa el SDK. `signInWithPopup`, con `signInWithRedirect` de reserva si el popup está bloqueado |
+| `panel/src/composables/useSesion.ts` | La traducción a refs de Vue |
+| `panel/src/components/EntrarConGoogle.vue` | La puerta. Mismo lienzo que `AccessKeyScreen`, otra credencial |
+| `panel/src/components/SesionChip.vue` | La cuenta entrada y el botón de salir, al lado del chip de backend |
+| `panel/src/main.ts` | `setProveedorIdToken(idTokenActual)` y el `import()` diferido del SDK |
+
+**Dos puertas que no se pisan.** El panel local no trae `VITE_FIREBASE_*`: sigue
+entrando con `WALLET_ACCESS_TOKEN` y ni siquiera descarga el SDK (es un chunk
+aparte de ~157 kB que sólo baja si hay config). El panel publicado sí la trae y
+arranca por la de Google. Los tests de `App.test.ts` que ya existían corren sin
+las variables, así que son la prueba de que el panel local no cambió.
+
+**El tercer estado de la sesión es el que importa.** Firebase resuelve la sesión
+guardada de forma asíncrona; sin un `listo` explícito, un usuario ya entrado
+vería parpadear la pantalla de login en cada F5.
+
+### D.5.4 El modo demostración pierde contra una sesión real
+
+El build publicado tiene las dos cosas a la vez: `VITE_API_BASE_URL=demo` para
+el ledger y la URL real de las funciones para Gmail. **Son dos backends
+distintos**, así que la regla es explícita: la ficción del modo demostración
+gobierna **sólo mientras no hay sesión**. Quien entró con su cuenta ve el estado
+real de su Gmail; seguir inventándolo le mostraría un correo conectado que no es
+el suyo.
+
+La puerta tiene una salida —*"Ver el modo demostración, sin entrar"*— que no se
+guarda en ningún lado: un F5 vuelve a la puerta. El sitio publicado tiene que
+poder mostrar qué es antes de pedirle la cuenta a nadie, y eso es una visita, no
+una preferencia.
+
+### D.5.5 Entrar no es conectar el correo
+
+El login pide identidad: nombre y dirección, los scopes que Firebase Auth trae
+de fábrica. **No pide Gmail.** Leer el correo es el flujo OAuth aparte de §C.7,
+con su propia pantalla de Google, y la pantalla de login lo dice antes del
+click. Mezclarlos le pediría a alguien acceso a su correo para poder ver un
+saldo, y dejaría un token de Gmail en el navegador.
+
+### D.5.6 El despliegue
+
+`npm run build:hosting && firebase deploy --only hosting`, verificado:
+
+- <https://agentic-wallet-71314.web.app> responde 200.
+- El bundle publicado (`assets/index-*.js`) lleva la base de las funciones, el
+  `authDomain` del proyecto y los textos de la pantalla de login.
+- El chunk `assets/firebase-*.js` está publicado y responde 200.
+
+**Falta la verificación visual y el viaje completo**: en este servidor no hay
+navegador headless, así que "entrar con Google → Conectar Gmail → volver
+conectado" no se pudo recorrer de punta a punta. Eso lo tiene que hacer Mato
+desde su navegador (§D.6).
+
+---
+
+## D.6 Lo que le queda a Mato, y por qué no lo puede hacer un agente
+
+1. **Publicar el consent screen** — los dos clicks de §D.4.1. Hasta que eso
+   pase, el refresh token de Gmail se vence a los 7 días y el piloto deja de
+   sincronizar solo. Es lo único que impide que la conexión dure.
+2. **Recorrer el viaje una vez, desde un navegador de verdad**: abrir
+   <https://agentic-wallet-71314.web.app>, *Entrar con Google*, *Conectar
+   Gmail*, autorizar, y confirmar que se vuelve a `#/conectado` con el aviso de
+   que quedó conectado. Acá no hay navegador headless (ni lo va a haber), así
+   que la verificación visual de esta fase es manual y es de él.
+3. **Mirar el chunk de Auth con la consola abierta** si algo falla: los dos
+   errores plausibles del primer intento son `auth/unauthorized-domain` —que no
+   debería pasar, los tres dominios están verificados— y el popup bloqueado, que
+   el panel ya reintenta redirigiendo la pestaña.

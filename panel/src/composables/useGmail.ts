@@ -108,9 +108,11 @@ export function useGmail(opciones: OpcionesGmail = {}): Gmail {
     cargando.value = true;
     error.value = null;
     try {
-      // En demo no hay a quién pedirle un ID token y tampoco hace falta: las
-      // respuestas son ficticias y no salen de esta pestaña.
-      haySesion.value = isDemoMode() || (await obtenerIdToken()) !== null;
+      // Se pregunta por la sesión PRIMERO y por el modo demostración después:
+      // en el sitio publicado conviven, y una sesión de verdad tiene que ganarle
+      // a la ficción (ver `consultarEstadoGmail`). Sin sesión, en demo no hay a
+      // quién pedirle un ID token y tampoco hace falta.
+      haySesion.value = (await obtenerIdToken()) !== null || isDemoMode();
       // Sin sesión no se pregunta: la respuesta sería un 401 y la vista ya
       // tiene un estado propio para "entrá primero".
       if (!haySesion.value) {

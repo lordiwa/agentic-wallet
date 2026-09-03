@@ -113,8 +113,9 @@ describe("consultarEstadoGmail", () => {
     await expect(consultarEstadoGmail(fetchImpl as unknown as typeof fetch)).rejects.toThrow("401");
   });
 
-  it("en modo demo devuelve un estado ficticio sin tocar la red", async () => {
+  it("en modo demo y sin sesion devuelve un estado ficticio sin tocar la red", async () => {
     window.localStorage.setItem(API_BASE_STORAGE_KEY, DEMO_BASE);
+    setProveedorIdToken(async () => null);
     const fetchImpl = vi.fn();
 
     const estado = await consultarEstadoGmail(fetchImpl as unknown as typeof fetch);
@@ -128,6 +129,21 @@ describe("consultarEstadoGmail", () => {
     setProveedorIdToken(async () => null);
 
     await expect(consultarEstadoGmail(vi.fn() as unknown as typeof fetch)).resolves.toMatchObject({ conectado: true });
+  });
+
+  it("una sesion de verdad le gana a la ficcion del modo demo", async () => {
+    // El sitio publicado tiene las dos cosas a la vez: `demo` como backend del
+    // ledger y la URL real de las funciones. Quien entro con su cuenta tiene
+    // que ver SU estado, no el inventado.
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, DEMO_BASE);
+    const fetchImpl = vi.fn(async () => respuesta({ conectado: false, email: null, scopes: [] }));
+
+    const estado = await consultarEstadoGmail(fetchImpl as unknown as typeof fetch);
+
+    expect(estado.conectado).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer id-token-de-prueba");
   });
 });
 
