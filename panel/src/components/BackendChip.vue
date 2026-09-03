@@ -22,6 +22,7 @@ import {
 } from "../api/base";
 import { etiquetaBackend, explicarEstado, probeHealth, tagDeEstado } from "../api/client";
 import type { DiagnosticoConexion } from "../api/client";
+import { DEMO_BASE, mayReceiveCredential } from "../api/origins";
 
 const diagnostico = ref<DiagnosticoConexion | null>(null);
 const probando = ref(false);
@@ -35,15 +36,22 @@ const explicacion = computed(() =>
     ? "Todavía no se probó esta conexión."
     : explicarEstado(diagnostico.value)
 );
-/** Un backend fuera de la lista blanca no recibe la llave, y eso se dice
- * aunque la conexion todavia no se haya probado. */
-const ajeno = computed(() => currentBackendVerdict(base.value) === "foreign");
+/** Un backend que no recibe la llave —ni por estar fuera de la lista blanca ni
+ * porque el usuario se la nego a mano (W27)— lo dice, aunque la conexion
+ * todavia no se haya probado. */
+const ajeno = computed(() => !mayReceiveCredential(currentBackendVerdict(base.value)));
 
 /** El texto de la propuesta pendiente: `?api=` vacio significa "volvé al
  * mismo origen", que es una propuesta como cualquier otra. */
-const propuestaTexto = computed(() =>
-  propuesta.value === "" ? "este mismo servidor" : etiquetaBackend(propuesta.value ?? "")
-);
+const propuestaTexto = computed(() => {
+  if (propuesta.value === "") return "este mismo servidor";
+  // `etiquetaBackend` dice "sin servidor" para la base demo, que en el chip va
+  // al lado de la etiqueta "Demostración" y se entiende. Acá va solo, en un
+  // cartel que pide confirmar un cambio, y "sin servidor" no dice lo único que
+  // importa: que los números van a ser inventados (wargaming ronda 3, W25).
+  if (propuesta.value === DEMO_BASE) return "el modo demostración — datos inventados, no tu ledger";
+  return etiquetaBackend(propuesta.value ?? "");
+});
 
 async function probar(): Promise<void> {
   probando.value = true;

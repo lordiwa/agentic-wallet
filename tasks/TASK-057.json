@@ -64,8 +64,13 @@
       "author": "orquestador",
       "body": "WARGAMING RONDA 2 (docs/wargaming-mvp.md, rama wargaming-mvp-r2) — veredicto: ROMPE. El fix de W5 sobrevivio a medias.\n\nW11 (AC6) — ledgerLeido cubre el backend caido y no cubre el ledger VACIO. classify/progress.ts devuelve covered_ratio: 1 y done: true cuando baseline_total es cero (es su guarda contra dividir por cero, no una afirmacion), y vistaProgreso lo leia como un logro: una billetera recien instalada, antes del primer sync, abria la cola con \"Cubriste el 100 % de tu plata — No queda ninguna contraparte por responder\", en verde y con la barra llena. Es W5 otra vez, celebrar un hecho que el ledger no dice, sin que el backend tenga que caerse. El caso mas incomodo no es el vacio sino el segundo: un ledger cuyo gasto esta todo en filas sin contraparte (38 sobre el real) da la misma celebracion con plata real dibujada dos pantallas mas alla. Corregido en panel/src/lib/cola.ts: sin linea de base dice \"Todavia no hay nada que clasificar\", no celebra y la barra queda en cero. Test: panel/src/lib/cola.test.ts.\n\nAGUANTO: paginar acota el numero pedido, asi que silenciar las ultimas contrapartes de la pagina 8 no deja la pantalla mirando la nada; y la contraparte silenciada deja de contar en el progreso, como debe.\n\nAC AFECTADO: el AC6 (estado vacio confiable) ahora cubre tambien el ledger sin linea de base, no solo el backend caido.",
       "created_at": "2026-09-03T04:35:51.960Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "Wargaming ronda 3 (docs/wargaming-mvp.md). Dos AC de esta fase cambiaron de texto.\n\nW19 — El AC del progreso por plata (M1) se cumplía con dos denominadores distintos llamados los dos \"tu plata\": `covered_ratio` sobre `baseline_total` y `unclassified_ratio` sobre `spending_total`. Consecuencias medidas: \"Cubriste el 80 % de tu plata\" cuando era el 24 %, y sobre el ledger real una misma tarjeta con título del 76 %, barra al 16 % y un pie cuyos dos montos dan 84 %. El motor publica ahora `remaining_ratio` (complemento exacto de `covered_ratio`) y la copia nombra su denominador: \"Sigue sin clasificar el 84 % de la plata que había para clasificar\" / \"Cubriste el 80 % de la plata que había para clasificar\". Barra + título = 100 siempre.\n\nW20 — El AC6 del estado vacío confiable (`ledgerLeido`, W5) sólo cubría los dos estados VACÍOS. Tras una escritura exitosa seguida de un refresco fallido, la tarjeta de avance celebraba en verde al lado del cartel rojo con los montos de antes. `vistaProgreso` acepta `{ vencido }` y lo dice.\n\nW21/W23 — ver TASK-055: el efecto de silenciar ramifica por `changed`, y la tarjeta en modo lote declara cuánto hay fuera del lote.",
+      "created_at": "2026-09-03T18:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T23:00:00.000Z",
-  "updated_at": "2026-09-03T04:35:51.960Z"
+  "updated_at": "2026-09-03T18:00:00.000Z"
 }

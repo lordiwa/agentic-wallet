@@ -600,3 +600,531 @@ Se suman estas, todas atacadas y confirmadas:
   `categorize()`, no un parche del panel.
 - **El progreso pegado y la propuesta stale** (sección 4) no se corrigieron:
   ninguno produce un número falso, y los dos se curan en el próximo refresco.
+
+---
+
+# Wargaming del MVP — ronda 3
+
+Tercera pasada. El objetivo de la ronda 2 era atacar lo que la ronda 1 declaró
+resuelto; el de ésta es **atacar por CLASE**, porque la lección que la ronda 2
+dejó escrita fue exactamente ésa:
+
+> "cada fix arregló el caso del que se enteró, y no la clase de la que ese caso
+> era un ejemplar."
+
+Así que acá no se preguntó *"¿se puede esquivar W10?"* sino *"¿dónde más lee
+este sistema una cifra escrita por una persona?"*; no *"¿se puede esquivar
+W9?"* sino *"¿qué está afirmando esa frase, exactamente?"*. Cinco frentes por
+clase, cuatro cruces entre fases que ninguna ronda anterior había tocado, y una
+re-medición sobre el ledger real.
+
+**Punto de partida:** `d43ac14`, 121 archivos / 1582 tests.
+**Punto de llegada:** 121 archivos / **1631 tests**, `npm run build` limpio.
+**Trece `ROMPE` nuevos.** Ninguno de los quince hallazgos de las rondas 1 y 2 se
+pudo revivir tal cual; **siete de los trece son la clase de uno de ellos**,
+viva en otra superficie.
+
+> Sobre los datos: mismo criterio que las dos rondas anteriores. El ledger real
+> se leyó sobre una **copia**, y de acá sólo salen conteos y proporciones.
+> Ningún nombre, ningún monto de una fila, ningún fixture con datos reales.
+
+---
+
+## 1. Veredicto por fase
+
+| Fase | Ticket | R1 | R2 | Ronda 3 | Qué se cayó ahora |
+|---|---|---|---|---|---|
+| N0 — la puerta mínima | TASK-054 | SÓLIDO | ROMPE (leve) | **ROMPE** | El botón *"Guardar sin darle la llave"* **daba la llave** para todo backend que ya entrara solo (W27). El comodín `*.localhost` se aceptó en la ronda 2 sobre una justificación que se cae al leerla (W13b). Y el cartel que dice "estos datos son inventados" era una foto que no se volvía a mirar (W25). |
+| N1 — el motor de la pregunta | TASK-055 | ROMPE | ROMPE | **ROMPE** | W1 por una **tercera** puerta: en modo lote la tarjeta cuenta el lote y el escritor mueve el ledger entero — 2 arriba, 47 abajo (W23). El silenciador era el único escritor de patrones que no valida contra el ledger, y devolvía 200 `ok` por una fila inerte (W22). Y no decía `changed`, así que celebraba dos veces (W21). |
+| N2 — el hogar y el sync | TASK-056 | ROMPE | SÓLIDO | **ROMPE (leve)** | `transaction_ids` no tenía tope en ninguna de sus dos superficies: 32767 ids son un 500 con el stack trace completo, porque el server no tenía manejador de errores (W24). |
+| N3 — la cola de preguntas | TASK-057 | ROMPE | ROMPE | **ROMPE** | *"Cubriste el 80 % de tu plata"* cuando era el 24 %, y una tarjeta con un título del 76 %, una barra al 16 % y un pie que da 84 % (W19). El progreso celebraba en verde al lado del cartel rojo del backend caído (W20). |
+| N4 — el análisis del historial | TASK-058 | ROMPE | ROMPE | **ROMPE** | *"Suele caer el 20"* sobre un día que ocurrió **una vez de cuatro**: W9 se cumplió al pie de la letra y la frase siguió siendo falsa (W18). Y el freno de R33 medía el ledger, no la candidata: tres cargos en 29 días eran un "gasto fijo" con la cabecera diciendo "sobre 10,9 meses de historial" (W28). |
+| N5 — movimientos | TASK-059 | ROMPE | ROMPE (leve) | **ROMPE** | El único campo del panel que escribe `transactions.amount` seguía leyendo con `Number()`: "1.500" entraba como 1,5 (W16). `parsePlata` fallaba con los dos separadores a la vez (W17). Y el filtro de fechas cortaba por día UTC contra un motor que cuenta en día local (W26). |
+
+**Las correcciones de las rondas 1 y 2, por clase:**
+
+| | ¿Se pudo revivir el caso? | ¿Sobrevivió la CLASE? |
+|---|---|---|
+| W1/W12 — el conteo que la tarjeta prometió | no | **NO** — modo lote (W23) |
+| W2/W9 — el día típico | no | **NO** — "suele" no es "ocurrió" (W18) |
+| W3/W10 — la cifra escrita por una persona | no | **NO** — `ReviewCard` (W16), dos separadores (W17) |
+| W4 — las dos filas del reverso | no | **SÍ** |
+| W5/W11 — no afirmar sobre un ledger no leído | no | **NO** — el estado poblado no tenía la guarda (W20) |
+| W6 — `null` dibujado como cifra | no | **SÍ** |
+| W7 — la moneda del perfil | no | **SÍ** |
+| W8/W14 — una regla del motor puesta en un transporte | no | **NO** — el tope de `transaction_ids` faltaba en las dos (W24) |
+| W13 — el chip que no dice a qué se cambia | no | **NO** — el botón que no hace lo que dice (W27), la base de `*.localhost` (W13b) |
+| W15 — la etiqueta de la moneda vieja | no | **SÍ** |
+| R13 — `changed:false` no es éxito | — | **NO** — implementada para `resolve`, nunca para `silence` (W21) |
+
+---
+
+## 2. Los hallazgos
+
+### W16 — El único campo que escribe un monto en el ledger leía con `Number()`
+
+**ROMPE (el más grave de la ronda).** `panel/src/components/ReviewCard.vue:78-81`
+tenía, textual, `Number(correccion.trim().replace(",", "."))`: **el mismo código
+que W3 declaró insuficiente y W10 reemplazó**, sobreviviendo una pantalla más
+allá. W10 arregló el campo del colchón, que es una meta; éste es el monto.
+
+| lo que la persona escribe | lo que se guardaba | lo correcto |
+|---|---|---|
+| `1.500` | **1,5** | 1500 |
+| `10.000` | **10** | 10000 |
+| `1.500,00` (como la propia tarjeta lo imprime) | botón apagado, sin motivo | 1500 |
+| `0x10` / `1e5` / `2.5e3` | 16 / 100000 / 2500 | rechazado |
+
+Y es el peor lugar posible: es **la única puerta del sistema por la que un
+humano pisa `transactions.amount`**. `review/resolve.ts` sólo valida la forma
+(finito y no negativo), así que 1,5 pasa, la fila sale de `needs_review`, entra a
+todos los totales y queda marcada `source = 'human'` —afirmada por una persona—
+con el monto del parser ya sepultado en la auditoría. La invariante 1 del
+CLAUDE.md dice que el monto sale del parser; la excepción no puede leer mal lo
+que la persona escribió.
+
+**Corregido:** lee con `parsePlata`, como el resto del panel.
+
+### W17 — "1,234.56" entraba como 1,23
+
+**ROMPE.** `panel/src/lib/formato.ts` — la rama de la coma asumía *"hay coma ⇒ la
+coma es el decimal, los puntos son miles"*. Con los **dos separadores a la vez**
+—coma de miles y punto decimal, que es como imprime la plata la plaza donde vive
+el ledger de este proyecto— borraba el punto, que era el decimal de verdad, y
+devolvía una cifra mil veces más chica sin un solo error.
+
+Es W10 otra vez, por la otra mitad del mismo `if`, con el mismo factor de mil y
+el mismo silencio: un colchón de 1234,56 guardado como 1,23 no se ve como un
+error, se ve como un objetivo cumplido que nadie fijó (R25).
+
+**Corregido:** con los dos presentes manda el **último** separador —la única
+regla que las dos convenciones comparten— y el otro tiene que estar separando
+grupos de exactamente tres. Lo que no cumple ninguna de las dos formas no es una
+cifra ambigua: es `null`.
+
+### W18 — "Suele caer el 20", con el 20 ocurriendo una vez de cuatro
+
+**ROMPE.** W9 exigió que el día que se nombra sea un día **observado**, y eso se
+cumplió al pie de la letra: sobre las 17 distribuciones de la batería, el día
+devuelto siempre existía. La clase era otra. La pantalla no dice *"el 20 pasó
+algo"*: dice **"suele caer el 20"**, que es una afirmación sobre la tendencia.
+
+Medido sobre el ledger real **después del arreglo de W9**, de las 5 propuestas
+que afirmaban un día, **4 lo afirmaban sobre un día que ocurrió una sola vez**:
+
+| días observados | día que se afirmaba | veces que cayó ahí |
+|---|---|---|
+| 3, 20, 22, 23 | 20 | 1 de 4 |
+| 18, 21, 25 | 21 | 1 de 3 |
+| 7, 9, 11 | 9 | 1 de 3 |
+| 3, 4, 5 | 4 | 1 de 3 (pero los tres a un día) |
+
+La mediana se había puesto el disfraz de una observación. Y el guarda de la
+desviación absoluta mediana no lo ve: con 3 observaciones la MAD **es la del
+medio**, así que un outlier arbitrario es invisible — cargos el 1, el 2 y el 28
+daban *"suele caer el 2"*.
+
+**Corregido:** *suele* pide mayoría. Se exige que **más de la mitad** de los
+cargos caigan en el día que se nombra o a un día de distancia (el corrimiento del
+débito que cae en fin de semana y se procesa el lunes, que es para lo que existe
+el margen). Dos días ya no son el mismo día nudgeado: son otra fecha. Un gasto
+que cae 7, 9 y 11 no tiene un día, tiene una semana, y esta pantalla no sabe
+decir una semana — entonces no dice nada.
+
+Sobre el ledger real: **2 de 10** afirman un día, y las dos son honestas (una con
+4 cargos de 4 en el mismo día, otra con los tres a un día de distancia). Tres
+tests que codificaban la promesa vieja se actualizaron con su motivo escrito.
+
+### W19 — "Cubriste el 80 % de tu plata" siendo el 24 %
+
+**ROMPE.** `covered_ratio` es sobre `baseline_total` (la plata que alguna vez
+tuvo una pregunta) y `unclassified_ratio` era sobre `spending_total` (todo el
+gasto). La tarjeta llamaba **"tu plata"** a las dos.
+
+Los dos síntomas, los dos reproducidos contra el motor real:
+
+1. Con 240 de 300 respondidos sobre 1000 de gasto, la tarjeta celebraba
+   *"Cubriste el 80 % de tu plata"* en verde con la barra llena. El usuario
+   cubrió el **24 %** de su plata. Es W11 —celebrar un logro que el ledger no
+   dice— sin que el ledger tenga que estar vacío.
+2. Sobre el ledger real, la **misma tarjeta** imprimía al mismo tiempo: título
+   *"Te queda el 76 %"*, barra al **16 %**, y un pie con *"2.629,46 de 16.616,02
+   ya respondidos · quedan 13.986,56"* — cuyo cociente es **84 %**. Tres cifras
+   visibles a la vez que no cierran entre sí.
+
+Las dos rondas anteriores lo anotaron como *"denominadores distintos"* y lo
+aceptaron. Los tres números son ciertos por separado; el defecto no es ninguno de
+ellos, es **ponerlos juntos como si se complementaran**.
+
+**Corregido:** el motor publica `remaining_ratio` (`remaining / baseline`), que
+es el complemento exacto de `covered_ratio`, y la tarjeta usa ése. Y el texto
+**nombra su denominador** en vez de decir "tu plata": *"Sigue sin clasificar el
+84 % de la plata que había para clasificar"*. Barra + título = 100, siempre.
+`unclassified_ratio` queda publicado con su doc diciendo que **no** es el
+complemento de la barra.
+
+### W20 — El progreso celebra en verde al lado del cartel rojo
+
+**ROMPE.** W5 se cerró con *"el estado vacío sólo se dibuja cuando hubo
+respuesta"* (`ledgerLeido`, `Preguntas.vue`), y la clase era más ancha: **no
+afirmes un hecho sobre un ledger que no leíste**. `ledgerLeido` sólo guarda los
+dos estados **vacíos**. El estado **poblado** afirma mucho más y no la tenía.
+
+Reproducido montando el componente real: 151 grupos, página 3, escritura exitosa
+seguida de un refresco que falla. En pantalla, simultáneamente:
+
+- cartel rojo: *"El backend no respondió. Failed to fetch"*
+- tarjeta de avance, clase `celebra`, en verde: *"Cubriste el 80 % — 640,00 de
+  800,00 ya respondidos"*, con los montos **de antes de la escritura**
+- la contraparte recién respondida, todavía listada
+
+Dato viejo dibujado con cara de dato fresco.
+
+**Corregido:** `vistaProgreso` acepta `{ vencido }` y la pantalla se lo pasa
+cuando `errorCarga` no es `null`. No celebra, y lo dice: *"El backend no
+respondió al refrescar, así que estos números son los de antes de tu última
+respuesta"*.
+
+### W21 — Silenciar dos veces celebra dos veces
+
+**ROMPE.** `efectoDeResolver` sabe desde el principio que `changed:false` no es
+éxito (R13). `efectoDeSilenciar` no podía saberlo: `POST /api/classify/silence`
+devolvía `{ok, counterparty}` **sin `changed`**, así que la pantalla construía el
+efecto con los números de la tarjeta que tenía en la mano. Encadenado con W20
+—la tarjeta ya respondida sigue en pantalla tras el refresco fallido— el usuario
+la vuelve a silenciar y recibe, en verde: *"6 movimientos por 960,00 salen de la
+cola"*, con cero movimientos saliendo.
+
+La asimetría estaba dentro del mismo archivo de rutas: **el `DELETE` sí devolvía
+`changed`**.
+
+**Corregido:** el motor devuelve `changed`, las tres superficies lo publican, y
+`efectoDeSilenciar` lo ramifica con tono `neu`.
+
+### W22 — El silenciador era el único escritor de patrones que no valida contra el ledger
+
+**ROMPE.** La trampa fundacional del proyecto —un patrón que se guarda bien, se
+lista bien y no matchea una sola fila— la cierra `apply.ts` por construcción:
+deriva el patrón de la contraparte **real**. `silenceCounterparty` aceptaba
+cualquier texto.
+
+`toRulePattern` perdona la caja y los acentos pero **no el espaciado interno**.
+Mismo string, dos superficies, sobre un ledger con `CAFE CENTRO`:
+
+```
+classify("  CAFE  centro ")  ->  400  counterparty_not_found
+silence ("  CAFE  centro ")  ->  200  ok, patrón "cafe  centro" escrito
+la cola después del silencio ->  ["cafe centro"]   ← SIGUE AHÍ
+```
+
+Un agente por MCP se lleva un `ok`, un contador que sube, y la contraparte
+intacta en la cola. Es la trampa del proyecto reencarnada en el único módulo
+donde nadie la buscó.
+
+**Corregido:** `silenceCounterparty` resuelve contra el ledger con la misma
+función que `classifyCounterparty` y devuelve `counterparty_not_found` si no
+corresponde a una contraparte real. La grafía que guarda pasa a ser la del ledger,
+por la misma razón que en `apply.ts`: es la que el usuario acaba de ver. La
+descripción de la tool MCP lo declara.
+
+### W23 — En modo lote la tarjeta cuenta el lote y el escritor mueve el ledger
+
+**ROMPE.** El aviso post-sync (D7-b) lleva a la cola **acotada al lote**
+(`classifyQueue` con `transactionIds`). Ahí `grupo.count` y `grupo.total` son del
+lote, y `rowsMatching` (`classify/apply.ts`) barre **la tabla entera sin filtro de
+ids**. El pie de la tarjeta afirmaba, textual, que la regla *"vale para los 2
+movimientos de esta contraparte"* y la respuesta contestaba *"reclasificaste
+47"*.
+
+Es el síntoma exacto de W1 por una **tercera** puerta: las rondas 1 y 2
+analizaron la cola **sin filtrar**, y ninguna miró el modo lote.
+
+**Corregido:** con la misma salida que W12 —no recortar el número, decir el
+alcance— pero para eso el motor tiene que publicarlo. `classifyQueue` en modo
+lote agrupa dos veces (con filtro y sin él, con las mismas reglas, así que los
+dos números salen de una sola definición) y agrega `count_en_ledger` /
+`total_en_ledger`. La tarjeta lo dice antes de tocar el botón: *"Las cifras de
+arriba son sólo las de este lote. De esta contraparte hay 47 movimientos por
+900,00 en todo tu historial, y la regla los mueve a todos."*
+
+### W24 — 32767 ids son un 500 con el stack trace completo
+
+**ROMPE (leve).** Dos agujeros en la misma línea, y el segundo no es de esta
+ruta:
+
+1. `selectClassifiableRows` arma `id IN (?, …)` con un placeholder por id, y
+   SQLite (3.49.2, el de este repo) corta en **32766 variables**. `transaction_ids`
+   **no tenía tope** ni en `classifyQueueQuerySchema` ni en la tool MCP
+   `get_classify_queue` — que además sí capa `limit` a 500. Es W14 otra vez: una
+   guarda que existe en una superficie y no en la otra.
+2. `createApp` **no montaba ningún manejador de errores**, y `npm start` es
+   `node dist/index.js` sin `NODE_ENV=production`. O sea que **cualquier `throw`
+   de cualquier ruta** devolvía la página HTML por defecto de express con el
+   stack trace y rutas absolutas del filesystem.
+
+Desde el panel hoy es inalcanzable —`insertedIds.length <= batch_size <= 500`—
+pero ese acoplamiento no está escrito en ningún lado ni cubierto por un test:
+subir el `batch_size` máximo rompía la cola post-sync sin que fallara nada.
+
+**Corregido:** `MAX_TRANSACTION_IDS = 500` vive en `api/schemas.ts` y lo importan
+las dos superficies; y `/api` tiene un manejador de errores que contesta
+`{"error":"internal error"}` y manda sólo el mensaje —nunca el stack— a
+`stderr`.
+
+### W25 — El cartel de "datos inventados" era una foto
+
+**ROMPE.** `AppShell.vue` tenía `const demo = isDemoMode()`: una foto tomada al
+montar la barra lateral, y el único lugar donde el panel dice *"estos números son
+ficción"*. Y el backend **se puede cambiar sin recargar** — `BackendChip` acepta
+la propuesta de `?api=`, escribe `localStorage` y sigue; no hay un solo
+`location.reload` en todo `panel/src`.
+
+El ataque es un enlace: `https://<panel>/?api=demo`. El cartel decía *"Este
+enlace quiere cambiar tu backend a `sin servidor`"* —un texto que no menciona
+datos inventados—, el usuario aprieta el botón que parece prudente, y a partir
+del siguiente tick del reloj el saldo, el *safe to spend*, las deudas y el
+gráfico salen de `demoFetch`: **inventados, presentados como su ledger, sin un
+solo cartel**. Al revés pasa lo mismo: el cartel de demostración queda puesto
+sobre el ledger real.
+
+Todo el aparato de "lo que no se leyó no se dibuja" (W5, W11, W20) no sirve de
+nada si el rótulo que dice de dónde salen los datos es un `const`.
+
+**Corregido:** `api/base.ts` publica `onBackendChange`, `setApiBase` notifica, y
+`AppShell` se suscribe. Y el cartel de la propuesta ya no dice "sin servidor"
+para la base demo: dice *"el modo demostración — datos inventados, no tu
+ledger"*.
+
+### W26 — Un día del filtro no era el mismo día que el del motor
+
+**ROMPE.** `ts` se guarda en UTC y **todo el motor bucketea por día local**
+(`strategy/dates.ts`, offset configurable). El filtro de Movimientos mandaba
+`from=2026-09-01` pelado y `to=2026-09-30T23:59:59.999Z` — un instante **UTC**—
+y `queryTransactions` compara strings. La ventana quedaba corrida las horas del
+offset en los dos extremos: se perdían las compras de la noche del último día del
+rango y se colaban las de la noche anterior al primero.
+
+Ese `T23:59:59.999Z` es la corrección de un caso anterior: `to=2026-09-30` dejaba
+afuera el día 30 entero. Arregló el corte y creó el otro — el patrón de la
+ronda 2, otra vez.
+
+Medido sobre el ledger real: **233 de 1140 filas (20 %)** caen en un día distinto
+del que el Resumen les asigna; **3 filas (0,3 %)** caen en un **mes** distinto; y
+filtrar "el mes" con los dos campos difiere del mes del motor en **6 filas**.
+
+Es la clase de W17 en el otro eje: **el mismo dato con dos lecturas y ningún
+error**.
+
+**Corregido:** las dos fechas viajan como días pelados y **qué es un día lo
+decide el motor**, como todo lo demás (regla 4 de §2.3). `api/routes.ts`
+interpreta un `YYYY-MM-DD` como el día local completo; un instante ISO con hora
+se respeta tal cual, porque quien manda una hora está pidiendo esa hora.
+
+### W27 — El botón "Guardar sin darle la llave" daba la llave
+
+**ROMPE.** El cartel de R1 ofrece dos botones y el primero **era un no-op**:
+`trustBackendOrigin` cortaba en `if (verdict !== "foreign") return`, así que para
+cualquier backend que ya entrara solo —`loopback`, `configured`— los dos botones
+eran el mismo.
+
+Vector: `?api=http://127.0.0.1:9999`, un proceso cualquiera escuchando en el
+loopback del usuario. Verdict `loopback` ⇒ `mayReceiveCredential` ⇒ el
+`WALLET_ACCESS_TOKEN` sale en la cabecera de la siguiente llamada. **El usuario
+que hace exactamente lo prudente entrega la llave.** Ningún test lo cubría:
+`base.test.ts` sólo probaba `trust: true` contra un origen ajeno.
+
+Un botón que no puede cumplir su etiqueta es peor que no tenerlo: pide una
+decisión y la descarta.
+
+**Corregido:** hay un veredicto `denied` y una lista de negados en el navegador.
+Gana sobre cualquier otro veredicto, incluido `loopback`. Autorizar después
+levanta la negación y negar retira una autorización previa: **hay una sola
+decisión por origen y es la última**. El chip dice *Sin credencial* para
+`denied` igual que para `foreign`, y `client.ts` dejó de tener su propia copia
+de la lista (`verdict !== "foreign"`), que habría mandado a `denied` al cartel
+equivocado.
+
+### W13b — La justificación de `*.localhost` no se sostiene
+
+**ROMPE (de la justificación).** La ronda 2 aceptó como limitación que
+`isLoopbackOrigin` diera por loopback a cualquier subdominio de `.localhost`,
+*"apoyándose en RFC 6761 y en que Chrome y Firefox resuelven `*.localhost` a
+loopback"*. Las dos mitades se caen al mirarlas, y con fuentes primarias:
+
+- **RFC 6761 §6.3 dice SHOULD, no MUST**, y el intento de subirlo a requisito
+  (`draft-ietf-dnsop-let-localhost-be-localhost`) **expiró sin llegar a RFC**.
+- **WebKit lo declara no garantizado**: *"the system DNS resolver on Apple
+  platforms does not necessarily guarantee that localhost maps to loopback"*
+  (bug 171934, todavía abierto).
+- **W3C Secure Contexts condiciona** la confianza a que el navegador cumpla ese
+  draft, y advierte que los resolvers *"a menudo ignoran estas sugerencias, a
+  veces mandando `localhost` a la red"*.
+
+O sea: se nombraron los dos navegadores que sí lo garantizan y se omitió el que
+sus propios mantenedores dicen que no. Con un sufijo de búsqueda DNS,
+`ajeno.localhost` puede resolver a una IP pública — y ese origen recibía la llave
+sin que el usuario autorizara nada, porque `loopback` entra solo. No se consiguió
+un PoC de Safari mandando `evil.localhost` a DNS pública (no hay macOS en este
+entorno), así que no se llama fuga demostrada: lo que se cae es la base sobre la
+que la limitación se aceptó.
+
+**Corregido:** la rama se va. Nadie hospeda su billetera en `panel.localhost`, y
+quien lo haga la autoriza a mano como cualquier otro backend. El host exacto
+`localhost` y `127.0.0.0/8` siguen entrando solos.
+
+### W28 — Un "gasto fijo" de veintinueve días, avalado por once meses de ledger
+
+**ROMPE.** El freno de R33 estaba puesto en el lugar equivocado.
+`mesesDeHistorial` mide `MAX(ts) - MIN(ts)` del **ledger entero**; la regla de
+recurrencia mide `porMes.size` de **la candidata**. Son dos poblaciones y el
+código trataba a una como si protegiera a la otra.
+
+El doc del módulo promete, textual, que *"cinco semanas pueden tocar tres meses
+del calendario (31/1, 15/2, 1/3) y producir un 'gasto fijo' que es una casualidad
+de almanaque"*. Con un ledger de once meses, el freno está abierto y esa
+casualidad pasa entera. Verificado contra SQLite real: tres cargos en **29 días**
+salen como propuesta, y la pantalla dice a la vez *"visto en 3 meses distintos"*,
+*"suele caer el 28 de cada mes"* y, en la cabecera, *"sobre 10,9 meses de
+historial"* — cierto del ledger, falso de la propuesta.
+
+O sea que el freno **sólo cerraba en la primera instalación**. En cualquier
+billetera con uso real llevaba abierto desde siempre.
+
+**Corregido:** la candidata también tiene que durar. Los tres cargos mensuales
+consecutivos que menos días abarcan en el calendario son 31/1, 28/2 y 31/3: 59
+días. `DIAS_MINIMOS_DE_LA_CANDIDATA` son 56, que deja pasar a ésos y frena
+cualquier racha más corta. Sobre el ledger real las candidatas bajan de 19 a 17.
+
+---
+
+## 3. Lo que aguantó el ataque
+
+**`vistaProgreso`, cuatro vectores que resultaron ser teoremas.** Se derivó de
+`progress.ts` qué puede tomar cada campo, y cuatro de los cinco ataques son
+**inalcanzables por construcción**, no por guarda:
+
+- `covered_ratio > 1` — `remaining ⊆ baseline` siempre: `categorize()` decide
+  `retiro`/`servicio`/`recarga` por `type` antes de mirar reglas, y toda otra
+  fila `out` arranca en un fallback, así que una regla sólo puede **sacar** filas
+  del conjunto.
+- `answers_to_target = 0` con `done = false` — `answers = 0` sólo si
+  `neededCents == 0` (⟹ `covered >= 0,8·baseline` ⟹ `done`) o `remaining` vacío
+  (⟹ `covered == baseline` ⟹ `done`).
+- `groups = 0` con `unclassified_total > 0` — los dos se derivan del mismo array.
+- `target_ratio ≠ 0,8` — es una constante devuelta literal.
+
+**La lista blanca de orígenes, 31 vectores.** Todos los de *userinfo*
+(`http://localhost@atacante.com`, `http://127.0.0.1%2f@atacante.com`), el
+punycode, `data:`, `javascript:`, `//atacante.com`, `https:/atacante.com` y
+`http:atacante.com` caen en `foreign` y **no reciben la llave**. Los
+normalizadores de IPv4 de WHATWG (`127.1`, `0x7f.0.0.1`, `2130706433`, y hasta
+`①②⑦.0.0.1`) resuelven todos a `127.0.0.1` real, así que darles la llave es
+correcto. Los únicos dos casos donde el veredicto permitía credencial sin que el
+host fuera la máquina del usuario eran los de `*.localhost` (W13b).
+
+**La barra del gráfico y la lista de movimientos.** El rango no viaja del panel
+al motor: `consultaDe` manda `{category, limit, offset}` y `movements.ts` cae en
+`localMonthRange` — el **mismo** que usa el overview. Y la lista sale de
+`categorizedSpendingRows`, literalmente la misma selección y el mismo recálculo
+que dibuja la barra. La coincidencia no es una convención: es la misma función.
+
+**El alta (N4) no puede dejar una contraparte en bucle.** `CATEGORIAS_ELEGIBLES`
+del panel y `RESPONDABLE_CATEGORIES` del motor son la misma lista dicha dos
+veces, y `categorize()` consulta las reglas **antes** de caer en
+`transferencia_persona` — lo cual importa, porque la mitad de las propuestas del
+ledger real son transferencias.
+
+**El modo demo gana sobre `?api=`.** `getApiBase()` no lee el parámetro nunca; es
+una propuesta pendiente. Con demo guardado y un `?api=<backend caído>` en la
+URL, los datos son demo y el chip dice *Demostración*. Coherente. Y en demo no
+se pide llave: `probeHealth` corta antes de mirar el token.
+
+**Silenciar en el progreso y en la paginación.** Una contraparte silenciada deja
+de contar en `groups` y en `answers_to_target`, y su plata pasa a `covered_total`.
+Exactamente lo documentado, verificado ejecutando.
+
+**Los días de pago (`dias_pago`).** Se atacó la clase entera: `"0"`, `"32"`,
+`"-5"`, `"1.5"`, `"15;30"`, `"15 y 30"`, `"007"`, `"30-28"` (rango invertido),
+vacío y sólo espacios. Todos rechazados con `dias_pago_invalidos`, el panel
+muestra el motivo textual y **no navega**. `"15,15"` deduplica. Ningún día entra
+silenciosamente mal.
+
+**Responder dos veces la misma contraparte.** La segunda llamada devuelve
+`reclassified: 0` y `efecto.ts` lo traduce a tono `neu`: *"La regla quedó
+escrita, pero no movió ningún movimiento"*. Honesto. (Silenciar dos veces no lo
+era: ver W21.)
+
+**La ida y vuelta de `parsePlata` con `formatoPlata`** es exacta para 0, 1, 1,5,
+999,99, 1000, 1500, 12345, 1234567 y −1500, y el separador de miles que produce
+`Intl.NumberFormat("es")` es U+002E verificado por codepoint, no un espacio
+angosto que su inversa no leería.
+
+---
+
+## 4. Limitaciones aceptables (ronda 3)
+
+- **El alcance por substring sigue siendo el alcance.** Sin cambios: 9 de los 147
+  patrones de la cola están contenidos en otro, y en el peor caso responder por
+  el corto mueve 7 movimientos de 2 contrapartes cuando la tarjeta prometía 1.
+  W12 lo hace visible y W23 lo hace visible también en modo lote; cambiar el
+  matcher a igualdad sigue siendo una decisión de producto sobre `categorize()`.
+  Medido: **0 ciclos** (A contenido en B y B en A es imposible con patrones
+  distintos) y **0 cadenas de tres**.
+- **Silenciar es igualdad exacta y responder es substring.** Dos botones de la
+  misma tarjeta con dos alcances distintos: silenciar `Cafe Centro` deja
+  `Cafe Centro Sur` en la cola, y clasificarlo la saca. Ninguno miente —el texto
+  de cada uno es exacto para lo que hace— pero la asimetría no se explica.
+- **El desfase UTC ya no afecta al filtro** (W26), y lo que queda es el
+  `WALLET_UTC_OFFSET_HOURS` fijo contra zonas con DST, que `dates.ts` documenta
+  desde siempre.
+- **`diaTipico` puede ser 31.** Con cargos el 31 de meses de 31 días, la pantalla
+  dice *"suele caer el 31 de cada mes"*, que es falso para febrero, abril, junio,
+  septiembre y noviembre. Es **texto puro**: se verificó que no hay un solo
+  consumidor de cálculo (`recurring.ts` → `onboarding-route.ts` →
+  `RecurringCard.vue`, y nada más), así que no dispara el overflow de mes de
+  `new Date(2026, 1, 31)` → 3 de marzo. Si alguien alguna vez lo engancha a un
+  calendario, ahí sí hay una bomba y está medida.
+- **El día típico se afirma sin calificador propio.** `sampleSize` se muestra en
+  la columna del **monto** (*"mediana · visto en 3 meses distintos"*) y el día va
+  en la otra columna, solo. El dato está en la tarjeta pero el día toma prestada
+  la credibilidad de una línea redactada para otra cifra.
+- **La precarga del colchón redondea a dos decimales.** Un colchón guardado con
+  más precisión (vía `--set` o la tool MCP) se reescribe redondeado al pulsar
+  *Guardar y seguir* sin tocar nada. Son centavos, no órdenes de magnitud, pero
+  es una escritura de un valor que el usuario no confirmó.
+- **`RecurringCard` no avisa de los `needs_review` de la contraparte** y
+  `ClassifyCard` sí. La pantalla que pone una **cifra estimada** delante del
+  usuario es justamente la que no avisa que hay plata de esa contraparte fuera de
+  la cuenta.
+- **El deep link a una categoría sin filas del mes** (`#/movimientos?categoria=…`
+  escrito a mano o marcado) dibuja *"0 movimientos · es lo que contó la barra del
+  gráfico"* sin que haya habido barra. El número no es falso, su procedencia sí.
+- **En modo lote, `montosPendientes` es del ledger entero** mientras las cifras
+  de la tarjeta son del lote. W23 dice el alcance de los conteos; este aviso
+  concreto sigue mezclando dos poblaciones.
+- **El progreso queda pegado con dato viejo tras un refresco fallido** — pero
+  ahora **lo dice** (W20), que es lo que faltaba.
+- **`covered_ratio` y `unclassified_ratio` siguen midiendo cosas distintas**, y
+  eso está bien: lo que se corrigió es que la pantalla los mezclara (W19).
+- **El modo demo cablea `"USD"`** y **la descripción de una tool MCP dice
+  "in USD"**. Sin cambios respecto de la ronda 2.
+
+---
+
+## 5. Lo que quedó pendiente
+
+- **La verificación visual sigue siendo deuda manual.** Sin navegador headless en
+  este entorno, ninguna réplica del design system se comparó lado a lado con su
+  preview. Sin cambios desde la ronda 1.
+- **El checklist D14 de TASK-054** sigue sin marcar: son tareas en la máquina de
+  Mato.
+- **R25 sigue mintiendo fuera del panel.** `balance.ts` devuelve
+  `financiado: true` con objetivo en cero. El panel lo corrige en su capa; la
+  superficie de agentes, no. Merece su propio ticket en el motor.
+- **Silenciar sigue sin vuelta atrás desde el panel.** La salida existe en las
+  otras dos superficies (`DELETE /api/classify/silence` y la tool MCP con
+  `undo: true`); falta la pantalla.
+- **El acoplamiento `batch_size ≤ MAX_TRANSACTION_IDS` ahora está escrito pero no
+  hay un test que falle si alguien sube el `batch_size` máximo por encima del
+  tope de ids.** Los dos números viven en `api/schemas.ts` y valen 500; nada los
+  ata.

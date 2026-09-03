@@ -412,6 +412,7 @@ function demoClassifyProgress() {
     covered_ratio: base === 0 ? 1 : Math.round((cubierto / base) * 10_000) / 10_000,
     unclassified_total: queda,
     unclassified_ratio: Math.round((queda / spendingTotal) * 10_000) / 10_000,
+    remaining_ratio: base === 0 ? 0 : Math.round((queda / base) * 10_000) / 10_000,
     groups: restantes.length,
     transactions: restantes.reduce((sum, g) => sum + g.count, 0),
     target_ratio: 0.8,
@@ -495,8 +496,10 @@ function demoSilence(init?: RequestInit): Response {
   const { counterparty } = cuerpo(init) as { counterparty?: string };
   const patron = patronDe(counterparty ?? "");
   if (patron === "") return jsonResponse({ error: "empty_pattern" }, 400);
+  // `changed` como en el motor: la segunda vez no sale nada de la cola (W21).
+  const cambio = !demoRespondidas.has(patron);
   demoRespondidas.add(patron);
-  return jsonResponse({ ok: true, counterparty });
+  return jsonResponse({ ok: true, counterparty, pattern: patron, changed: cambio });
 }
 
 /**
@@ -734,12 +737,16 @@ function demoTransactions(path: string): Response {
   }
 
   const from = query.get("from");
+  // Un `YYYY-MM-DD` pelado es el día local completo, igual que en el motor
+  // (`api/routes.ts`, W26). La demo no tiene offset configurable: se toma UTC,
+  // que es su propia zona, y lo que importa es que el día 30 entre entero.
   const to = query.get("to");
+  const hasta = to === null ? null : /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999Z` : to;
   const direction = query.get("direction");
   const filtradas = DEMO_TRANSACTIONS.filter(
     (tx) =>
       (from === null || tx.ts >= from) &&
-      (to === null || tx.ts <= to) &&
+      (hasta === null || tx.ts <= hasta) &&
       (direction === null || tx.direction === direction)
   ).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
 

@@ -123,3 +123,50 @@ describe("R14 — una fila en otra moneda no ofrece Confirmar", () => {
     expect(w.find('[data-testid="review-otra-moneda"]').exists()).toBe(false);
   });
 });
+
+/**
+ * Wargaming ronda 3 (W16). W10 arregló el campo del colchón —una meta— y dejó
+ * intacto el único campo del panel que escribe `transactions.amount`, que es la
+ * plata misma. Éste leía con `Number(texto.replace(",", "."))`: exactamente el
+ * código que W3 declaró insuficiente y W10 reemplazó, sobreviviendo una
+ * pantalla más allá.
+ *
+ * El daño es peor que el del colchón y es persistente: `review/resolve.ts` sólo
+ * valida la FORMA (finito y no negativo), así que 1,5 pasa, la fila sale de
+ * `needs_review`, entra a todos los totales y queda marcada `source = 'human'`
+ * —o sea, afirmada por una persona— con el monto del parser ya sepultado en la
+ * auditoría. La invariante 1 del CLAUDE.md dice que el monto sale del parser;
+ * la única puerta por la que un humano lo pisa no puede leer mal lo que el
+ * humano escribió.
+ */
+describe("W16 — el monto corregido se lee con el mismo lector que el resto del panel", () => {
+  it("el punto de miles es miles, no un decimal (la tarjeta imprime 1.500,00 dos líneas más arriba)", async () => {
+    const w = montar();
+    await w.get('[data-testid="review-monto-nuevo"]').setValue("1.500");
+    await w.get('[data-testid="review-corregir"]').trigger("click");
+    expect(w.emitted("corregir")?.[0]).toEqual([1500]);
+  });
+
+  it("la cifra tal como el panel la imprime se puede copiar y pegar", async () => {
+    const w = montar();
+    await w.get('[data-testid="review-monto-nuevo"]').setValue("1.500,00");
+    await w.get('[data-testid="review-corregir"]').trigger("click");
+    expect(w.emitted("corregir")?.[0]).toEqual([1500]);
+  });
+
+  it("los dos separadores a la vez también (W17)", async () => {
+    const w = montar();
+    await w.get('[data-testid="review-monto-nuevo"]').setValue("1,234.56");
+    await w.get('[data-testid="review-corregir"]').trigger("click");
+    expect(w.emitted("corregir")?.[0]).toEqual([1234.56]);
+  });
+
+  it("lo que nadie escribe como plata no entra de contrabando", async () => {
+    const w = montar();
+    const boton = w.get('[data-testid="review-corregir"]');
+    for (const texto of ["0x10", "1e5", "+5", "1.", ",5", "2.5e3"]) {
+      await w.get('[data-testid="review-monto-nuevo"]').setValue(texto);
+      expect(boton.attributes("disabled")).toBeDefined();
+    }
+  });
+});

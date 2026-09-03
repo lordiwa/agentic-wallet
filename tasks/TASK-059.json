@@ -56,8 +56,13 @@
       "author": "orquestador",
       "body": "WARGAMING RONDA 2 (docs/wargaming-mvp.md, rama wargaming-mvp-r2) — veredicto: ROMPE (leve). El fix de W4 aguanto entero; se cayo otra cosa de la misma pantalla.\n\nW15 (AC2) — review/resolve.ts rechaza confirm sobre una fila en otra moneda y deja correct como la salida honesta, porque correct ES una persona afirmando el equivalente convertido: el monto que queda guardado esta en la moneda base y suma en los totales como tal. Pero la columna currency seguia diciendo la moneda vieja, y TransactionsTable.vue:149 dibuja monto + moneda: la tabla mostraba \"12,40 ARS\" sobre un numero que son dolares y que el motor suma como dolares. Es W6 al reves — ahi un dato desconocido se dibujaba como cifra, aca una cifra real lleva el rotulo equivocado. Corregido: correct escribe currency junto con amount y source. En una fila que ya estaba en la moneda base no cambia nada, y discard no lo toca (ahi nadie afirmo ningun equivalente). Test: server/src/review/resolve.test.ts.\n\nAGUANTO el fix de W4: se ataco con type IS NULL (0 filas en el ledger real, y la columna es NOT NULL en el esquema), con el reverso de un reverso y con las tres banderas cruzadas. Las dos filas del reverso se tapan y se destapan juntas.\n\nLIMITACION REMEDIDA: los filtros de fecha siguen cortando por dia UTC — 233 de 1140 filas (20 %) caen en un dia distinto del que el Resumen les asigna.",
       "created_at": "2026-09-03T04:35:51.960Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "Wargaming ronda 3 (docs/wargaming-mvp.md). Dos hallazgos, uno de ellos el más grave de la ronda.\n\nW16 — El campo de corrección de monto de `ReviewCard.vue` leía con `Number(texto.replace(\",\", \".\"))`: el mismo código que W3 declaró insuficiente y W10 reemplazó, sobreviviendo una pantalla más allá. \"1.500\" entraba como 1,5 y `0x10`/`1e5` pasaban de contrabando. Es el peor lugar posible: es la única puerta del sistema por la que un humano pisa `transactions.amount`, el motor sólo valida la forma, y la fila queda marcada `source = 'human'` con el monto del parser ya en la auditoría (CLAUDE.md, invariante 1). Ahora lee con `parsePlata`.\n\nW26 — AC de los dos filtros. El rango se mandaba como `from=YYYY-MM-DD` y `to=YYYY-MM-DDT23:59:59.999Z` (un instante UTC) contra un motor que bucketea por día LOCAL, así que la ventana quedaba corrida las horas del offset en los dos extremos. Medido sobre el ledger real: 233 de 1140 filas caen en un día distinto del que el Resumen les asigna, y filtrar \"el mes\" difiere del mes del motor en 6 filas. Las dos fechas viajan ahora como días pelados y `api/routes.ts` las interpreta como el día local completo: qué es un día lo decide el motor, no el panel (regla 4 de §2.3).",
+      "created_at": "2026-09-03T18:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T23:00:00.000Z",
-  "updated_at": "2026-09-03T04:35:51.960Z"
+  "updated_at": "2026-09-03T18:00:00.000Z"
 }

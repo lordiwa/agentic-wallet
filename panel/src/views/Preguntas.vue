@@ -197,7 +197,9 @@ function montosPendientesDe(grupo: ClassifyGroupRow): number {
   return montosPorContraparte.value.get(normalizar(grupo.counterparty)) ?? 0;
 }
 
-const avance = computed(() => (progreso.value === null ? null : vistaProgreso(progreso.value)));
+const avance = computed(() =>
+  progreso.value === null ? null : vistaProgreso(progreso.value, { vencido: errorCarga.value !== null })
+);
 
 /* ---- Las acciones ---- */
 
@@ -251,9 +253,9 @@ function saltar(grupo: ClassifyGroupRow): void {
  * que no tiene una sola verdad. */
 function silenciar(grupo: ClassifyGroupRow): void {
   void escribir(async () => {
-    await postSilence(grupo.counterparty);
+    const silenciado = await postSilence(grupo.counterparty);
     salteadas.value.delete(grupo.pattern);
-    return efectoDeSilenciar(grupo.counterparty, grupo.count, grupo.total);
+    return efectoDeSilenciar(grupo.counterparty, grupo.count, grupo.total, silenciado.changed);
   });
 }
 

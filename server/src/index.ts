@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import express from "express";
+import type { NextFunction, Request, Response } from "express";
 import { classifyRequestAuth, createAuthMiddleware, normalizeAccessToken } from "./api/auth.js";
 import { createCorsMiddleware, parseAllowedOrigins } from "./api/cors.js";
 import { createApiRouter } from "./api/routes.js";
@@ -16,6 +17,7 @@ import { startDailyBriefScheduler } from "./brief/scheduler.js";
 import type { QueryFn } from "./chat/chat-service.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/open.js";
+import { logInfo } from "./db/telemetry.js";
 import { seedDatabase } from "./seed/seed.js";
 import { buildProductionSyncRunner } from "./sync/build-sync-runner.js";
 
@@ -131,6 +133,29 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
   // return JSON 404 instead of falling through to index.html (F1-01 follow-up).
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "not found" });
+  });
+
+  /**
+   * La red debajo de `/api`. No habia ninguna: cualquier `throw` de cualquier
+   * ruta caia en el manejador por defecto de express, que sin
+   * `NODE_ENV=production` —y `npm start` es `node dist/index.js`, no lo fija—
+   * contesta **HTML con el stack trace completo y rutas absolutas del
+   * filesystem** (wargaming ronda 3, W24).
+   *
+   * El cliente de este server es un panel que espera JSON y traduce codigos, y
+   * un agente por MCP: los dos leen mejor `{"error":"internal error"}` que una
+   * pagina de express. El detalle va a `stderr`, que es donde vive el log.
+   *
+   * Los cuatro argumentos son obligatorios: express distingue un manejador de
+   * errores de un middleware normal por la aridad, y con tres se convierte en
+   * un middleware que no se ejecuta nunca.
+   */
+  app.use("/api", (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    // Sólo el mensaje y nada del stack: el stack lleva rutas del filesystem, y
+    // esto sale por stderr a un log que puede terminar en cualquier lado.
+    logInfo("api.unhandled_error", { message: err instanceof Error ? err.message : String(err) });
+    if (res.headersSent) return;
+    res.status(500).json({ error: "internal error" });
   });
 
   // Serve the built SPA (web/dist) so backend + frontend run on a single local port.

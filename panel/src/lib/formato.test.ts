@@ -117,3 +117,40 @@ describe("parsePlata — el punto de miles de `es` (W10)", () => {
     }
   });
 });
+
+/**
+ * Wargaming ronda 3 (W17). W10 cerró el formato `es` con punto de miles y dejó
+ * abierto el tercero que un usuario puede tener delante: **coma de miles con
+ * punto decimal**, que es como imprime la plata la plaza donde vive el ledger
+ * de este proyecto. La rama de la coma asumía "hay coma ⇒ la coma es el
+ * decimal", así que borraba el punto —que era el decimal de verdad— y devolvía
+ * una cifra mil veces más chica. Exactamente el síntoma de W10, por la otra
+ * mitad del mismo `if`.
+ *
+ * Con los dos separadores presentes la lectura no es única, y una cifra
+ * ambigua no se adivina: manda el ÚLTIMO separador, que es la única regla que
+ * las dos convenciones comparten.
+ */
+describe("parsePlata — los dos separadores a la vez (W17)", () => {
+  it("con coma y punto manda el último separador: el punto es el decimal", () => {
+    expect(parsePlata("1,234.56")).toBe(1234.56);
+    expect(parsePlata("1,234,567.89")).toBe(1234567.89);
+    expect(parsePlata("12,345.00")).toBe(12345);
+  });
+
+  it("y al revés sigue valiendo lo de siempre: la coma es el decimal", () => {
+    expect(parsePlata("1.234,56")).toBe(1234.56);
+    expect(parsePlata("1.234.567,89")).toBe(1234567.89);
+  });
+
+  it("un separador solo se sigue leyendo con la regla de W10", () => {
+    expect(parsePlata("1.500")).toBe(1500);
+    expect(parsePlata("1,5")).toBe(1.5);
+    expect(parsePlata("1234.5")).toBe(1234.5);
+  });
+
+  it("los grupos que no son de tres siguen sin ser miles", () => {
+    expect(parsePlata("1,23.456")).toBeNull();
+    expect(parsePlata("1.2,3")).toBeNull();
+  });
+});

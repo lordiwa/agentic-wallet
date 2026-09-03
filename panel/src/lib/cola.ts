@@ -9,7 +9,7 @@
  * `.vue` no se pueden probar sin montar un navegador.
  */
 import type { ClassifyGroupRow, ClassifyProgressResponse } from "../api/types";
-import { formatoEntero, formatoPlata, formatoPorcentaje } from "./formato";
+import { formatoEntero, formatoPlata, formatoPorcentaje, plural } from "./formato";
 
 /**
  * Cuántos grupos entran en una página.
@@ -101,8 +101,36 @@ export interface VistaProgreso {
  * fila, cero es un estado que nadie alcanza en una tarde. `done` lo decide el
  * motor (`classify/progress.ts`), no esta función — acá sólo se escribe.
  */
-export function vistaProgreso(progreso: ClassifyProgressResponse): VistaProgreso {
+export interface OpcionesDeProgreso {
+  /**
+   * El último refresco falló, así que estos números son los de antes.
+   *
+   * W5 cerró el estado **vacío** con `ledgerLeido` y dejó abierto el poblado,
+   * que afirma mucho más: una escritura exitosa seguida de un refresco fallido
+   * dejaba la tarjeta celebrando en verde al lado del cartel rojo, con los
+   * montos previos a la escritura (wargaming ronda 3, W20). Dato viejo con cara
+   * de dato fresco es la misma clase que W5, en el otro estado.
+   */
+  vencido?: boolean;
+}
+
+export function vistaProgreso(
+  progreso: ClassifyProgressResponse,
+  { vencido = false }: OpcionesDeProgreso = {}
+): VistaProgreso {
   const ancho = Math.min(100, Math.max(0, Math.round(progreso.covered_ratio * 100)));
+
+  if (vencido) {
+    return {
+      ancho,
+      celebra: false,
+      titulo: `Sigue sin clasificar el ${formatoPorcentaje(
+        progreso.remaining_ratio
+      )} de la plata que había para clasificar`,
+      detalle:
+        "El backend no respondió al refrescar, así que estos números son los de antes de tu última respuesta: puede que ya no sean éstos. Probá de nuevo cuando vuelva.",
+    };
+  }
 
   /*
    * Sin línea de base no hay nada que celebrar (wargaming ronda 2, W11).
@@ -123,15 +151,32 @@ export function vistaProgreso(progreso: ClassifyProgressResponse): VistaProgreso
     };
   }
 
+  /*
+   * El porcentaje se dice con su denominador (wargaming ronda 3, W19).
+   *
+   * `covered_ratio` es sobre `baseline_total` —la plata que alguna vez tuvo una
+   * pregunta— y `unclassified_ratio` era sobre `spending_total` —todo el gasto—,
+   * y esta función llamaba "tu plata" a las dos. Con 240 de 300 respondidos
+   * sobre 1000 de gasto, la tarjeta celebraba *"Cubriste el 80 % de tu plata"*
+   * en verde: el usuario había cubierto el 24 % de su plata. Y sobre el ledger
+   * real imprimía a la vez un título del 76 %, una barra al 16 % y un pie cuyos
+   * dos montos dan 84 %.
+   *
+   * Los tres números eran ciertos por separado. El defecto no era ninguno de
+   * ellos: era ponerlos juntos como si se complementaran. Ahora la barra, el
+   * título y el pie hablan de `baseline_total` —`remaining_ratio` es el
+   * complemento exacto de `covered_ratio`— y el texto nombra de qué está
+   * hablando en vez de decir "tu plata".
+   */
   if (progreso.done) {
     return {
       ancho,
       celebra: true,
-      titulo: `Cubriste el ${formatoPorcentaje(progreso.covered_ratio)} de tu plata`,
+      titulo: `Cubriste el ${formatoPorcentaje(progreso.covered_ratio)} de la plata que había para clasificar`,
       detalle:
         progreso.groups === 0
           ? "No queda ninguna contraparte por responder."
-          : `Quedan ${formatoEntero(progreso.groups)} contrapartes por ${formatoPlata(
+          : `Quedan ${plural(progreso.groups, "contraparte", "contrapartes")} por ${formatoPlata(
               progreso.unclassified_total
             )}. Respondelas si querés: para que los números signifiquen algo, ya alcanza.`,
     };
@@ -140,10 +185,12 @@ export function vistaProgreso(progreso: ClassifyProgressResponse): VistaProgreso
   return {
     ancho,
     celebra: false,
-    titulo: `Te queda el ${formatoPorcentaje(progreso.unclassified_ratio)} de tu plata sin clasificar`,
+    titulo: `Sigue sin clasificar el ${formatoPorcentaje(progreso.remaining_ratio)} de la plata que había para clasificar`,
     detalle: `${formatoEntero(progreso.answers_to_target)} ${
       progreso.answers_to_target === 1 ? "respuesta más cubre" : "respuestas más cubren"
-    } ${formatoPlata(progreso.amount_to_target)} y llegás al ${formatoPorcentaje(progreso.target_ratio)} de tu plata.`,
+    } ${formatoPlata(progreso.amount_to_target)} y llegás al ${formatoPorcentaje(
+      progreso.target_ratio
+    )} de esa plata.`,
   };
 }
 

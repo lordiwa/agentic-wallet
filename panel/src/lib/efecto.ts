@@ -95,8 +95,30 @@ export function efectoDeClasificar(respuesta: ClassifyApplyResponse): Efecto {
   };
 }
 
-/** El resultado de silenciar una contraparte (M5). */
-export function efectoDeSilenciar(contraparte: string, movimientos: number, plata: number): Efecto {
+/**
+ * El resultado de silenciar una contraparte (M5).
+ *
+ * **`cambio: false` no es éxito** — es la misma regla R13 que
+ * `efectoDeResolver` cumple desde el principio, y que acá faltaba porque el
+ * `POST` no devolvía `changed` (wargaming ronda 3, W21). Silenciar algo ya
+ * silenciado no saca un solo movimiento de la cola, y esta función celebraba
+ * igual, con los números de la tarjeta que la pantalla tenía en la mano.
+ */
+export function efectoDeSilenciar(
+  contraparte: string,
+  movimientos: number,
+  plata: number,
+  cambio: boolean
+): Efecto {
+  if (!cambio) {
+    return {
+      tono: "neu",
+      titulo: `A ${contraparte} ya la habías silenciado.`,
+      detalle:
+        "No salió ningún movimiento de la cola por esta acción: la contraparte estaba fuera desde antes, desde otra pestaña, el CLI o la tool MCP. La lista se refresca para que veas cómo quedó.",
+    };
+  }
+
   return {
     tono: "ok",
     titulo: `No se pregunta más por ${contraparte}.`,

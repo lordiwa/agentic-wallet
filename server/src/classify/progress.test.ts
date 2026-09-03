@@ -47,6 +47,7 @@ describe("classifyProgress (H35, M1) — el progreso se mide en plata", () => {
       covered_ratio: 0,
       unclassified_total: 200,
       unclassified_ratio: 1,
+      remaining_ratio: 1,
       groups: 4,
       transactions: 4,
       target_ratio: 0.8,

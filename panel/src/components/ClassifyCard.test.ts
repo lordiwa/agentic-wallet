@@ -97,3 +97,32 @@ describe("el orden entre pestañas, dicho en la tarjeta", () => {
     expect(aviso).toContain("no entra a ningún total");
   });
 });
+
+/**
+ * Wargaming ronda 3 (W23). En modo lote la tarjeta contaba el lote y el
+ * escritor mueve el ledger entero: "2 movimientos" arriba, "reclasificaste 47"
+ * un segundo después. El pie afirmaba, textual, que la regla vale para "los 2
+ * movimientos de esta contraparte", que era falso por construcción.
+ */
+describe("W23 — en modo lote la tarjeta dice lo que hay fuera del lote", () => {
+  it("cuando el ledger tiene más que el lote, lo dice con el número", () => {
+    const w = montar({ grupo: grupo({ count: 2, total: 40, count_en_ledger: 47, total_en_ledger: 900 }) });
+    const alcance = w.get('[data-testid="classify-alcance-lote"]').text();
+    expect(alcance).toContain("47");
+    expect(alcance).toContain("900,00");
+  });
+
+  it("el pie deja de prometer el número del lote", () => {
+    const w = montar({ grupo: grupo({ count: 2, total: 40, count_en_ledger: 47, total_en_ledger: 900 }) });
+    expect(w.get('[data-testid="classify-pie"]').text()).not.toContain("los 2 movimientos");
+  });
+
+  it("sin lote, o con el lote completo, no hay nada que aclarar", () => {
+    expect(montar({ grupo: grupo({ count: 2 }) }).find('[data-testid="classify-alcance-lote"]').exists()).toBe(false);
+    expect(
+      montar({ grupo: grupo({ count: 2, total: 40, count_en_ledger: 2, total_en_ledger: 40 }) })
+        .find('[data-testid="classify-alcance-lote"]')
+        .exists()
+    ).toBe(false);
+  });
+});

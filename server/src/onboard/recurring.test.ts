@@ -265,7 +265,12 @@ describe("suggestRecurringExpenses — el día típico y el tamaño de la muestr
       [1, 3],
       [2, 5],
       [3, 5],
-      [4, 28],
+      // El cuarto cargo era el 28 y la propuesta seguía diciendo "el 5": dos
+      // cargos de cuatro no son "suele" (wargaming ronda 3, W18). Con el
+      // corrimiento de un día la mayoría existe y el caso que este test
+      // describe —el día es el del centro, no el primero ni el último— se sigue
+      // probando.
+      [4, 6],
     ] as const) {
       insertTransaction(db, gasto("SERVICIO FICTICIO CINCO", mes, dia, 30));
     }
@@ -355,9 +360,13 @@ describe("suggestRecurringExpenses — el freno de los 3 meses (R33, criterio 5)
   });
 
   it("las candidatas del historial corto quedan en la cola, no desaparecen", () => {
-    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 1, 31, 20));
-    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 2, 15, 20));
-    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 3, 1, 20));
+    // Los días eran 31/1, 15/2 y 1/3 — la casualidad de almanaque del criterio
+    // 4, que desde W28 ya no es candidata ni con el freno abierto. Acá se
+    // prueba el freno, no la duración, así que la candidata es mensual de
+    // verdad y lo que la detiene es el historial corto del ledger.
+    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 1, 5, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 2, 5, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO NUEVE", 3, 5, 20));
 
     const salida = suggestRecurringExpenses(db);
 
@@ -420,12 +429,18 @@ describe("suggestRecurringExpenses — nada se guarda (criterio 4)", () => {
  * eliminar, entrando por otra puerta.
  */
 describe("diaTipicoDe — el día que se dice es un día en el que pasó algo (W9)", () => {
+  // Las dos primeras devolvían un día observado (el 10 y el 28) y eso ya era
+  // mejor que el 12 y el 30 que inventaba W2. La ronda 3 las endurece: con la
+  // mitad de los cargos en el otro racimo no hay tendencia que nombrar, así que
+  // ahora es `null`. Ver W18, abajo.
   it("una distribución bimodal no inventa el hueco del medio", () => {
-    expect([10, 10, 14, 14]).toContain(diaTipicoDe([10, 10, 14, 14]));
+    expect([10, 10, 14, 14, null]).toContain(diaTipicoDe([10, 10, 14, 14]));
+    expect(diaTipicoDe([10, 10, 14, 14])).not.toBe(12);
   });
 
   it("dos días seguidos no producen el día de al lado", () => {
-    expect([28, 31]).toContain(diaTipicoDe([28, 28, 31, 31]));
+    expect([28, 31, null]).toContain(diaTipicoDe([28, 28, 31, 31]));
+    expect(diaTipicoDe([28, 28, 31, 31])).not.toBe(30);
   });
 
   it("nunca devuelve un día que no está entre los observados", () => {
@@ -449,7 +464,114 @@ describe("diaTipicoDe — el día que se dice es un día en el que pasó algo (W
 
   it("lo que ya leía bien sigue leyéndose igual", () => {
     expect(diaTipicoDe([3, 4, 5])).toBe(4);
-    expect(diaTipicoDe([7, 9, 11])).toBe(9);
     expect(diaTipicoDe([15, 15, 15])).toBe(15);
+    // `[7, 9, 11]` estaba acá y daba 9. La ronda 3 lo saca: el 9 ocurrió una
+    // sola vez de tres y los otros dos cargos están a dos días, que ya no es el
+    // mismo día corrido por un fin de semana. Ver W18.
+    expect(diaTipicoDe([7, 9, 11])).toBeNull();
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W18). W9 exigió que el día que se nombra sea un día
+ * **observado**, y eso se cumplió al pie de la letra. La clase era otra: la
+ * pantalla no dice "el 20 pasó algo", dice **"suele caer el 20"**, que es una
+ * afirmación sobre la tendencia y no sobre un día suelto.
+ *
+ * Medido sobre el ledger real después del arreglo de W9, 4 de las 5 propuestas
+ * que afirmaban un día lo afirmaban sobre un día que ocurrió **una sola vez**:
+ * la peor, con los cargos en 3, 20, 22 y 23, decía *"suele caer el 20"* — un día
+ * de cuatro, con los otros tres en otras fechas. La desviación absoluta mediana
+ * daba 1,5 y el guarda de W9 la dejaba pasar, porque el día 20 existe. La
+ * mediana se había puesto el disfraz de una observación.
+ *
+ * "Suele" pide mayoría: más de la mitad de los cargos tienen que caer en el día
+ * que se nombra o en uno pegado (el corrimiento del débito que cae en fin de
+ * semana y se procesa el lunes, que es para lo que existe el margen). Si no la
+ * hay, el gasto no tiene un día: tiene una semana, y esta pantalla no sabe decir
+ * una semana, así que no dice nada.
+ */
+describe("diaTipicoDe — 'suele' es una mayoría, no una moda de uno (W18)", () => {
+  it("un día que ocurrió una vez de cuatro no es una tendencia", () => {
+    expect(diaTipicoDe([3, 20, 22, 23])).toBeNull();
+  });
+
+  it("tres días distintos y separados no tienen un día típico", () => {
+    expect(diaTipicoDe([18, 21, 25])).toBeNull();
+    expect(diaTipicoDe([7, 9, 11])).toBeNull();
+  });
+
+  it("empate mitad y mitad tampoco: la mitad no es la mayoría", () => {
+    expect(diaTipicoDe([10, 10, 14, 14])).toBeNull();
+    expect(diaTipicoDe([28, 28, 31, 31])).toBeNull();
+    expect(diaTipicoDe([5, 5, 5, 9, 9, 9])).toBeNull();
+    expect(diaTipicoDe([13, 14, 16, 17])).toBeNull();
+  });
+
+  it("dos observaciones a tres días de distancia no afirman ninguna de las dos", () => {
+    expect(diaTipicoDe([28, 31])).toBeNull();
+  });
+
+  it("el corrimiento de un día sigue siendo el mismo día", () => {
+    expect(diaTipicoDe([3, 4, 5])).toBe(4);
+    expect(diaTipicoDe([14, 15, 15, 16])).toBe(15);
+  });
+
+  it("lo que se repite de verdad se sigue diciendo", () => {
+    expect(diaTipicoDe([15, 15, 15])).toBe(15);
+    expect(diaTipicoDe([4, 4, 4, 4])).toBe(4);
+    expect(diaTipicoDe([15, 15])).toBe(15);
+    expect(diaTipicoDe([1, 1, 1, 31])).toBe(1);
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W28). El freno de R33 estaba puesto en el lugar
+ * equivocado: `mesesDeHistorial` mide el **ledger entero**
+ * (`suggest.ts`, `MAX(ts) - MIN(ts)`), y la regla de recurrencia mide **la
+ * candidata** (`porMes.size >= 3`). El código trataba a una como si protegiera
+ * a la otra.
+ *
+ * El doc del módulo promete, textual, que "cinco semanas pueden tocar tres
+ * meses del calendario (31/1, 15/2, 1/3) y producir un gasto fijo que es una
+ * casualidad de almanaque". Con un ledger de once meses el freno está abierto y
+ * esa casualidad pasa entera: tres cargos en 29 días se proponen como gasto
+ * fijo, con la cabecera diciendo *"sobre 10,9 meses de historial"* — que es
+ * cierto del ledger y falso de la propuesta.
+ *
+ * O sea que el freno sólo cerraba en la primera instalación. En cualquier
+ * billetera con uso real llevaba abierto desde siempre.
+ */
+describe("suggestRecurringExpenses — la candidata también tiene que durar (W28)", () => {
+  it("tres cargos en cinco semanas no son un gasto fijo, aunque toquen tres meses", () => {
+    historialDeSeisMeses();
+    insertTransaction(db, gasto("SERVICIO FICTICIO ALMANAQUE", 1, 31, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO ALMANAQUE", 2, 15, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO ALMANAQUE", 3, 1, 20));
+
+    const { propuestas } = suggestRecurringExpenses(db);
+    expect(propuestas.find((p) => p.counterparty === "SERVICIO FICTICIO ALMANAQUE")).toBeUndefined();
+  });
+
+  it("ni tres cargos en veintinueve días", () => {
+    historialDeSeisMeses();
+    insertTransaction(db, gasto("SERVICIO FICTICIO CORTO", 1, 31, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO CORTO", 2, 28, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO CORTO", 3, 1, 20));
+
+    const { propuestas } = suggestRecurringExpenses(db);
+    expect(propuestas.find((p) => p.counterparty === "SERVICIO FICTICIO CORTO")).toBeUndefined();
+  });
+
+  it("un gasto mensual de verdad sigue entrando, incluso el más apretado", () => {
+    historialDeSeisMeses();
+    // 31/1, 28/2 y 31/3: los tres cargos mensuales consecutivos que menos días
+    // abarcan que existen en el calendario.
+    insertTransaction(db, gasto("SERVICIO FICTICIO MENSUAL", 1, 31, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO MENSUAL", 2, 28, 20));
+    insertTransaction(db, gasto("SERVICIO FICTICIO MENSUAL", 3, 31, 20));
+
+    const { propuestas } = suggestRecurringExpenses(db);
+    expect(propuestas.find((p) => p.counterparty === "SERVICIO FICTICIO MENSUAL")).toBeDefined();
   });
 });

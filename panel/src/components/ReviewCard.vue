@@ -39,7 +39,7 @@
 import { computed, ref } from "vue";
 import type { TransactionRow } from "../api/types";
 import { QUE_HACE_CADA_ACCION } from "../lib/efecto";
-import { ROTULO_SIN_CONFIRMAR, formatoEntero, formatoFecha, formatoPlata } from "../lib/formato";
+import { ROTULO_SIN_CONFIRMAR, formatoEntero, formatoFecha, formatoPlata, parsePlata } from "../lib/formato";
 
 const props = withDefaults(
   defineProps<{
@@ -72,13 +72,26 @@ const otraMoneda = computed(
   () => props.monedaPerfil !== null && props.monedaPerfil !== "" && props.fila.currency !== props.monedaPerfil
 );
 
-/** El monto tecleado, sólo si es un número que una persona puede afirmar.
- * **Cero es válido** — lo desconocido nunca llega por este campo. */
+/**
+ * El monto tecleado, sólo si es un número que una persona puede afirmar.
+ * **Cero es válido** — lo desconocido nunca llega por este campo.
+ *
+ * Se lee con `parsePlata`, el mismo lector que el resto del panel, y no con
+ * `Number()` (wargaming ronda 3, W16). Éste era el último campo con el código
+ * que W3 declaró insuficiente y W10 reemplazó: leía "1.500" —la cifra que esta
+ * misma tarjeta imprime cuatro líneas más arriba con `formatoPlata`— como 1,5,
+ * y aceptaba de contrabando `0x10` y `1e5`.
+ *
+ * Y es el peor lugar donde podía quedar: es la única puerta del sistema por la
+ * que un humano pisa `transactions.amount`. El motor sólo valida la forma
+ * (`review/resolve.ts`, `isWritableAmount`), así que 1,5 pasa, la fila entra a
+ * todos los totales y queda marcada `source = 'human'` con el monto del parser
+ * ya en la auditoría. La invariante 1 del CLAUDE.md dice que el monto sale del
+ * parser; la excepción no puede leer mal lo que la persona escribió.
+ */
 const montoCorregido = computed<number | null>(() => {
-  const crudo = correccion.value.trim().replace(",", ".");
-  if (crudo === "") return null;
-  const valor = Number(crudo);
-  return Number.isFinite(valor) && valor >= 0 ? valor : null;
+  const valor = parsePlata(correccion.value);
+  return valor !== null && valor >= 0 ? valor : null;
 });
 
 function guardarCorreccion(): void {

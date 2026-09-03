@@ -48,9 +48,26 @@ export interface ClassifyProgress {
   covered_ratio: number;
   /** La plata que sigue en la cola. */
   unclassified_total: number;
-  /** `unclassified_total / spending_total`, 0..1 — "te queda el 47 % de tu
-   * plata sin clasificar". */
+  /**
+   * `unclassified_total / spending_total`, 0..1: qué proporción de **todo el
+   * gasto** sigue sin clasificar.
+   *
+   * **No es el complemento de `covered_ratio`** y no se puede dibujar al lado de
+   * él: tienen denominadores distintos. La pantalla mezclaba los dos y llamaba
+   * "tu plata" a las dos cosas (wargaming ronda 3, W19). Quien quiera el
+   * complemento de la barra usa `remaining_ratio`.
+   */
   unclassified_ratio: number;
+  /**
+   * `unclassified_total / baseline_total`, 0..1 — **el complemento exacto de
+   * `covered_ratio`**, y el único número que se puede poner junto a la barra sin
+   * que la suma dé cualquier cosa.
+   *
+   * Existe por W19: la tarjeta de la cola imprimía a la vez un título del 76 %
+   * (sobre el gasto), una barra al 16 % (sobre la línea de base) y un pie cuyos
+   * dos montos dan 84 %. Los tres eran ciertos y ninguno cerraba con los otros.
+   */
+  remaining_ratio: number;
   /** Contrapartes que quedan por responder. */
   groups: number;
   /** Movimientos que representan esas contrapartes. */
@@ -109,6 +126,7 @@ export function classifyProgress(db: Database.Database): ClassifyProgress {
     covered_ratio: baselineCents === 0 ? 1 : ratio(coveredCents, baselineCents),
     unclassified_total: fromCents(remainingCents),
     unclassified_ratio: ratio(remainingCents, spendingCents),
+    remaining_ratio: baselineCents === 0 ? 0 : ratio(remainingCents, baselineCents),
     groups: remaining.length,
     transactions: remaining.reduce((sum, group) => sum + group.count, 0),
     target_ratio: MONEY_TARGET_RATIO,

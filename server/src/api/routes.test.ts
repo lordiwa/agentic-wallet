@@ -411,3 +411,96 @@ describe("unknown /api/* routes", () => {
       });
   });
 });
+
+/**
+ * Wargaming ronda 3 (W24). Dos agujeros en la misma línea de defensa: **el
+ * borde no acota el tamaño de la lista, y el server no tiene red debajo**.
+ *
+ * `selectClassifiableRows` arma `id IN (?, …)` con un placeholder por id, y
+ * SQLite corta en 32766 variables. `transaction_ids` no tenía tope en ninguna
+ * de sus dos superficies (`classifyQueueQuerySchema` y la tool MCP
+ * `get_classify_queue`, que además sí capa `limit`), así que la lista larga
+ * llegaba hasta el `prepare` y tiraba — y como `createApp` no monta ningún
+ * manejador de errores y nada fija `NODE_ENV=production`, express contestaba
+ * **500 con el stack trace completo y rutas absolutas del filesystem**.
+ *
+ * Lo segundo no es de esta ruta: es de cualquier `throw` de cualquier ruta.
+ */
+describe("W24 — la lista de ids tiene tope, y un throw no imprime el stack", () => {
+  it("una lista de ids más larga que el tope es un 400, no un 500", async () => {
+    const ids = Array.from({ length: 501 }, (_, i) => i + 1).join(",");
+    const res = await request(app).get(`/api/classify/queue?transaction_ids=${ids}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("el tope deja pasar un lote entero del sync", async () => {
+    const ids = Array.from({ length: 500 }, (_, i) => i + 1).join(",");
+    const res = await request(app).get(`/api/classify/queue?transaction_ids=${ids}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("un error del motor se contesta en JSON y sin rastro del filesystem", async () => {
+    // La base cerrada hace tirar a cualquier consulta: es la forma más barata
+    // de provocar el `throw` de una ruta real sin inventar una ruta de prueba.
+    db.close();
+    const res = await request(app).get("/api/overview");
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "internal error" });
+    expect(res.text).not.toContain("server/src");
+    expect(res.text).not.toContain("at ");
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W26). El panel manda `from=2026-09-01` y
+ * `to=2026-09-30T23:59:59.999Z`, y `queryTransactions` compara esos strings
+ * contra `ts`, que es un instante **UTC**. Todo el resto del motor bucketea por
+ * **día local** (`strategy/dates.ts`, offset configurable), así que la ventana
+ * del filtro queda corrida las horas del offset en los dos extremos: se pierden
+ * las compras de la noche del último día del rango y se cuelan las de la noche
+ * anterior al primero.
+ *
+ * Es la clase de W17 en el otro eje: **el mismo dato con dos lecturas y ningún
+ * error**. Medido sobre el ledger real, 233 de 1140 filas caen en un día
+ * distinto del que el Resumen les asigna, y filtrar "el mes" difiere del mes del
+ * motor en 6 filas.
+ *
+ * La salida es la misma que en el resto del proyecto: **qué es un día lo decide
+ * el motor**, no el panel. Un `YYYY-MM-DD` pelado se interpreta como el día
+ * local completo; un instante ISO con hora sigue siendo un instante.
+ */
+describe("GET /transactions — un día del filtro es un día LOCAL (W26)", () => {
+  beforeEach(() => {
+    process.env.WALLET_UTC_OFFSET_HOURS = "-5";
+  });
+
+  it("incluye la noche del último día del rango", async () => {
+    // 2026-10-01T02:00Z es el 30 de septiembre a las 21:00 en -05:00.
+    insertTransaction(db, baseTx({ gmail_msg_id: "noche", ts: "2026-10-01T02:00:00Z", amount: 11 }));
+
+    const res = await request(app).get("/api/transactions?from=2026-09-01&to=2026-09-30");
+
+    expect(res.status).toBe(200);
+    expect(res.body.transactions.map((t: { gmail_msg_id: string }) => t.gmail_msg_id)).toContain("noche");
+  });
+
+  it("y no cuela la noche anterior al primero", async () => {
+    // 2026-09-01T02:00Z es el 31 de agosto a las 21:00 en -05:00.
+    insertTransaction(db, baseTx({ gmail_msg_id: "vispera", ts: "2026-09-01T02:00:00Z", amount: 12 }));
+
+    const res = await request(app).get("/api/transactions?from=2026-09-01&to=2026-09-30");
+
+    expect(res.body.transactions.map((t: { gmail_msg_id: string }) => t.gmail_msg_id)).not.toContain("vispera");
+  });
+
+  it("un instante con hora se sigue tomando como instante", async () => {
+    insertTransaction(db, baseTx({ gmail_msg_id: "exacto", ts: "2026-09-15T12:00:00Z", amount: 13 }));
+
+    const res = await request(app).get(
+      "/api/transactions?from=2026-09-15T00:00:00Z&to=2026-09-15T23:59:59.999Z"
+    );
+
+    expect(res.body.transactions.map((t: { gmail_msg_id: string }) => t.gmail_msg_id)).toContain("exacto");
+  });
+});

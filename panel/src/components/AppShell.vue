@@ -21,8 +21,8 @@
  * arriba (D6): las tres superficies quedan usables en un teléfono aunque sólo
  * el Resumen tenga diseño chico propio.
  */
-import { computed } from "vue";
-import { isDemoMode } from "../api/base";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { isDemoMode, onBackendChange } from "../api/base";
 import { toHash, type Pantalla } from "../router/ruta";
 
 const props = defineProps<{ pantalla: Pantalla }>();
@@ -38,7 +38,23 @@ const enlaces = computed(() =>
   ENLACES.map((enlace) => ({ ...enlace, href: toHash(enlace.pantalla), activo: enlace.pantalla === props.pantalla }))
 );
 
-const demo = isDemoMode();
+/**
+ * De donde salen los datos, dicho en voz alta y **en vivo**.
+ *
+ * Era un `const`, o sea una foto del momento en que se monto la barra lateral.
+ * El backend se puede cambiar sin recargar (el chip acepta la propuesta de
+ * `?api=`), asi que un enlace `?api=demo` dejaba el panel sirviendo datos
+ * inventados sin un solo cartel — y el caso inverso dejaba el cartel de
+ * demostracion sobre el ledger real (wargaming ronda 3, W25).
+ */
+const demo = ref(isDemoMode());
+let dejarDeEscuchar: (() => void) | null = null;
+onMounted(() => {
+  dejarDeEscuchar = onBackendChange(() => {
+    demo.value = isDemoMode();
+  });
+});
+onUnmounted(() => dejarDeEscuchar?.());
 </script>
 
 <template>

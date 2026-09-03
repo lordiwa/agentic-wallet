@@ -125,6 +125,9 @@ interface Acumulador {
   porMes: Map<string, number>;
   /** Los días del mes observados, para el día típico. */
   dias: number[];
+  /** El primero y el último, para medir cuánto dura la propia candidata. Ver
+   * `DIAS_MINIMOS_DE_LA_CANDIDATA`. */
+  firstTs: string;
   lastTs: string;
 }
 
@@ -173,6 +176,7 @@ function agruparCandidatas(db: Database.Database): Acumulador[] {
         cents,
         porMes: new Map([[mes, cents]]),
         dias: [dia],
+        firstTs: row.ts,
         lastTs: row.ts,
       });
       continue;
@@ -182,6 +186,7 @@ function agruparCandidatas(db: Database.Database): Acumulador[] {
     existente.cents += cents;
     existente.porMes.set(mes, (existente.porMes.get(mes) ?? 0) + cents);
     existente.dias.push(dia);
+    if (row.ts < existente.firstTs) existente.firstTs = row.ts;
     // La grafía que se muestra es la del movimiento más reciente: el banco
     // cambia cómo escribe un comercio, y la última es la que el usuario vio.
     if (row.ts > existente.lastTs) {
@@ -190,7 +195,35 @@ function agruparCandidatas(db: Database.Database): Acumulador[] {
     }
   }
 
-  return [...grupos.values()].filter((grupo) => grupo.porMes.size >= MESES_PARA_SER_FIJO);
+  return [...grupos.values()].filter(
+    (grupo) => grupo.porMes.size >= MESES_PARA_SER_FIJO && duracionEnDias(grupo) >= DIAS_MINIMOS_DE_LA_CANDIDATA
+  );
+}
+
+/**
+ * Cuántos días separan al primer cargo del último de una candidata.
+ *
+ * **El freno de R33 estaba puesto sobre el ledger y no sobre la propuesta**
+ * (wargaming ronda 3, W28). `suficienteHistorial` mide `MAX(ts) - MIN(ts)` de
+ * todo el ledger; la regla de recurrencia mide `porMes.size`. El código trataba
+ * a una como si protegiera a la otra, y no: en una billetera con once meses de
+ * uso el freno está abierto **para siempre**, así que la casualidad de almanaque
+ * que el criterio 4 del doc de arriba dice atajar —31/1, 15/2, 1/3: cinco
+ * semanas tocando tres meses— pasaba entera, y la pantalla la presentaba con la
+ * cabecera *"sobre 10,9 meses de historial"*, que es cierto del ledger y falso
+ * de la propuesta.
+ *
+ * Los tres cargos mensuales consecutivos que menos días abarcan en el calendario
+ * son 31/1, 28/2 y 31/3: 59 días. Cincuenta y seis deja pasar a ésos y frena a
+ * cualquier racha más corta.
+ */
+export const DIAS_MINIMOS_DE_LA_CANDIDATA = (MESES_PARA_SER_FIJO - 1) * 28;
+
+function duracionEnDias(grupo: Acumulador): number {
+  const desde = new Date(grupo.firstTs).getTime();
+  const hasta = new Date(grupo.lastTs).getTime();
+  if (Number.isNaN(desde) || Number.isNaN(hasta)) return 0;
+  return (hasta - desde) / 86_400_000;
 }
 
 /**
@@ -224,7 +257,30 @@ export const DISPERSION_MAXIMA_DEL_DIA = 3;
  * el día **observado** más cercano al centro; a igual distancia, el más
  * frecuente, y después el más temprano, para que la lista no se baraje sola
  * entre dos corridas.
+ *
+ * Y una tercera, que es la clase de la que las dos anteriores eran ejemplares
+ * (wargaming ronda 3, W18): **el día que se nombra tiene que tener mayoría**.
+ * La pantalla no dice "el 20 pasó algo", dice *"suele caer el 20"*, y eso es una
+ * afirmación sobre la tendencia. Con el guarda de W9 puesto, 4 de las 5
+ * propuestas del ledger real que afirmaban un día lo afirmaban sobre un día que
+ * había ocurrido **una sola vez** — la peor, con los cargos en 3, 20, 22 y 23,
+ * decía *"suele caer el 20"*. El día existía, la dispersión daba 1,5, y la
+ * afirmación seguía siendo falsa: la mediana se había puesto el disfraz de una
+ * observación.
+ *
+ * Se exige, entonces, que **más de la mitad** de los cargos caigan en el día que
+ * se nombra o a un día de distancia. El margen de un día es el corrimiento del
+ * débito que cae en fin de semana y se procesa el lunes, que es para lo que
+ * existe `DISPERSION_MAXIMA_DEL_DIA`; dos días ya no son el mismo día nudgeado,
+ * son otra fecha. Un gasto cuyos cargos caen en 7, 9 y 11 no tiene un día: tiene
+ * una semana, y esta pantalla no sabe decir una semana. Entonces no dice nada,
+ * que es lo que `diaTipico: null` significa desde W2.
  */
+
+/** Cuántos días alrededor del que se nombra cuentan como "ese día": el
+ * corrimiento del fin de semana, no una fecha distinta. */
+export const VECINDAD_DEL_DIA = 1;
+
 export function diaTipicoDe(dias: readonly number[]): number | null {
   if (dias.length === 0) return null;
   const centro = median([...dias]);
@@ -234,12 +290,15 @@ export function diaTipicoDe(dias: readonly number[]): number | null {
   const frecuencia = new Map<number, number>();
   for (const dia of dias) frecuencia.set(dia, (frecuencia.get(dia) ?? 0) + 1);
 
-  return [...frecuencia.keys()].sort(
+  const elegido = [...frecuencia.keys()].sort(
     (a, b) =>
       Math.abs(a - centro) - Math.abs(b - centro) ||
       (frecuencia.get(b) ?? 0) - (frecuencia.get(a) ?? 0) ||
       a - b
   )[0];
+
+  const cerca = dias.filter((dia) => Math.abs(dia - elegido) <= VECINDAD_DEL_DIA).length;
+  return cerca * 2 > dias.length ? elegido : null;
 }
 
 function aPropuesta(grupo: Acumulador): RecurringExpenseProposal {

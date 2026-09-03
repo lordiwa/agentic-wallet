@@ -361,8 +361,14 @@ export function postClassify(counterparty: string, category: Category): Promise<
 
 /** "No me preguntes más por esta" (M5): la contraparte sale de la cola y su
  * plata cuenta como cubierta en el progreso. */
-export function postSilence(counterparty: string): Promise<{ ok: true; counterparty: string }> {
-  return postJSON<{ ok: true; counterparty: string }>("classify.silence", "/api/classify/silence", { counterparty });
+export function postSilence(
+  counterparty: string
+): Promise<{ ok: true; counterparty: string; pattern: string; changed: boolean }> {
+  return postJSON<{ ok: true; counterparty: string; pattern: string; changed: boolean }>(
+    "classify.silence",
+    "/api/classify/silence",
+    { counterparty }
+  );
 }
 
 /**

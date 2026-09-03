@@ -92,6 +92,7 @@ function progreso(overrides: Partial<ClassifyProgressResponse> = {}): ClassifyPr
     covered_ratio: 0.5,
     unclassified_total: 400,
     unclassified_ratio: 0.47,
+    remaining_ratio: 0.5,
     groups: 151,
     transactions: 334,
     target_ratio: 0.8,
@@ -142,7 +143,7 @@ beforeEach(() => {
   endpoints.fetchReview.mockResolvedValue({ transactions: filas4(), count: 4 });
   endpoints.fetchOverview.mockResolvedValue(overview());
   endpoints.postClassify.mockResolvedValue(clasificado());
-  endpoints.postSilence.mockResolvedValue({ ok: true, counterparty: "Comercio A" });
+  endpoints.postSilence.mockResolvedValue({ ok: true, counterparty: "Comercio A", pattern: "comercio a", changed: true });
   endpoints.postReviewResolve.mockResolvedValue({
     ok: true,
     changed: true,
@@ -274,7 +275,7 @@ describe("pestaña 'Qué es esto' — 151 grupos por plata", () => {
   it("el progreso por plata está SIEMPRE visible", async () => {
     const w = await montar({ pestanaPedida: "que-es" });
     const avance = w.get('[data-testid="avance"]').text();
-    expect(avance).toContain("47 %");
+    expect(avance).toContain("50 %");
     expect(avance).toContain("30 respuestas más");
   });
 

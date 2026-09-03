@@ -139,3 +139,42 @@ describe("classifyQueue (H32) — grupos, no filas", () => {
     expect(classifyQueue(db)).toEqual([]);
   });
 });
+
+/**
+ * Wargaming ronda 3 (W23). El aviso post-sync (D7-b) lleva a la cola acotada al
+ * lote, y ahí la tarjeta contaba **el lote** mientras el escritor
+ * (`classify/apply.ts`, `rowsMatching`) barre **todo el ledger sin filtro de
+ * ids**. La tarjeta prometía "2 movimientos" y la respuesta contestaba
+ * "reclasificaste 47", en la misma pantalla y con un segundo de diferencia.
+ *
+ * O sea W1 otra vez, por una tercera puerta: las rondas 1 y 2 analizaron la cola
+ * **sin filtrar** y ninguna miró el modo lote. La salida es la que ya eligió
+ * W12: no recortar el número —los 47 se movieron de verdad— sino **decir el
+ * alcance**, y para decirlo el motor tiene que publicarlo.
+ */
+describe("classifyQueue — en modo lote se dice también cuánto hay fuera del lote (W23)", () => {
+  it("publica el conteo del ledger entero junto al del lote", () => {
+    const ids = [1, 2, 3].map(
+      (n) => insertTransaction(db, tx({ gmail_msg_id: `lote-${n}`, counterparty: "COMERCIO DEL LOTE", amount: 10 })).row.id
+    );
+    for (const n of [4, 5, 6, 7]) {
+      insertTransaction(db, tx({ gmail_msg_id: `viejo-${n}`, counterparty: "COMERCIO DEL LOTE", amount: 10 }));
+    }
+
+    const [grupo] = classifyQueue(db, { transactionIds: ids.slice(0, 1) });
+
+    expect(grupo.count).toBe(1);
+    expect(grupo.total).toBe(10);
+    expect(grupo.count_en_ledger).toBe(7);
+    expect(grupo.total_en_ledger).toBe(70);
+  });
+
+  it("sin filtro no hay dos poblaciones que distinguir", () => {
+    insertTransaction(db, tx({ gmail_msg_id: "solo", counterparty: "COMERCIO SUELTO", amount: 10 }));
+
+    const [grupo] = classifyQueue(db);
+
+    expect(grupo.count_en_ledger).toBeUndefined();
+    expect(grupo.total_en_ledger).toBeUndefined();
+  });
+});

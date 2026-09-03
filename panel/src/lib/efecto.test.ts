@@ -75,7 +75,7 @@ describe("F13/R19 — la pantalla dice qué cambió, con el número", () => {
   });
 
   it("silenciar dice cuánta plata sale de la cola y que cuenta como cubierta (M5)", () => {
-    const efecto = efectoDeSilenciar("Comercio de Ejemplo A", 6, 312.4);
+    const efecto = efectoDeSilenciar("Comercio de Ejemplo A", 6, 312.4, true);
     expect(efecto.titulo).toContain("No se pregunta más por Comercio de Ejemplo A");
     expect(efecto.detalle).toContain("6 movimientos");
     expect(efecto.detalle).toContain("312,40");
@@ -206,5 +206,32 @@ describe("efectoDeClasificar — el alcance de la regla se dice (W12)", () => {
 
   it("un server que no manda el campo se lee como cero, no como un alcance inventado", () => {
     expect(efectoDeClasificar(respuesta()).detalle).not.toContain("contraparte");
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W21). `efectoDeResolver` ya sabía que `changed:false` no es
+ * éxito (R13) y `efectoDeSilenciar` no: se construía con los números de la
+ * tarjeta que la pantalla tenía en la mano, sin mirar la respuesta, porque el
+ * `POST /api/classify/silence` no devolvía `changed` — el `DELETE` sí, en el
+ * mismo archivo de rutas.
+ *
+ * El caso incómodo llega encadenado con W20: un refresco falla, la tarjeta ya
+ * respondida sigue en pantalla, el usuario la vuelve a silenciar, y recibe en
+ * verde *"6 movimientos por 960,00 salen de la cola"* con cero movimientos
+ * saliendo.
+ */
+describe("efectoDeSilenciar — silenciar dos veces no saca nada dos veces (W21)", () => {
+  it("la segunda vez no celebra ni repite los números", () => {
+    const efecto = efectoDeSilenciar("Comercio de Ejemplo", 6, 960, false);
+    expect(efecto.tono).toBe("neu");
+    expect(efecto.detalle).not.toContain("960,00");
+    expect(efecto.titulo).toContain("ya");
+  });
+
+  it("la primera sigue diciendo qué salió de la cola", () => {
+    const efecto = efectoDeSilenciar("Comercio de Ejemplo", 6, 960, true);
+    expect(efecto.tono).toBe("ok");
+    expect(efecto.detalle).toContain("960,00");
   });
 });

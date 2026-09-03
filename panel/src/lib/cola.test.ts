@@ -30,6 +30,7 @@ function progreso(overrides: Partial<ClassifyProgressResponse> = {}): ClassifyPr
     covered_ratio: 0.5,
     unclassified_total: 400,
     unclassified_ratio: 0.4,
+    remaining_ratio: 0.5,
     groups: 118,
     transactions: 260,
     target_ratio: 0.8,
@@ -100,7 +101,7 @@ describe("paginar — W5/R15, la cola se pagina desde el día 1", () => {
 
 describe("vistaProgreso — el progreso por plata, siempre visible (M1)", () => {
   it("dice cuánta plata queda y cuántas respuestas más", () => {
-    const vista = vistaProgreso(progreso({ unclassified_ratio: 0.47, answers_to_target: 30 }));
+    const vista = vistaProgreso(progreso({ remaining_ratio: 0.47, answers_to_target: 30 }));
     expect(vista.titulo).toContain("47 %");
     expect(vista.titulo).toContain("sin clasificar");
     expect(vista.detalle).toContain("30 respuestas más");
@@ -177,6 +178,7 @@ describe("vistaProgreso — sin línea de base no hay nada que celebrar (W11)", 
     covered_ratio: 1,
     unclassified_total: 0,
     unclassified_ratio: 0,
+    remaining_ratio: 0,
     groups: 0,
     transactions: 0,
     target_ratio: 0.8,
@@ -201,5 +203,90 @@ describe("vistaProgreso — sin línea de base no hay nada que celebrar (W11)", 
     const vista = vistaProgreso({ ...vacio, baseline_total: 500, covered_total: 500 });
     expect(vista.celebra).toBe(true);
     expect(vista.titulo).toContain("100");
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W19). W11 tapó `baseline_total === 0` y dejó viva la otra
+ * mitad del mismo campo: **el porcentaje y su denominador no se decían juntos**.
+ * `covered_ratio` es sobre `baseline_total` (la plata que alguna vez tuvo una
+ * pregunta) y `unclassified_ratio` era sobre `spending_total` (todo el gasto), y
+ * la tarjeta llamaba "tu plata" a las dos.
+ *
+ * Los dos síntomas, los dos con el motor real:
+ *
+ * 1. Con 240 de 300 respondidos sobre 1000 de gasto, la tarjeta celebraba
+ *    *"Cubriste el 80 % de tu plata"* en verde. El usuario cubrió el 24 % de su
+ *    plata. Es W11 otra vez —celebrar un logro que el ledger no dice— sin que el
+ *    ledger tenga que estar vacío.
+ * 2. Sobre el ledger real, la misma tarjeta imprimía a la vez un título del
+ *    76 %, una barra al 16 % y un pie cuyos dos números dan 84 %. Tres cifras
+ *    visibles al mismo tiempo que no cierran entre sí.
+ *
+ * La regla, y es la que este bloque protege: **la barra, el título y el pie
+ * hablan del mismo denominador, y el texto lo nombra**.
+ */
+describe("vistaProgreso — el porcentaje se dice con su denominador (W19)", () => {
+  it("no llama 'tu plata' a la plata que había para clasificar", () => {
+    const vista = vistaProgreso(
+      progreso({ spending_total: 1000, baseline_total: 300, covered_total: 240, covered_ratio: 0.8, done: true })
+    );
+    expect(vista.titulo).not.toBe("Cubriste el 80 % de tu plata");
+    expect(vista.titulo).toContain("80 %");
+    expect(vista.titulo).toContain("clasificar");
+  });
+
+  it("el título y la barra son complementarios: suman 100", () => {
+    const vista = vistaProgreso(
+      progreso({
+        spending_total: 1000,
+        baseline_total: 800,
+        covered_total: 128,
+        covered_ratio: 0.16,
+        remaining_ratio: 0.84,
+        unclassified_ratio: 0.76,
+        unclassified_total: 672,
+        done: false,
+      })
+    );
+    expect(vista.ancho).toBe(16);
+    expect(vista.titulo).toContain("84 %");
+    expect(vista.titulo).not.toContain("76 %");
+  });
+
+  it("una sola contraparte no se dice en plural", () => {
+    const vista = vistaProgreso(progreso({ done: true, groups: 1, covered_ratio: 0.9 }));
+    expect(vista.detalle).toContain("1 contraparte por");
+    expect(vista.detalle).not.toContain("1 contrapartes");
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W20). W5 se cerró con *"el estado vacío sólo se dibuja
+ * cuando hubo respuesta"* (`ledgerLeido`), y la clase era más ancha: **no
+ * afirmes un hecho sobre un ledger que no leíste**. El estado **poblado** afirma
+ * mucho más que el vacío, y no tenía esa guarda.
+ *
+ * Reproducción: escritura exitosa en la página 3, seguida de un refresco que
+ * falla. En pantalla, al mismo tiempo, el cartel rojo *"El backend no
+ * respondió"* y la tarjeta de avance en verde celebrando *"Cubriste el 80 %"*
+ * con los montos de antes de la escritura. Es dato viejo dibujado con la cara
+ * de dato fresco — y el 431 que produce un lote de más de 2700 ids llega
+ * exactamente por acá.
+ */
+describe("vistaProgreso — un refresco que falló no celebra nada (W20)", () => {
+  it("no celebra cuando los números son de antes del error", () => {
+    const vista = vistaProgreso(progreso({ done: true, covered_ratio: 0.82 }), { vencido: true });
+    expect(vista.celebra).toBe(false);
+    expect(vista.detalle).toContain("no respondió");
+  });
+
+  it("y lo dice, en vez de dibujar el número viejo como si fuera de ahora", () => {
+    const vista = vistaProgreso(progreso(), { vencido: true });
+    expect(vista.detalle).toContain("antes");
+  });
+
+  it("sin error, nada cambia", () => {
+    expect(vistaProgreso(progreso({ done: true, covered_ratio: 0.82 })).celebra).toBe(true);
   });
 });

@@ -49371,97 +49371,6 @@ function fromCents(cents) {
 // src/strategy/totals.ts
 var EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND is_discarded = 0 AND type != 'reverso'";
 
-// src/classify/silenced.ts
-function silenceCounterparty(db, rawCounterparty) {
-  const pattern = toRulePattern(rawCounterparty);
-  if (pattern === "") return false;
-  db.prepare(
-    `INSERT INTO classify_silenced (pattern, counterparty, created_at)
-     VALUES (?, ?, datetime('now'))
-     ON CONFLICT(pattern) DO UPDATE SET counterparty = excluded.counterparty`
-  ).run(pattern, rawCounterparty.trim());
-  return true;
-}
-function unsilenceCounterparty(db, rawCounterparty) {
-  const pattern = toRulePattern(rawCounterparty);
-  if (pattern === "") return false;
-  return db.prepare("DELETE FROM classify_silenced WHERE pattern = ?").run(pattern).changes > 0;
-}
-function listSilencedCounterparties(db) {
-  return db.prepare("SELECT pattern, counterparty, created_at FROM classify_silenced ORDER BY created_at DESC, pattern ASC").all();
-}
-function silencedPatterns(db) {
-  const rows = db.prepare("SELECT pattern FROM classify_silenced").all();
-  return new Set(rows.map((row) => row.pattern));
-}
-
-// src/classify/queue.ts
-var UNCLASSIFIED_CATEGORIES = /* @__PURE__ */ new Set([
-  "otros",
-  "transferencia_persona"
-]);
-var RESPONDABLE_CATEGORIES = CATEGORIES.filter(
-  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
-);
-function selectClassifiableRows(db, transactionIds) {
-  if (transactionIds !== void 0 && transactionIds.length === 0) return [];
-  const idFilter = transactionIds === void 0 ? "" : ` AND id IN (${transactionIds.map(() => "?").join(", ")})`;
-  return db.prepare(
-    `SELECT id, ts, type, counterparty, is_internal, amount FROM transactions
-        WHERE direction = 'out'
-          AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
-          AND ${EXCLUDE_FROM_TOTALS_SQL}${idFilter}`
-  ).all(...transactionIds ?? []);
-}
-function groupUnclassified(rows, rules, silenced3 = /* @__PURE__ */ new Set()) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const row of rows) {
-    const category = categorize(
-      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
-      rules
-    );
-    if (!UNCLASSIFIED_CATEGORIES.has(category)) continue;
-    const pattern = toRulePattern(row.counterparty ?? "");
-    if (pattern === "" || silenced3.has(pattern)) continue;
-    const existing = groups.get(pattern);
-    const month = localDayKey(row.ts)?.slice(0, 7);
-    if (!existing) {
-      groups.set(pattern, {
-        pattern,
-        counterparty: (row.counterparty ?? "").trim(),
-        count: 1,
-        cents: toCents(row.amount),
-        months: new Set(month ? [month] : []),
-        category,
-        last_ts: row.ts
-      });
-      continue;
-    }
-    existing.count += 1;
-    existing.cents += toCents(row.amount);
-    if (month) existing.months.add(month);
-    if (row.ts > existing.last_ts) {
-      existing.last_ts = row.ts;
-      existing.counterparty = (row.counterparty ?? "").trim();
-      existing.category = category;
-    }
-  }
-  return [...groups.values()].map((group) => ({
-    pattern: group.pattern,
-    counterparty: group.counterparty,
-    count: group.count,
-    total: fromCents(group.cents),
-    months: group.months.size,
-    category: group.category,
-    last_ts: group.last_ts
-  })).sort((a, b) => b.total - a.total || b.count - a.count || a.pattern.localeCompare(b.pattern));
-}
-function classifyQueue(db, options = {}) {
-  const rows = selectClassifiableRows(db, options.transactionIds);
-  const groups = groupUnclassified(rows, listCategoryRules(db), silencedPatterns(db));
-  return options.limit === void 0 ? groups : groups.slice(0, options.limit);
-}
-
 // src/db/telemetry.ts
 var import_node_crypto2 = require("node:crypto");
 function silenced2() {
@@ -49572,6 +49481,111 @@ function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
   });
 }
 
+// src/classify/silenced.ts
+function silenceCounterparty(db, rawCounterparty) {
+  if (toRulePattern(rawCounterparty) === "") return { ok: false, error: "empty_pattern" };
+  const counterparty = resolveLedgerCounterparty(db, rawCounterparty);
+  if (counterparty === null) return { ok: false, error: "counterparty_not_found" };
+  const pattern = toRulePattern(counterparty);
+  const yaEstaba = silencedPatterns(db).has(pattern);
+  db.prepare(
+    `INSERT INTO classify_silenced (pattern, counterparty, created_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(pattern) DO UPDATE SET counterparty = excluded.counterparty`
+  ).run(pattern, counterparty);
+  return { ok: true, pattern, counterparty, changed: !yaEstaba };
+}
+function unsilenceCounterparty(db, rawCounterparty) {
+  const pattern = toRulePattern(rawCounterparty);
+  if (pattern === "") return false;
+  return db.prepare("DELETE FROM classify_silenced WHERE pattern = ?").run(pattern).changes > 0;
+}
+function listSilencedCounterparties(db) {
+  return db.prepare("SELECT pattern, counterparty, created_at FROM classify_silenced ORDER BY created_at DESC, pattern ASC").all();
+}
+function silencedPatterns(db) {
+  const rows = db.prepare("SELECT pattern FROM classify_silenced").all();
+  return new Set(rows.map((row) => row.pattern));
+}
+
+// src/classify/queue.ts
+var UNCLASSIFIED_CATEGORIES = /* @__PURE__ */ new Set([
+  "otros",
+  "transferencia_persona"
+]);
+var RESPONDABLE_CATEGORIES = CATEGORIES.filter(
+  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
+);
+function selectClassifiableRows(db, transactionIds) {
+  if (transactionIds !== void 0 && transactionIds.length === 0) return [];
+  const idFilter = transactionIds === void 0 ? "" : ` AND id IN (${transactionIds.map(() => "?").join(", ")})`;
+  return db.prepare(
+    `SELECT id, ts, type, counterparty, is_internal, amount FROM transactions
+        WHERE direction = 'out'
+          AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
+          AND ${EXCLUDE_FROM_TOTALS_SQL}${idFilter}`
+  ).all(...transactionIds ?? []);
+}
+function groupUnclassified(rows, rules, silenced3 = /* @__PURE__ */ new Set()) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const category = categorize(
+      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
+      rules
+    );
+    if (!UNCLASSIFIED_CATEGORIES.has(category)) continue;
+    const pattern = toRulePattern(row.counterparty ?? "");
+    if (pattern === "" || silenced3.has(pattern)) continue;
+    const existing = groups.get(pattern);
+    const month = localDayKey(row.ts)?.slice(0, 7);
+    if (!existing) {
+      groups.set(pattern, {
+        pattern,
+        counterparty: (row.counterparty ?? "").trim(),
+        count: 1,
+        cents: toCents(row.amount),
+        months: new Set(month ? [month] : []),
+        category,
+        last_ts: row.ts
+      });
+      continue;
+    }
+    existing.count += 1;
+    existing.cents += toCents(row.amount);
+    if (month) existing.months.add(month);
+    if (row.ts > existing.last_ts) {
+      existing.last_ts = row.ts;
+      existing.counterparty = (row.counterparty ?? "").trim();
+      existing.category = category;
+    }
+  }
+  return [...groups.values()].map((group) => ({
+    pattern: group.pattern,
+    counterparty: group.counterparty,
+    count: group.count,
+    total: fromCents(group.cents),
+    months: group.months.size,
+    category: group.category,
+    last_ts: group.last_ts
+  })).sort((a, b) => b.total - a.total || b.count - a.count || a.pattern.localeCompare(b.pattern));
+}
+function classifyQueue(db, options = {}) {
+  const rules = listCategoryRules(db);
+  const silenced3 = silencedPatterns(db);
+  const groups = groupUnclassified(selectClassifiableRows(db, options.transactionIds), rules, silenced3);
+  if (options.transactionIds !== void 0) {
+    const enElLedger = new Map(
+      groupUnclassified(selectClassifiableRows(db), rules, silenced3).map((group) => [group.pattern, group])
+    );
+    for (const group of groups) {
+      const completo = enElLedger.get(group.pattern);
+      group.count_en_ledger = completo?.count ?? group.count;
+      group.total_en_ledger = completo?.total ?? group.total;
+    }
+  }
+  return options.limit === void 0 ? groups : groups.slice(0, options.limit);
+}
+
 // src/classify/progress.ts
 var MONEY_TARGET_RATIO = 0.8;
 function totalCents(groups) {
@@ -49604,6 +49618,7 @@ function classifyProgress(db) {
     covered_ratio: baselineCents === 0 ? 1 : ratio(coveredCents, baselineCents),
     unclassified_total: fromCents(remainingCents),
     unclassified_ratio: ratio(remainingCents, spendingCents),
+    remaining_ratio: baselineCents === 0 ? 0 : ratio(remainingCents, baselineCents),
     groups: remaining.length,
     transactions: remaining.reduce((sum, group) => sum + group.count, 0),
     target_ratio: MONEY_TARGET_RATIO,
@@ -50309,6 +50324,7 @@ var syncBodySchema = external_exports.object({
 var silenceBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1)
 });
+var MAX_TRANSACTION_IDS = 500;
 var classifyQueueQuerySchema = external_exports.object({
   limit: external_exports.coerce.number().int().positive().max(500).optional(),
   transaction_ids: external_exports.string().min(1).optional().transform((value, ctx) => {
@@ -50316,6 +50332,13 @@ var classifyQueueQuerySchema = external_exports.object({
     const ids = value.split(",").map((part) => Number(part.trim()));
     if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
       ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "transaction_ids must be positive integers" });
+      return external_exports.NEVER;
+    }
+    if (ids.length > MAX_TRANSACTION_IDS) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: `transaction_ids admite hasta ${MAX_TRANSACTION_IDS} ids`
+      });
       return external_exports.NEVER;
     }
     return ids;
@@ -52003,7 +52026,9 @@ function createWalletMcpServer(deps) {
       description: "Los movimientos de gasto cuya categoria RECALCULADA sigue siendo un fallback ('otros' o 'transferencia_persona'), agrupados por CONTRAPARTE y ordenados por plata descendente. Cada grupo trae cuantos movimientos tiene, cuanta plata mueve y en cuantos meses distintos aparece: con eso alcanza para preguntarle al humano UNA vez por comercio en vez de una vez por fila. Responde con `classify_counterparty`. No lee la columna `category` \u2014 lee lo mismo que el grafico del Resumen.",
       inputSchema: {
         limit: external_exports.number().int().min(1).max(500).optional().describe("Tope de grupos, del que mas plata mueve al que menos"),
-        transaction_ids: external_exports.array(external_exports.number().int().positive()).optional().describe("Acota la cola a estos movimientos, p.ej. los que entraron en un sync")
+        transaction_ids: external_exports.array(external_exports.number().int().positive()).max(MAX_TRANSACTION_IDS).optional().describe(
+          `Acota la cola a estos movimientos, p.ej. los que entraron en un sync. Hasta ${MAX_TRANSACTION_IDS}: por encima de eso la consulta pasa el limite de variables de SQLite.`
+        )
       }
     },
     async ({ limit, transaction_ids }) => {
@@ -52043,7 +52068,7 @@ function createWalletMcpServer(deps) {
     "silence_counterparty",
     {
       title: "No preguntar mas por este comercio",
-      description: "Saca una contraparte de la cola de clasificacion para siempre, sin escribir ninguna categoria. Es la salida honesta para las contrapartes que tienen dos verdades (la misma persona que un mes cobra una consulta y otro devuelve un prestamo): ninguna categoria seria correcta para todas sus filas. Sin esto esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola.",
+      description: "Saca una contraparte de la cola de clasificacion para siempre, sin escribir ninguna categoria. Es la salida honesta para las contrapartes que tienen dos verdades (la misma persona que un mes cobra una consulta y otro devuelve un prestamo): ninguna categoria seria correcta para todas sus filas. Sin esto esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola. El nombre se valida contra el ledger igual que en `classify_counterparty`: si no corresponde a una contraparte real no se escribe nada, porque un patron que no matchea ninguna fila no silencia nada. `changed: false` significa que ya estaba silenciada y esta llamada no saco ningun movimiento de la cola.",
       inputSchema: {
         counterparty: external_exports.string().min(1),
         undo: external_exports.boolean().optional().describe("Devuelve a la cola algo silenciado por error. Default false.")
@@ -52055,10 +52080,20 @@ function createWalletMcpServer(deps) {
         const changed = unsilenceCounterparty(db, counterparty);
         return json({ ok: true, silenced: false, changed });
       }
-      if (!silenceCounterparty(db, counterparty)) {
-        throw new Error("silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido.");
+      const silenciado = silenceCounterparty(db, counterparty);
+      if (!silenciado.ok) {
+        throw new Error(
+          silenciado.error === "empty_pattern" ? "silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido." : "silence_counterparty: esa contraparte no existe en el ledger, asi que el patron no silenciaria ninguna fila. Pasa el nombre tal como lo devuelve get_classify_queue."
+        );
       }
-      return json({ ok: true, silenced: true, count: listSilencedCounterparties(db).length });
+      return json({
+        ok: true,
+        silenced: true,
+        changed: silenciado.changed,
+        counterparty: silenciado.counterparty,
+        pattern: silenciado.pattern,
+        count: listSilencedCounterparties(db).length
+      });
     }
   );
   server.registerTool(

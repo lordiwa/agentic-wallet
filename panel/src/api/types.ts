@@ -218,7 +218,12 @@ export interface ClassifyProgressResponse {
   covered_total: number;
   covered_ratio: number;
   unclassified_total: number;
+  /** Sobre `spending_total` — **no** es el complemento de `covered_ratio`. Ver
+   * `remaining_ratio` (wargaming ronda 3, W19). */
   unclassified_ratio: number;
+  /** Sobre `baseline_total`: el complemento exacto de `covered_ratio`, y el
+   * único que se puede dibujar junto a la barra. */
+  remaining_ratio: number;
   /** Contrapartes que quedan por responder — los "K comercios" del Resumen. */
   groups: number;
   /** Movimientos que representan esas contrapartes — los "M sin clasificar". */
@@ -239,6 +244,11 @@ export interface ClassifyGroupRow {
   months: number;
   category: Category;
   last_ts: string;
+  /** Sólo en modo lote (`?transaction_ids=`): cuántos movimientos y cuánta
+   * plata tiene esta contraparte en TODO el ledger. La regla que se escriba los
+   * mueve a todos, y la tarjeta lo tiene que decir (W23). */
+  count_en_ledger?: number;
+  total_en_ledger?: number;
 }
 
 export interface ClassifyQueueResponse {

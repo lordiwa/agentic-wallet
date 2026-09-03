@@ -28,6 +28,9 @@ export { DEMO_BASE };
 export const API_BASE_STORAGE_KEY = "wallet.api_base";
 /** Origenes que el usuario confirmo a mano como dignos de recibir la llave. */
 export const TRUSTED_ORIGINS_STORAGE_KEY = "wallet.trusted_origins";
+/** Origenes que el usuario guardo **negandoles** la llave, con el boton
+ * "Guardar sin darle la llave". Ver `denyBackendOrigin` (W27). */
+export const DENIED_ORIGINS_STORAGE_KEY = "wallet.denied_origins";
 /** La llave del server. Vive en este navegador y no sale de el salvo hacia un
  * backend de la lista blanca. */
 export const ACCESS_TOKEN_STORAGE_KEY = "wallet.access_token";
@@ -62,19 +65,64 @@ export function storedTrustedOrigins(): string[] {
   return parseTrustedOrigins(readStorage(TRUSTED_ORIGINS_STORAGE_KEY));
 }
 
+/** Los que el usuario guardo negandoles la llave. */
+export function storedDeniedOrigins(): string[] {
+  return parseTrustedOrigins(readStorage(DENIED_ORIGINS_STORAGE_KEY));
+}
+
+/**
+ * Anota un origen como digno de recibir la llave.
+ *
+ * Levanta la negacion si la habia: la ultima decision del usuario es la que
+ * manda, y no hay forma de volver a autorizar un origen negado si esta funcion
+ * no lo saca de la lista.
+ */
 export function trustBackendOrigin(base: string): void {
-  const origins = storedTrustedOrigins();
   const url = normalizeBase(base);
-  const verdict = classifyBackend(url, { configured: configuredTrustedOrigins(), trusted: origins });
-  // Solo tiene sentido anotar un origen ajeno: el resto ya entra por otra via.
-  if (verdict !== "foreign") return;
   const parsed = parseTrustedOrigins(url);
   if (parsed.length === 0) return;
+
+  const denegados = storedDeniedOrigins().filter((origin) => !parsed.includes(origin));
+  writeStorage(DENIED_ORIGINS_STORAGE_KEY, denegados.length === 0 ? null : denegados.join(","));
+
+  const origins = storedTrustedOrigins();
+  const verdict = classifyBackend(url, {
+    configured: configuredTrustedOrigins(),
+    trusted: origins,
+    denied: denegados,
+  });
+  // Solo tiene sentido anotar un origen ajeno: el resto ya entra por otra via.
+  if (verdict !== "foreign") return;
   writeStorage(TRUSTED_ORIGINS_STORAGE_KEY, [...origins, ...parsed].join(","));
+}
+
+/**
+ * Anota un origen como **negado**: se le habla, pero sin credencial.
+ *
+ * Existe porque "Guardar sin darle la llave" era un no-op para todo backend que
+ * ya entraba solo — un `127.0.0.1:9999` cualquiera es `loopback`, y el usuario
+ * que apretaba el boton prudente entregaba la llave igual (wargaming ronda 3,
+ * W27). Un boton que no puede cumplir su etiqueta es peor que no tenerlo: pide
+ * una decision y la descarta.
+ */
+export function denyBackendOrigin(base: string): void {
+  const parsed = parseTrustedOrigins(normalizeBase(base));
+  if (parsed.length === 0) return;
+
+  // Negar tambien retira una autorizacion previa, por lo mismo que autorizar
+  // levanta la negacion: hay una sola decision por origen y es la ultima.
+  const confiables = storedTrustedOrigins().filter((origin) => !parsed.includes(origin));
+  writeStorage(TRUSTED_ORIGINS_STORAGE_KEY, confiables.length === 0 ? null : confiables.join(","));
+
+  const denegados = storedDeniedOrigins();
+  const nuevos = parsed.filter((origin) => !denegados.includes(origin));
+  if (nuevos.length === 0) return;
+  writeStorage(DENIED_ORIGINS_STORAGE_KEY, [...denegados, ...nuevos].join(","));
 }
 
 export function forgetTrustedOrigins(): void {
   writeStorage(TRUSTED_ORIGINS_STORAGE_KEY, null);
+  writeStorage(DENIED_ORIGINS_STORAGE_KEY, null);
 }
 
 /**
@@ -101,10 +149,32 @@ export function getApiBase(): string {
   return "";
 }
 
+/**
+ * Quien quiere enterarse de que el backend cambio.
+ *
+ * Existe porque el backend **se puede cambiar sin recargar la pagina**
+ * (`confirmPendingApiBase` desde el chip), y el unico lugar donde el panel dice
+ * "estos numeros son ficcion" era un `const demo = isDemoMode()` evaluado al
+ * montar (wargaming ronda 3, W25). Un enlace `?api=demo` cambiaba la fuente de
+ * todos los numeros y dejaba el rotulo diciendo lo de antes — o su ausencia.
+ *
+ * Es una suscripcion pelada y no un `ref` de Vue a proposito: este modulo es la
+ * politica de credenciales y no tiene que depender del framework (el mismo
+ * motivo por el que no toca `window` fuera de los helpers de storage).
+ */
+type OyenteDeBackend = () => void;
+const oyentes = new Set<OyenteDeBackend>();
+
+export function onBackendChange(oyente: OyenteDeBackend): () => void {
+  oyentes.add(oyente);
+  return () => oyentes.delete(oyente);
+}
+
 /** `null` vuelve al mismo origen. No recarga: el llamador decide. */
 export function setApiBase(value: string | null): void {
   const normalized = normalizeBase(value);
   writeStorage(API_BASE_STORAGE_KEY, value === null || normalized === "" ? null : normalized);
+  for (const oyente of oyentes) oyente();
 }
 
 export interface ConfirmOptions {
@@ -127,6 +197,7 @@ export function confirmPendingApiBase(options: ConfirmOptions = {}): string | nu
   if (proposed === null) return null;
   setApiBase(proposed === "" ? null : proposed);
   if (options.trust) trustBackendOrigin(proposed);
+  else denyBackendOrigin(proposed);
   return proposed;
 }
 
@@ -153,6 +224,7 @@ export function currentBackendVerdict(base: string = getApiBase()): OriginVerdic
   return classifyBackend(base, {
     configured: configuredTrustedOrigins(),
     trusted: storedTrustedOrigins(),
+    denied: storedDeniedOrigins(),
   });
 }
 

@@ -62,15 +62,38 @@ export function formatoEntero(valor: number): string {
  */
 const MILES_SIN_COMA = /^-?[1-9]\d{0,2}(\.\d{3})+$/;
 
+/**
+ * Y la tercera lectura, que es la del wargaming ronda 3 (W17): **los dos
+ * separadores a la vez**. "1,234.56" es como imprime la plata media América, y
+ * la rama de arriba lo leía con la regla de `es` —la coma manda— borrando el
+ * punto que era el decimal de verdad: 1,23456. O sea W10 otra vez, por la otra
+ * mitad del mismo `if`, con el mismo factor de mil y el mismo silencio.
+ *
+ * Con los dos presentes la cifra no tiene una lectura única, así que no se
+ * adivina por idioma: manda el **último** separador, que es la única regla que
+ * las dos convenciones comparten, y el otro tiene que estar separando grupos de
+ * exactamente tres. Lo que no cumple ninguna de las dos formas no es una cifra
+ * ambigua: no es una cifra, y devuelve `null`.
+ */
+const MILES_CON_COMA = /^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/;
+const MILES_CON_PUNTO = /^-?[1-9]\d{0,2}(\.\d{3})+(,\d+)?$/;
+
 export function parsePlata(texto: string): number | null {
   const limpio = texto.trim().replace(/\s/g, "");
   if (limpio === "") return null;
 
-  const normalizado = limpio.includes(",")
-    ? limpio.replace(/\./g, "").replace(",", ".")
-    : MILES_SIN_COMA.test(limpio)
-      ? limpio.replace(/\./g, "")
-      : limpio;
+  const normalizado =
+    limpio.includes(",") && limpio.includes(".")
+      ? MILES_CON_COMA.test(limpio)
+        ? limpio.replace(/,/g, "")
+        : MILES_CON_PUNTO.test(limpio)
+          ? limpio.replace(/\./g, "").replace(",", ".")
+          : ""
+      : limpio.includes(",")
+        ? limpio.replace(",", ".")
+        : MILES_SIN_COMA.test(limpio)
+          ? limpio.replace(/\./g, "")
+          : limpio;
 
   // Forma estricta, y a propósito: `Number()` solo aceptaría hexadecimales,
   // notación científica e infinitos, que no son cifras de plata.

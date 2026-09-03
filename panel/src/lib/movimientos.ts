@@ -70,11 +70,21 @@ export interface ConsultaOpciones {
 /**
  * Los parámetros del pedido.
  *
- * **Las fechas se mandan como instantes y no como días** porque el motor
- * compara contra `ts`, que es un instante ISO: `to=2026-09-30` dejaría afuera
- * todo el día 30. El extremo de abajo va como día pelado a propósito —
- * `"2026-09-01"` ordena antes que `"2026-09-01T00:00:00Z"`, así que incluye el
- * día entero— y el de arriba se cierra al final del día.
+ * **Las dos fechas van como días pelados**, y el motor las resuelve.
+ *
+ * Antes el extremo de arriba se cerraba acá con `T23:59:59.999Z` — un instante
+ * **UTC**— porque `ts` es un instante ISO y `to=2026-09-30` dejaba afuera el día
+ * 30 entero. Eso arreglaba el corte y creaba el otro: todo el motor bucketea por
+ * **día local** (offset configurable), así que la ventana quedaba corrida las
+ * horas del offset en los dos extremos y la lista perdía en silencio las
+ * compras de la noche del último día. Sobre el ledger real, 233 de 1140 filas
+ * caen en un día distinto del que el Resumen les asigna (wargaming ronda 3,
+ * W26).
+ *
+ * El panel no puede resolverlo: no sabe el offset del server. Y no tiene que
+ * saberlo — **qué es un día lo decide el motor**, como todo lo demás acá
+ * (regla 4 de §2.3 del plan). `api/routes.ts` interpreta un `YYYY-MM-DD` pelado
+ * como el día local completo.
  */
 export function consultaDe(filtros: FiltrosMovimientos, opciones: ConsultaOpciones = {}): TransactionsQuery {
   const limit = Math.min(opciones.limite ?? TAMANO_MOVIMIENTOS, LIMITE_MAXIMO);
@@ -91,7 +101,7 @@ export function consultaDe(filtros: FiltrosMovimientos, opciones: ConsultaOpcion
 
   return {
     ...(filtros.desde === "" ? {} : { from: filtros.desde }),
-    ...(filtros.hasta === "" ? {} : { to: `${filtros.hasta}T23:59:59.999Z` }),
+    ...(filtros.hasta === "" ? {} : { to: filtros.hasta }),
     ...(filtros.direccion === "" ? {} : { direction: filtros.direccion }),
     limit,
     offset,

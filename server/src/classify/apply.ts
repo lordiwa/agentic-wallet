@@ -115,7 +115,7 @@ interface ClassifiedRow {
  * disfrazada. Quien de verdad quiera un patrón ancho ("farmacia" para todas las
  * farmacias) tiene la tool MCP `set_rule`, que es explícita sobre lo que hace.
  */
-function resolveLedgerCounterparty(db: Database.Database, raw: string): string | null {
+export function resolveLedgerCounterparty(db: Database.Database, raw: string): string | null {
   const wanted = toRulePattern(raw);
   if (wanted === "") return null;
 

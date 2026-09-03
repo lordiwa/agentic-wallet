@@ -34,6 +34,13 @@ export type OriginVerdict =
   | "configured"
   /** Lo confirmo el usuario en este navegador, a mano. */
   | "trusted"
+  /**
+   * El usuario dijo que **no**: guardo este backend con "sin darle la llave".
+   * Gana sobre cualquier otro veredicto, incluido `loopback` (wargaming ronda
+   * 3, W27) — si no, ese boton seria un no-op para todo lo que entra solo, que
+   * es exactamente lo que era.
+   */
+  | "denied"
   /** Cualquier otro. Se le habla sin credencial. */
   | "foreign";
 
@@ -62,8 +69,26 @@ export function originOf(base: string): string | null {
   }
 }
 
-/** La maquina de quien mira. Darle la llave a tu propio equipo no la expone
- * a nadie mas, asi que el loopback entra sin configurar nada. */
+/**
+ * La maquina de quien mira. Darle la llave a tu propio equipo no la expone
+ * a nadie mas, asi que el loopback entra sin configurar nada.
+ *
+ * **`*.localhost` NO entra** (wargaming ronda 3, W13b). La ronda 2 lo aceptó
+ * como limitacion apoyada en RFC 6761 y en que "Chrome y Firefox resuelven
+ * `*.localhost` a loopback". Las dos mitades de esa justificacion se caen al
+ * mirarlas: la RFC dice **SHOULD**, no MUST (y el draft que lo volvia
+ * obligatorio expiro sin llegar a RFC), y WebKit declara explicitamente que en
+ * plataformas Apple el resolver del sistema **no garantiza** que `localhost`
+ * mapee a loopback (bug 171934, abierto). W3C Secure Contexts condiciona la
+ * confianza a que el navegador cumpla ese draft y advierte que los resolvers
+ * "a menudo ignoran estas sugerencias".
+ *
+ * Con un sufijo de busqueda DNS, `ajeno.localhost` puede resolver a una IP
+ * publica — y ese origen recibia la llave sin que el usuario autorizara nada,
+ * porque `loopback` entra solo. Nadie hospeda su billetera en
+ * `panel.localhost`, asi que la rama se va: quien la necesite la autoriza a
+ * mano como cualquier otro backend.
+ */
 export function isLoopbackOrigin(origin: string): boolean {
   let host: string;
   try {
@@ -71,7 +96,7 @@ export function isLoopbackOrigin(origin: string): boolean {
   } catch {
     return false;
   }
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "localhost") return true;
   if (host === "::1" || host === "[::1]") return true;
   // 127.0.0.0/8 entero, no solo 127.0.0.1.
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
@@ -95,6 +120,8 @@ export interface TrustPolicy {
   configured?: readonly string[];
   /** Origenes que el usuario confirmo a mano en este navegador. */
   trusted?: readonly string[];
+  /** Origenes que el usuario guardo **negandoles** la llave. Ver `denied`. */
+  denied?: readonly string[];
 }
 
 export function classifyBackend(base: string, policy: TrustPolicy = {}): OriginVerdict {
@@ -104,6 +131,9 @@ export function classifyBackend(base: string, policy: TrustPolicy = {}): OriginV
 
   const origin = originOf(value);
   if (origin === null) return "foreign";
+  // La negacion explicita va PRIMERO: es la unica forma de que "guardar sin
+  // darle la llave" signifique algo para un backend que entraria solo (W27).
+  if ((policy.denied ?? []).includes(origin)) return "denied";
   if (isLoopbackOrigin(origin)) return "loopback";
   if ((policy.configured ?? []).includes(origin)) return "configured";
   if ((policy.trusted ?? []).includes(origin)) return "trusted";

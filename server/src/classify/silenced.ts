@@ -23,6 +23,7 @@
  */
 import type Database from "better-sqlite3";
 import { toRulePattern } from "../category/categorize.js";
+import { resolveLedgerCounterparty } from "./apply.js";
 
 export interface SilencedCounterparty {
   /** Patrón normalizado — la clave, y con lo que se compara en la cola. */
@@ -32,25 +33,56 @@ export interface SilencedCounterparty {
   created_at: string;
 }
 
+export type SilenceError = "empty_pattern" | "counterparty_not_found";
+
+export type SilenceResult =
+  | {
+      ok: true;
+      /** El patrón que quedó guardado — la contraparte real, normalizada. */
+      pattern: string;
+      /** La contraparte real del ledger contra la que se resolvió. */
+      counterparty: string;
+      /** **R13: `false` no es éxito.** `false` significa que ya estaba
+       * silenciada y esta llamada no sacó nada de la cola. */
+      changed: boolean;
+    }
+  | { ok: false; error: SilenceError };
+
 /**
- * Saca una contraparte de la cola, para siempre. Devuelve `false` sin escribir
- * nada si el texto queda vacío al normalizarlo — un patrón vacío es substring de
- * toda contraparte y silenciaría la cola entera de un saque (misma guarda que
- * `upsertCategoryRule`).
+ * Saca una contraparte de la cola, para siempre.
  *
- * Idempotente: silenciar dos veces la misma contraparte no duplica ni falla; se
- * refresca la grafía cruda, que puede haber llegado mejor escrita la segunda vez.
+ * **El patrón se deriva de la contraparte REAL del ledger**, exactamente como
+ * `classifyCounterparty` (ver el doc de `apply.ts`). Éste era el único escritor
+ * de patrones del motor que aceptaba cualquier texto, y por ahí volvía a entrar
+ * la trampa fundacional del proyecto: `toRulePattern` perdona la caja y los
+ * acentos pero **no el espaciado interno**, así que silenciar `"CAFE  centro"`
+ * con dos espacios guardaba un patrón que no puede matchear nada nunca,
+ * devolvía `ok`, y dejaba la contraparte intacta en la cola. Un agente que use
+ * la tool MCP con la grafía que le dictó un humano se llevaba un éxito y un
+ * contador que sube (wargaming ronda 3, W22).
+ *
+ * Idempotente, y ahora lo **dice**: `changed: false` cuando ya estaba
+ * silenciada. Sin eso la pantalla celebraba *"N movimientos salen de la cola"*
+ * la segunda vez, con cero saliendo — que es la regla R13 (`changed:false` no es
+ * éxito) implementada para `resolve` y nunca para acá (W21). La grafía cruda se
+ * refresca igual: la del ledger es la que el usuario acaba de ver.
  */
-export function silenceCounterparty(db: Database.Database, rawCounterparty: string): boolean {
-  const pattern = toRulePattern(rawCounterparty);
-  if (pattern === "") return false;
+export function silenceCounterparty(db: Database.Database, rawCounterparty: string): SilenceResult {
+  if (toRulePattern(rawCounterparty) === "") return { ok: false, error: "empty_pattern" };
+
+  const counterparty = resolveLedgerCounterparty(db, rawCounterparty);
+  if (counterparty === null) return { ok: false, error: "counterparty_not_found" };
+
+  const pattern = toRulePattern(counterparty);
+  const yaEstaba = silencedPatterns(db).has(pattern);
 
   db.prepare(
     `INSERT INTO classify_silenced (pattern, counterparty, created_at)
      VALUES (?, ?, datetime('now'))
      ON CONFLICT(pattern) DO UPDATE SET counterparty = excluded.counterparty`
-  ).run(pattern, rawCounterparty.trim());
-  return true;
+  ).run(pattern, counterparty);
+
+  return { ok: true, pattern, counterparty, changed: !yaEstaba };
 }
 
 /**

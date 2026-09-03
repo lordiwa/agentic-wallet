@@ -113,12 +113,12 @@ describe("dos filtros, y nada más", () => {
     expect(endpoints.fetchTransactions.mock.calls[1][0]).toMatchObject({ direction: "in", offset: 0 });
   });
 
-  it("el rango viaja con el extremo de arriba cerrado al final del día", async () => {
+  it("el rango viaja como día pelado: el día local lo resuelve el motor (W26)", async () => {
     const w = await montar();
     await w.get('[data-testid="filtro-hasta"]').setValue("2026-09-30");
     await flushPromises();
 
-    expect(endpoints.fetchTransactions.mock.calls[1][0]).toMatchObject({ to: "2026-09-30T23:59:59.999Z" });
+    expect(endpoints.fetchTransactions.mock.calls[1][0]).toMatchObject({ to: "2026-09-30" });
   });
 
   it("limpiar los filtros vuelve a la lista entera", async () => {

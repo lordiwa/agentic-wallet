@@ -41,7 +41,8 @@ describe("isLoopbackOrigin", () => {
     expect(isLoopbackOrigin("http://127.0.0.1:3000")).toBe(true);
     expect(isLoopbackOrigin("http://127.9.9.9")).toBe(true);
     expect(isLoopbackOrigin("http://localhost:5174")).toBe(true);
-    expect(isLoopbackOrigin("http://panel.localhost")).toBe(true);
+    // `*.localhost` salió de acá en la ronda 3 (W13b, más abajo).
+    expect(isLoopbackOrigin("http://panel.localhost")).toBe(false);
     expect(isLoopbackOrigin("http://[::1]:3000")).toBe(true);
   });
 
@@ -112,5 +113,43 @@ describe("mayReceiveCredential", () => {
   it("un backend ajeno se llama sin credencial, y el modo demo no llama a nadie", () => {
     expect(mayReceiveCredential("foreign")).toBe(false);
     expect(mayReceiveCredential("demo")).toBe(false);
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W13b). La ronda 2 aceptó `*.localhost` como loopback
+ * apoyándose en RFC 6761 y en que "Chrome y Firefox lo resuelven a loopback".
+ * Las dos mitades de esa justificación se caen al mirarlas:
+ *
+ * - RFC 6761 §6.3 dice **SHOULD**, no MUST, y el intento de subirlo a requisito
+ *   (`draft-ietf-dnsop-let-localhost-be-localhost`) expiró sin llegar a RFC.
+ * - WebKit lo declara **no garantizado**: *"the system DNS resolver on Apple
+ *   platforms does not necessarily guarantee that localhost maps to loopback"*
+ *   (bug 171934, todavía abierto).
+ * - W3C Secure Contexts condiciona la confianza a que el navegador cumpla ese
+ *   draft, y advierte que los resolvers "a menudo ignoran estas sugerencias".
+ *
+ * O sea: se nombraron los dos navegadores que sí lo garantizan y se omitió el
+ * que dice que no. Con un sufijo de búsqueda DNS, `ajeno.localhost` puede
+ * resolver a una IP pública — y ese origen recibía la llave sin que el usuario
+ * autorizara nada, porque `loopback` entra solo.
+ *
+ * Nadie hospeda su billetera en `panel.localhost`, así que la rama se va. El
+ * host exacto `localhost` y `127.0.0.0/8` siguen entrando solos; cualquier otra
+ * cosa se autoriza a mano, como cualquier backend.
+ */
+describe("isLoopbackOrigin — sólo la máquina de quien mira (W13b)", () => {
+  it("un subdominio de .localhost ya no entra solo", () => {
+    expect(classifyBackend("http://ajeno.localhost")).toBe("foreign");
+    expect(classifyBackend("http://atacante.com.localhost")).toBe("foreign");
+    expect(classifyBackend("http://.localhost")).toBe("foreign");
+  });
+
+  it("la máquina de quien mira sigue entrando sola", () => {
+    expect(classifyBackend("http://localhost")).toBe("loopback");
+    expect(classifyBackend("http://localhost:8787")).toBe("loopback");
+    expect(classifyBackend("http://127.0.0.1")).toBe("loopback");
+    expect(classifyBackend("http://127.1")).toBe("loopback");
+    expect(classifyBackend("http://[::1]")).toBe("loopback");
   });
 });

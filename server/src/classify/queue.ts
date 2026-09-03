@@ -83,6 +83,19 @@ export interface ClassifyGroup {
   category: Category;
   /** El movimiento más reciente del grupo, para poder decir "hace cuánto". */
   last_ts: string;
+  /**
+   * Cuántos movimientos y cuánta plata tiene esta contraparte en **todo el
+   * ledger** — presentes sólo cuando la cola viene acotada a un lote
+   * (`transactionIds`), y ausentes cuando no hay dos poblaciones que distinguir.
+   *
+   * Existen porque la tarjeta contaba el lote y el escritor
+   * (`classify/apply.ts`) mueve el ledger entero: la tarjeta prometía "2
+   * movimientos" y la respuesta contestaba "reclasificaste 47", en la misma
+   * pantalla (wargaming ronda 3, W23). Es W1 por una tercera puerta, y la salida
+   * es la de W12: no recortar el número, decir el alcance.
+   */
+  count_en_ledger?: number;
+  total_en_ledger?: number;
 }
 
 export interface ClassifyQueueOptions {
@@ -224,7 +237,24 @@ export function groupUnclassified(
  * decide cuántos mostrar es quien pinta la pantalla, no el motor.
  */
 export function classifyQueue(db: Database.Database, options: ClassifyQueueOptions = {}): ClassifyGroup[] {
-  const rows = selectClassifiableRows(db, options.transactionIds);
-  const groups = groupUnclassified(rows, listCategoryRules(db), silencedPatterns(db));
+  const rules = listCategoryRules(db);
+  const silenced = silencedPatterns(db);
+  const groups = groupUnclassified(selectClassifiableRows(db, options.transactionIds), rules, silenced);
+
+  // En modo lote, además, cuánto hay de cada contraparte FUERA del lote: es lo
+  // que la regla va a mover y la tarjeta no estaba diciendo (W23). El segundo
+  // agrupamiento es sobre la misma tabla y con las mismas reglas, así que los
+  // dos números salen de la misma definición y no de dos parecidas.
+  if (options.transactionIds !== undefined) {
+    const enElLedger = new Map(
+      groupUnclassified(selectClassifiableRows(db), rules, silenced).map((group) => [group.pattern, group])
+    );
+    for (const group of groups) {
+      const completo = enElLedger.get(group.pattern);
+      group.count_en_ledger = completo?.count ?? group.count;
+      group.total_en_ledger = completo?.total ?? group.total;
+    }
+  }
+
   return options.limit === undefined ? groups : groups.slice(0, options.limit);
 }

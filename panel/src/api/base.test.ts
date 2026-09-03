@@ -92,7 +92,9 @@ describe("?api= no se guarda sin confirmación", () => {
   it("confirmar sin autorizar guarda el backend pero NO le da la llave", () => {
     setSearch(`?api=${encodeURIComponent(AJENO)}`);
     confirmPendingApiBase();
-    expect(currentBackendVerdict()).toBe("foreign");
+    // `denied` desde la ronda 3: confirmar sin autorizar dejó de ser un no-op y
+    // ahora anota la negación, que gana sobre cualquier veredicto (W27).
+    expect(currentBackendVerdict()).toBe("denied");
     expect(credentialAllowed()).toBe(false);
     expect(storedTrustedOrigins()).toEqual([]);
   });
@@ -154,5 +156,50 @@ describe("la llave", () => {
   it("nunca viaja en la URL: no se lee de la query", () => {
     setSearch("?token=llave-en-la-url");
     expect(getAccessToken()).toBeNull();
+  });
+});
+
+/**
+ * Wargaming ronda 3 (W27). El cartel de R1 ofrece dos botones —*"Guardar sin
+ * darle la llave"* y *"Guardar y autorizar"*— y el primero **no hacía lo que
+ * dice**: `trustBackendOrigin` cortaba en `verdict !== "foreign"`, así que para
+ * cualquier backend que ya entrara solo (loopback, configured) los dos botones
+ * eran el mismo, y la llave salía igual.
+ *
+ * El vector: `?api=http://ajeno.localhost:8787` (W13b lo cerró por otra puerta)
+ * o, sin subdominios, un proceso cualquiera escuchando en `127.0.0.1:9999` —
+ * que sigue siendo `loopback` y sigue entrando solo. El usuario que hace
+ * exactamente lo prudente entrega el `WALLET_ACCESS_TOKEN`.
+ *
+ * El botón no puede ser un no-op: guardar sin dar la llave tiene que **negar**
+ * el origen, y la negación gana sobre cualquier veredicto.
+ */
+describe("W27 — 'Guardar sin darle la llave' niega el origen de verdad", () => {
+  it("un loopback guardado sin llave deja de recibirla", () => {
+    setSearch("?api=http://127.0.0.1:9999");
+    confirmPendingApiBase({ trust: false });
+    expect(getApiBase()).toBe("http://127.0.0.1:9999");
+    expect(credentialAllowed()).toBe(false);
+    expect(currentBackendVerdict()).toBe("denied");
+  });
+
+  it("el mismo backend guardado CON llave sí la recibe", () => {
+    setSearch("?api=http://127.0.0.1:9999");
+    confirmPendingApiBase({ trust: true });
+    expect(credentialAllowed()).toBe(true);
+  });
+
+  it("autorizar después levanta la negación: la última decisión manda", () => {
+    setSearch("?api=http://127.0.0.1:9999");
+    confirmPendingApiBase({ trust: false });
+    expect(credentialAllowed()).toBe(false);
+    trustBackendOrigin("http://127.0.0.1:9999");
+    expect(credentialAllowed()).toBe(true);
+  });
+
+  it("negar un origen no toca a los demás", () => {
+    setSearch("?api=http://127.0.0.1:9999");
+    confirmPendingApiBase({ trust: false });
+    expect(credentialAllowed("http://localhost:8787")).toBe(true);
   });
 });

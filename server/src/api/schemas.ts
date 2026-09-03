@@ -94,6 +94,18 @@ export const silenceBodySchema = z.object({
  * GET /classify/queue. `transaction_ids` llega como lista separada por comas
  * (el lote de un sync, D7-b) porque es una query string, no un body.
  */
+/**
+ * Cuantos ids acepta el filtro por lote.
+ *
+ * `selectClassifiableRows` arma `id IN (?, ...)` con un placeholder por id, y
+ * SQLite corta en 32766 variables: sin tope, una lista larga llegaba hasta el
+ * `prepare` y tiraba `too many SQL variables` (wargaming ronda 3, W24). El
+ * limite es el mismo `batch_size` maximo de un sync, que es el unico productor
+ * legitimo de esta lista (D7-b): pedir mas ids que movimientos puede traer un
+ * sync no es un caso de uso, es una lista armada a mano.
+ */
+export const MAX_TRANSACTION_IDS = 500;
+
 export const classifyQueueQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).optional(),
   transaction_ids: z
@@ -105,6 +117,13 @@ export const classifyQueueQuerySchema = z.object({
       const ids = value.split(",").map((part) => Number(part.trim()));
       if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "transaction_ids must be positive integers" });
+        return z.NEVER;
+      }
+      if (ids.length > MAX_TRANSACTION_IDS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `transaction_ids admite hasta ${MAX_TRANSACTION_IDS} ids`,
+        });
         return z.NEVER;
       }
       return ids;

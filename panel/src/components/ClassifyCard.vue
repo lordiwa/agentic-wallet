@@ -76,6 +76,21 @@ const resumenLinea = computed(() => {
   return partes.join(" · ");
 });
 
+/**
+ * Cuánto queda de esta contraparte **fuera del lote** que se está mirando.
+ *
+ * En modo lote (el aviso post-sync, D7-b) `grupo.count` es el conteo del lote y
+ * el escritor mueve el ledger entero, así que la tarjeta prometía "2
+ * movimientos" y la respuesta contestaba "reclasificaste 47" (wargaming ronda 3,
+ * W23). El número no se recorta —los 47 se mueven de verdad— pero el alcance se
+ * dice, igual que en W12.
+ */
+const alcanceEnElLedger = computed(() => {
+  const enElLedger = props.grupo.count_en_ledger;
+  if (enElLedger === undefined || enElLedger <= props.grupo.count) return null;
+  return { count: enElLedger, total: props.grupo.total_en_ledger ?? props.grupo.total };
+});
+
 function responder(): void {
   if (elegida.value === "") return;
   emit("clasificar", elegida.value);
@@ -146,10 +161,22 @@ function responder(): void {
         </button>
       </div>
 
-      <p class="small pie">
+      <!-- W23: en modo lote las cifras de arriba son del lote y la regla mueve
+           todo lo que hay. Se dice antes de tocar el botón, no después. -->
+      <p v-if="alcanceEnElLedger" class="aviso" data-testid="classify-alcance-lote">
+        Las cifras de arriba son <b>sólo las de este lote</b>. De esta contraparte hay
+        {{ plural(alcanceEnElLedger.count, "movimiento", "movimientos") }} por
+        {{ formatoPlata(alcanceEnElLedger.total) }} en todo tu historial, y la regla los mueve a todos.
+      </p>
+
+      <p class="small pie" data-testid="classify-pie">
         Tu respuesta escribe una regla sobre este nombre y vale para
-        {{ plural(grupo.count, "el movimiento", "los movimientos") }} de esta contraparte, los de antes y los que
-        vengan. No hay una segunda pregunta.
+        {{
+          alcanceEnElLedger
+            ? "todos los movimientos"
+            : plural(grupo.count, "el movimiento", "los movimientos")
+        }}
+        de esta contraparte, los de antes y los que vengan. No hay una segunda pregunta.
       </p>
     </div>
   </div>

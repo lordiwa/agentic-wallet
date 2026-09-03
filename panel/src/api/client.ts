@@ -10,7 +10,7 @@
  */
 import { credentialAllowed, currentBackendVerdict, getAccessToken, getApiBase, isDemoMode } from "./base";
 import { demoFetch } from "../demo/demoFetch";
-import { DEMO_BASE, normalizeBase } from "./origins";
+import { DEMO_BASE, mayReceiveCredential, normalizeBase } from "./origins";
 import type { OriginVerdict } from "./origins";
 
 export type EstadoConexion =
@@ -104,8 +104,15 @@ export async function probeHealth(fetchImpl: typeof fetch = fetch): Promise<Diag
   return { estado: token === null ? "sin-llave" : "llave-rechazada", base, verdict, authRequired };
 }
 
+/**
+ * La MISMA funcion que decide si la llave sale (`origins.ts`), y no una copia
+ * con la lista al reves. La copia decia `verdict !== "foreign"`, asi que el
+ * veredicto `denied` que trajo W27 —el usuario dijo explicitamente que no—
+ * habria caido en "sin llave" ("cargate una llave") en vez de "no autorizado"
+ * ("ese servidor no la recibe"), que es justo la decision que acababa de tomar.
+ */
 function mayGetCredential(verdict: OriginVerdict): boolean {
-  return verdict !== "foreign";
+  return mayReceiveCredential(verdict);
 }
 
 /** Las cuatro etiquetas `.tag` del sistema (§2.1). El chip no elige colores:

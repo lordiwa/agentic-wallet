@@ -46,15 +46,17 @@ describe("los dos filtros, y nada más", () => {
     expect(q.offset).toBe(0);
   });
 
-  it("el extremo de arriba se cierra al final del día: `to=2026-09-30` dejaría afuera todo el 30", () => {
+  /**
+   * Las dos fechas viajan como días pelados desde la ronda 3 (W26). El extremo
+   * de arriba se cerraba acá con `T23:59:59.999Z`, que arreglaba el corte del
+   * día 30 y creaba el otro: ese instante es UTC y el motor cuenta en día
+   * local, así que la ventana quedaba corrida las horas del offset. Quién
+   * decide qué es un día es el motor, no esta función.
+   */
+  it("las dos fechas viajan como días, y el motor las resuelve", () => {
     const q = consultaDe({ desde: "2026-09-01", hasta: "2026-09-30", direccion: "" });
     expect(q.from).toBe("2026-09-01");
-    expect(q.to).toBe("2026-09-30T23:59:59.999Z");
-    // Un movimiento del 30 a media tarde entra: es lo que la comparación de
-    // strings ISO del motor evalúa.
-    expect("2026-09-30T18:22:00.000Z" <= (q.to as string)).toBe(true);
-    // Y el de abajo incluye el día entero aunque vaya sin hora.
-    expect("2026-09-01T00:00:00.000Z" >= (q.from as string)).toBe(true);
+    expect(q.to).toBe("2026-09-30");
   });
 
   it("entrada/salida viaja como `direction`", () => {

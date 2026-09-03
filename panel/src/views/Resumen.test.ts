@@ -59,6 +59,7 @@ function cola(overrides: Partial<ClassifyProgressResponse> = {}): ClassifyProgre
     covered_ratio: 0,
     unclassified_total: 245,
     unclassified_ratio: 0.67,
+    remaining_ratio: 0.7,
     groups: 12,
     transactions: 34,
     target_ratio: 0.8,

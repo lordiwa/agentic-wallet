@@ -36,6 +36,7 @@ import {
   unsilenceCounterparty,
 } from "../classify/index.js";
 import { buildOverview } from "../api/routes.js";
+import { MAX_TRANSACTION_IDS } from "../api/schemas.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
 import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
 import { listReviewResolutions, resolveReview, REVIEW_ACTIONS } from "../review/resolve.js";
@@ -490,8 +491,12 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         limit: z.number().int().min(1).max(500).optional().describe("Tope de grupos, del que mas plata mueve al que menos"),
         transaction_ids: z
           .array(z.number().int().positive())
+          .max(MAX_TRANSACTION_IDS)
           .optional()
-          .describe("Acota la cola a estos movimientos, p.ej. los que entraron en un sync"),
+          .describe(
+            `Acota la cola a estos movimientos, p.ej. los que entraron en un sync. Hasta ${MAX_TRANSACTION_IDS}: ` +
+              "por encima de eso la consulta pasa el limite de variables de SQLite."
+          ),
       },
     },
     async ({ limit, transaction_ids }) => {
@@ -553,7 +558,10 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         "Saca una contraparte de la cola de clasificacion para siempre, sin escribir ninguna categoria. Es la " +
         "salida honesta para las contrapartes que tienen dos verdades (la misma persona que un mes cobra una " +
         "consulta y otro devuelve un prestamo): ninguna categoria seria correcta para todas sus filas. Sin esto " +
-        "esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola.",
+        "esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola. El nombre se " +
+        "valida contra el ledger igual que en `classify_counterparty`: si no corresponde a una contraparte real " +
+        "no se escribe nada, porque un patron que no matchea ninguna fila no silencia nada. `changed: false` " +
+        "significa que ya estaba silenciada y esta llamada no saco ningun movimiento de la cola.",
       inputSchema: {
         counterparty: z.string().min(1),
         undo: z.boolean().optional().describe("Devuelve a la cola algo silenciado por error. Default false."),
@@ -565,10 +573,23 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         const changed = unsilenceCounterparty(db, counterparty);
         return json({ ok: true, silenced: false, changed });
       }
-      if (!silenceCounterparty(db, counterparty)) {
-        throw new Error("silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido.");
+      const silenciado = silenceCounterparty(db, counterparty);
+      if (!silenciado.ok) {
+        throw new Error(
+          silenciado.error === "empty_pattern"
+            ? "silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido."
+            : "silence_counterparty: esa contraparte no existe en el ledger, asi que el patron no silenciaria " +
+              "ninguna fila. Pasa el nombre tal como lo devuelve get_classify_queue."
+        );
       }
-      return json({ ok: true, silenced: true, count: listSilencedCounterparties(db).length });
+      return json({
+        ok: true,
+        silenced: true,
+        changed: silenciado.changed,
+        counterparty: silenciado.counterparty,
+        pattern: silenciado.pattern,
+        count: listSilencedCounterparties(db).length,
+      });
     }
   );
 
