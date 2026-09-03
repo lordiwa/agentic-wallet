@@ -72,6 +72,16 @@ Ahora son dos decisiones separadas, y ninguna es automatica:
   **se le habla igual, pero sin credencial** — un 401 que se explica es mejor
   que un 200 conseguido regalando la llave.
 
+> **`VITE_API_BASE_URL` NO entra solo a la lista blanca.** Son dos variables
+> distintas a propósito: una dice *a quien le hablo*, la otra *a quien le doy
+> la llave*, y que la primera venga del build no prueba nada sobre la segunda.
+> Si fijás el backend en el build y el server tiene `WALLET_ACCESS_TOKEN`,
+> **poné el mismo origen en `VITE_WALLET_TRUSTED_API_ORIGINS`**. Sin eso el
+> sitio llama sin credencial y la API responde 401 aunque la llave este
+> cargada. Falla cerrado, que es lo correcto, pero es facil de diagnosticar
+> mal: el chip del panel lo dice con todas las letras ("ese servidor no esta
+> autorizado").
+
 ## Acceso: sin login, y por que esta bien
 
 **Decision: el sitio es publico y no pide contrasena.**

@@ -20,6 +20,9 @@ build/
 .firebase/
 .DS_Store
 
+# Bitacora de subagentes de hivemind: runtime local, no artefacto del repo.
+state/
+
 .claude/worktrees/
 .claude/context-monitor/
 **/.claude/context-monitor/
