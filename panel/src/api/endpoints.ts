@@ -26,11 +26,15 @@
  */
 import { panelFetch as apiFetch } from "./client";
 import type {
+  Category,
+  ClassifyApplyResponse,
   ClassifyProgressResponse,
   ClassifyQueueResponse,
   ConversationDetailResponse,
   ConversationsResponse,
   OverviewResponse,
+  ReviewAction,
+  ReviewResolveResponse,
   SyncResponse,
   SyncStatusResponse,
   TransactionsFilter,
@@ -288,4 +292,81 @@ export function fetchClassifyQueue(options: { limit?: number; transactionIds?: n
   if (options.transactionIds?.length) params.set("transaction_ids", options.transactionIds.join(","));
   const qs = params.toString();
   return getJSON<ClassifyQueueResponse>("classify.queue", `/api/classify/queue${qs ? `?${qs}` : ""}`);
+}
+
+/* ==========================================================================
+ * Lo que N3 agrega: las tres escrituras de la pantalla de Preguntas.
+ *
+ * Las tres comparten una cosa que las separa de los GET de arriba: **el error
+ * del motor es un dato, no un accidente**. `foreign_currency` no es "algo
+ * falló", es la respuesta del motor a una pregunta concreta, y la pantalla la
+ * dibuja con su motivo (`c2-tarjeta-revision.html`: "se muestra el motivo del
+ * server tal cual, no un rojo genérico"). Por eso el código viaja en la
+ * excepción en vez de perderse en un `Error` con el status adentro.
+ * ========================================================================== */
+
+/** Un rechazo del motor, con su código tipado intacto. */
+export class ErrorDelMotor extends Error {
+  constructor(
+    /** El `error` del cuerpo: `foreign_currency`, `counterparty_not_found`, … */
+    readonly codigo: string,
+    readonly status: number
+  ) {
+    super(codigo);
+    this.name = "ErrorDelMotor";
+  }
+}
+
+async function postJSON<T>(op: string, path: string, body: unknown): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    const res = await apiFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const parsed = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    if (!res.ok) {
+      throw new ErrorDelMotor(parsed?.error ?? `${res.status} ${res.statusText}`, res.status);
+    }
+    logOutcome(op, startedAt, "ok");
+    return parsed as T;
+  } catch (err) {
+    // Sólo el código y el status: la contraparte es un dato personal y no entra
+    // ni siquiera a la consola (CLAUDE.md, telemetría).
+    logOutcome(op, startedAt, "error", {
+      message: err instanceof ErrorDelMotor ? err.codigo : err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+}
+
+/**
+ * Responder "qué es esto" (H28): escribe UNA regla para la contraparte y
+ * devuelve qué movió. El patrón lo deriva el motor de la contraparte real del
+ * ledger — el panel manda el nombre que mostró, nunca un patrón.
+ */
+export function postClassify(counterparty: string, category: Category): Promise<ClassifyApplyResponse> {
+  return postJSON<ClassifyApplyResponse>("classify.apply", "/api/classify", { counterparty, category });
+}
+
+/** "No me preguntes más por esta" (M5): la contraparte sale de la cola y su
+ * plata cuenta como cubierta en el progreso. */
+export function postSilence(counterparty: string): Promise<{ ok: true; counterparty: string }> {
+  return postJSON<{ ok: true; counterparty: string }>("classify.silence", "/api/classify/silence", { counterparty });
+}
+
+/**
+ * La salida de la cola de monto. `amount` va sólo en `correct` — que sea
+ * obligatorio ahí y prohibido en el resto lo decide el motor, no esta capa.
+ */
+export function postReviewResolve(
+  id: number,
+  input: { action: ReviewAction; amount?: number; note?: string }
+): Promise<ReviewResolveResponse> {
+  return postJSON<ReviewResolveResponse>("review.resolve", `/api/review/${id}/resolve`, {
+    action: input.action,
+    ...(input.amount === undefined ? {} : { amount: input.amount }),
+    ...(input.note === undefined ? {} : { note: input.note }),
+  });
 }

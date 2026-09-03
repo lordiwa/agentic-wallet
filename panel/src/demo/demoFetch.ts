@@ -50,6 +50,10 @@ interface DemoTx {
   counterparty: string;
   category: string | null;
   needs_review: number;
+  /** Ausente = la moneda del perfil de la demo. N3 la agrega para poder
+   * mostrar el caso R14 (fila en otra moneda, `Confirmar` deshabilitado), que
+   * de otro modo la demo no podría dibujar nunca. */
+  currency?: string;
 }
 
 const DEMO_TRANSACTIONS: DemoTx[] = [
@@ -63,6 +67,7 @@ const DEMO_TRANSACTIONS: DemoTx[] = [
   { id: 8, ts: daysAgo(9), direction: "out", type: "retiro", amount: 80, counterparty: "Cajero Ejemplo", category: "efectivo", needs_review: 1 },
   { id: 9, ts: daysAgo(11), direction: "out", type: "debito", amount: 18, counterparty: "Transporte Ejemplo", category: "transporte", needs_review: 0 },
   { id: 10, ts: daysAgo(13), direction: "out", type: "servicio", amount: 15, counterparty: "Suscripcion Ficticia", category: "suscripcion", needs_review: 0 },
+  { id: 11, ts: daysAgo(5), direction: "out", type: "debito", amount: 34, counterparty: "Tienda Extranjera Ficticia", category: null, needs_review: 1, currency: "EUR" },
 ];
 
 function fullRow(tx: DemoTx) {
@@ -74,7 +79,7 @@ function fullRow(tx: DemoTx) {
     direction: tx.direction,
     type: tx.type,
     amount: tx.amount,
-    currency: "USD",
+    currency: tx.currency ?? "USD",
     counterparty: tx.counterparty,
     account: null,
     category: tx.category,
@@ -169,7 +174,17 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
 
   if (pathname === "/api/health") return jsonResponse({ status: "ok", mode: "demo" });
 
-  if (pathname === "/api/overview") return jsonResponse(DEMO_OVERVIEW);
+  // Los conteos se recalculan en cada llamada: resolver una fila en la demo
+  // tiene que bajar el "sin confirmar" del Resumen, igual que en el motor.
+  if (pathname === "/api/overview") {
+    return jsonResponse({
+      ...DEMO_OVERVIEW,
+      counts: {
+        total: DEMO_TRANSACTIONS.length,
+        needs_review: DEMO_TRANSACTIONS.filter((t) => t.needs_review).length,
+      },
+    });
+  }
 
   if (pathname === "/api/review") {
     const rows = DEMO_TRANSACTIONS.filter((t) => t.needs_review).map(fullRow);
@@ -185,11 +200,19 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
 
   if (pathname === "/api/sync" && method === "POST") return jsonResponse(demoSyncBatch());
 
-  if (pathname === "/api/classify/progress") return jsonResponse(DEMO_CLASSIFY_PROGRESS);
+  if (pathname === "/api/classify/progress") return jsonResponse(demoClassifyProgress());
 
   if (pathname === "/api/classify/queue") {
     const groups = demoClassifyGroups(path);
     return jsonResponse({ groups, count: groups.length });
+  }
+
+  if (pathname === "/api/classify" && method === "POST") return demoClassify(init);
+
+  if (pathname === "/api/classify/silence" && method === "POST") return demoSilence(init);
+
+  if (/^\/api\/review\/\d+\/resolve$/.test(pathname) && method === "POST") {
+    return demoResolve(Number(pathname.split("/")[3]), init);
   }
 
   if (pathname === "/api/conversations") return jsonResponse({ conversations: [] });
@@ -322,27 +345,173 @@ const DEMO_CLASSIFY_GROUPS = [
   },
 ];
 
-const DEMO_CLASSIFY_PROGRESS = {
-  spending_total: 365.5,
-  baseline_total: 245,
-  covered_total: 0,
-  covered_ratio: 0,
-  unclassified_total: 245,
-  unclassified_ratio: 0.6703,
-  groups: DEMO_CLASSIFY_GROUPS.length,
-  transactions: DEMO_CLASSIFY_GROUPS.reduce((sum, g) => sum + g.count, 0),
-  target_ratio: 0.8,
-  answers_to_target: 2,
-  amount_to_target: 165,
-  done: false,
-};
+/* ==========================================================================
+ * N3 — la pantalla de Preguntas escribe, y una demo que sólo lee no la puede
+ * mostrar. Igual que el ciclo del sync de N2, responder ES un estado:
+ * clasificar y silenciar sacan una contraparte de la cola, y confirmar,
+ * corregir o descartar sacan una fila de la de monto. Sin esto la demo dibuja
+ * los botones y no pasa nada al pulsarlos, que es peor que no dibujarlos.
+ *
+ * El estado vive en el módulo y se reinicia al recargar: la demo no persiste
+ * nada, y eso es lo correcto.
+ * ========================================================================== */
+
+/** Las contrapartes que en esta sesión de demo ya se respondieron o se
+ * silenciaron. Las dos salen de la cola: cerrar la pregunta también es
+ * responderla (M5). */
+const demoRespondidas = new Set<string>();
+
+function gruposRestantes() {
+  return DEMO_CLASSIFY_GROUPS.filter((grupo) => !demoRespondidas.has(grupo.pattern));
+}
+
+/**
+ * El progreso, derivado de lo que queda — no una constante. Es el mismo
+ * cálculo que hace el motor (`classify/progress.ts`): la línea base es lo que
+ * había que preguntar el primer día, y lo cubierto es la diferencia.
+ */
+function demoClassifyProgress() {
+  const restantes = gruposRestantes();
+  const base = DEMO_CLASSIFY_GROUPS.reduce((sum, g) => sum + g.total, 0);
+  const queda = restantes.reduce((sum, g) => sum + g.total, 0);
+  const cubierto = Math.max(0, base - queda);
+  const spendingTotal = 365.5;
+
+  // Cuántas respuestas más —de la que más plata mueve a la que menos— tapan lo
+  // que falta para el 80 %.
+  const falta = Math.max(0, base * 0.8 - cubierto);
+  let respuestas = 0;
+  let acumulado = 0;
+  for (const grupo of restantes) {
+    if (acumulado >= falta) break;
+    acumulado += grupo.total;
+    respuestas += 1;
+  }
+
+  return {
+    spending_total: spendingTotal,
+    baseline_total: base,
+    covered_total: cubierto,
+    covered_ratio: base === 0 ? 1 : Math.round((cubierto / base) * 10_000) / 10_000,
+    unclassified_total: queda,
+    unclassified_ratio: Math.round((queda / spendingTotal) * 10_000) / 10_000,
+    groups: restantes.length,
+    transactions: restantes.reduce((sum, g) => sum + g.count, 0),
+    target_ratio: 0.8,
+    answers_to_target: respuestas,
+    amount_to_target: acumulado,
+    done: base === 0 || cubierto / base >= 0.8,
+  };
+}
 
 /** `?transaction_ids=` acota la cola al lote (D7-b). Una lista vacía es una
  * cola vacía, no "sin filtro" — igual que en el motor. */
 function demoClassifyGroups(path: string) {
   const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
   const ids = new URLSearchParams(query).get("transaction_ids");
-  if (ids === null) return DEMO_CLASSIFY_GROUPS;
+  const restantes = gruposRestantes();
+  if (ids === null) return restantes;
   const cuantos = ids.split(",").filter((part) => part.trim() !== "").length;
-  return DEMO_CLASSIFY_GROUPS.slice(0, Math.min(cuantos, DEMO_CLASSIFY_GROUPS.length));
+  return restantes.slice(0, Math.min(cuantos, restantes.length));
+}
+
+function cuerpo(init?: RequestInit): Record<string, unknown> {
+  if (typeof init?.body !== "string") return {};
+  try {
+    return JSON.parse(init.body) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/** El patrón se deriva de la contraparte, igual que en `classify/apply.ts`: la
+ * demo no puede ser más permisiva que el motor. */
+function patronDe(contraparte: string): string {
+  return contraparte
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * `POST /api/classify`. Devuelve los dos conteos que la pantalla necesita para
+ * decir qué cambió (F13/R19): cuántos movimientos movió y cuántos de ellos son
+ * del mes en curso.
+ */
+function demoClassify(init?: RequestInit): Response {
+  const { counterparty, category } = cuerpo(init) as { counterparty?: string; category?: string };
+  const patron = patronDe(counterparty ?? "");
+  const grupo = DEMO_CLASSIFY_GROUPS.find((g) => g.pattern === patron);
+  if (!grupo) return jsonResponse({ error: "counterparty_not_found" }, 400);
+
+  demoRespondidas.add(grupo.pattern);
+  const desdeElMes = new Date();
+  desdeElMes.setDate(1);
+  const delMes = DEMO_TRANSACTIONS.filter(
+    (tx) => patronDe(tx.counterparty) === patron && new Date(tx.ts) >= desdeElMes
+  ).length;
+
+  return jsonResponse({
+    ok: true,
+    pattern: grupo.pattern,
+    counterparty: grupo.counterparty,
+    category,
+    reclassified: grupo.count,
+    reclassified_this_month: delMes,
+  });
+}
+
+/** `POST /api/classify/silence` (M5). */
+function demoSilence(init?: RequestInit): Response {
+  const { counterparty } = cuerpo(init) as { counterparty?: string };
+  const patron = patronDe(counterparty ?? "");
+  if (patron === "") return jsonResponse({ error: "empty_pattern" }, 400);
+  demoRespondidas.add(patron);
+  return jsonResponse({ ok: true, counterparty });
+}
+
+/**
+ * `POST /api/review/:id/resolve`, con las tres respuestas que el motor de
+ * verdad puede dar y que la pantalla ramifica:
+ *
+ * - `changed:false` cuando la fila ya estaba resuelta (R13) — un 200 que **no**
+ *   es éxito;
+ * - `foreign_currency` con 400 cuando se intenta confirmar una fila en otra
+ *   moneda (R14);
+ * - y la resolución normal, que saca la fila de la cola.
+ */
+function demoResolve(id: number, init?: RequestInit): Response {
+  const fila = DEMO_TRANSACTIONS.find((tx) => tx.id === id);
+  if (!fila) return jsonResponse({ error: "not_found" }, 404);
+
+  const { action, amount, note } = cuerpo(init) as { action?: string; amount?: number; note?: string };
+  if (fila.needs_review !== 1) {
+    return jsonResponse({ ok: true, changed: false, reason: "already_resolved", transaction: fullRow(fila) });
+  }
+  if (action === "correct" && typeof amount !== "number") return jsonResponse({ error: "amount_required" }, 400);
+  if (action === "confirm" && (fila.currency ?? "USD") !== "USD") {
+    return jsonResponse({ error: "foreign_currency" }, 400);
+  }
+
+  fila.needs_review = 0;
+  if (action === "correct") fila.amount = amount as number;
+
+  return jsonResponse({
+    ok: true,
+    changed: true,
+    action,
+    transaction: fullRow(fila),
+    resolution: {
+      id: 1,
+      transaction_id: fila.id,
+      gmail_msg_id: `demo-${fila.id}`,
+      action,
+      previous_amount: fila.amount,
+      new_amount: action === "correct" ? (amount as number) : null,
+      note: note ?? null,
+      resolved_by: "demo",
+      resolved_at: daysAgo(0),
+    },
+  });
 }

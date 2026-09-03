@@ -245,3 +245,55 @@ export interface ClassifyQueueResponse {
   groups: ClassifyGroupRow[];
   count: number;
 }
+
+/* ==========================================================================
+ * Lo que N3 agrega: las tres respuestas de escritura que la pantalla de
+ * Preguntas necesita leer con contrato, porque de sus campos sale lo que la
+ * pantalla dice que pasó (F13/R19). No alcanza con "salió bien".
+ * ========================================================================== */
+
+/**
+ * `POST /api/classify` — `server/src/classify/apply.ts`.
+ *
+ * Los dos conteos son el motivo por el que este tipo existe:
+ * `reclassified` es cuántos movimientos movió la regla y
+ * `reclassified_this_month` cuántos de ellos caen en el mes que el gráfico del
+ * Resumen dibuja. Con el segundo en cero la respuesta fue correcta y el gráfico
+ * no se mueve, y la pantalla tiene que poder decirlo (R19).
+ */
+export interface ClassifyApplyResponse {
+  ok: true;
+  pattern: string;
+  counterparty: string;
+  category: Category;
+  reclassified: number;
+  reclassified_this_month: number;
+}
+
+/** El rastro que `POST /api/review/:id/resolve` deja al resolver
+ * (`server/src/review/resolve.ts`). */
+export interface ReviewResolutionRow {
+  id: number;
+  transaction_id: number;
+  gmail_msg_id: string;
+  action: ReviewAction;
+  previous_amount: number | null;
+  new_amount: number | null;
+  note: string | null;
+  resolved_by: string;
+  resolved_at: string;
+}
+
+export type ReviewAction = "confirm" | "correct" | "discard";
+
+/**
+ * `POST /api/review/:id/resolve`.
+ *
+ * **`changed` es parte del contrato, no un detalle** (R13): el motor devuelve
+ * `{ok:true, changed:false}` con status 200 cuando la fila ya estaba resuelta,
+ * y eso NO es éxito — es "esto ya lo resolviste en otro lado". Una pantalla que
+ * mire sólo `ok` festeja una acción que no ocurrió.
+ */
+export type ReviewResolveResponse =
+  | { ok: true; changed: true; action: ReviewAction; transaction: TransactionRow; resolution: ReviewResolutionRow }
+  | { ok: true; changed: false; reason: "already_resolved"; transaction: TransactionRow };

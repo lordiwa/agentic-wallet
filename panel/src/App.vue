@@ -18,6 +18,7 @@ import AccessKeyScreen from "./components/AccessKeyScreen.vue";
 import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
 import Pendiente from "./views/Pendiente.vue";
+import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
 import { probeHealth } from "./api/client";
 import type { DiagnosticoConexion } from "./api/client";
@@ -56,11 +57,14 @@ onMounted(async () => {
     </template>
 
     <Resumen v-if="ruta.pantalla === 'resumen'" />
-    <Pendiente
+    <!-- La `key` fuerza a remontar cuando cambia el contexto del destino: entrar
+         por el aviso post-sync a la cola acotada al lote (D7-b) estando ya en
+         Preguntas tiene que recargar la cola, no dejar la anterior en pantalla. -->
+    <Preguntas
       v-else-if="ruta.pantalla === 'preguntas'"
-      titulo="Preguntas"
-      fase="N3"
-      que="Dos preguntas distintas: qué es un movimiento, y cuánto fue."
+      :key="`${ruta.params.pestana ?? ''}|${ruta.params.ids ?? ''}`"
+      :pestana-pedida="ruta.params.pestana"
+      :ids="ruta.params.ids"
     />
     <Pendiente
       v-else

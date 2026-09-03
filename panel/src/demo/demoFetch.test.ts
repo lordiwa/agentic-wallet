@@ -99,3 +99,110 @@ describe("el ciclo del sync, que es lo que el chip dibuja", () => {
     expect(lote.summary.needsReview).toBeGreaterThan(0);
   });
 });
+
+/*
+ * N3. La pantalla de Preguntas ESCRIBE, y una demo que sólo lee dibuja botones
+ * que no hacen nada. Lo que se prueba es que las tres escrituras cambien el
+ * estado de la demo y que las respuestas tengan la forma que la pantalla
+ * ramifica — sobre todo las dos que NO son éxito (R13 y R14).
+ *
+ * Estos tests van al final del archivo a propósito: el estado de la demo vive
+ * en el módulo, y responder saca contrapartes de la cola para siempre.
+ */
+interface DemoCola {
+  groups: { pattern: string; counterparty: string; total: number }[];
+  count: number;
+}
+
+interface DemoProgreso {
+  groups: number;
+  covered_total: number;
+  covered_ratio: number;
+  done: boolean;
+}
+
+function post(path: string, body: unknown): Promise<Response> {
+  return demoFetch(path, { method: "POST", body: JSON.stringify(body) });
+}
+
+describe("N3 — la demo puede responder, no sólo mirar", () => {
+  it("clasificar saca la contraparte de la cola y devuelve los dos conteos de R19", async () => {
+    const antes = await json<DemoCola>("/api/classify/queue");
+    const elegida = antes.groups[0];
+
+    const res = await post("/api/classify", { counterparty: elegida.counterparty, category: "comida" });
+    const cuerpo = (await res.json()) as { ok: boolean; reclassified: number; reclassified_this_month: number };
+    expect(res.status).toBe(200);
+    expect(cuerpo.ok).toBe(true);
+    expect(cuerpo.reclassified).toBeGreaterThan(0);
+    expect(cuerpo.reclassified_this_month).toBeGreaterThanOrEqual(0);
+
+    const despues = await json<DemoCola>("/api/classify/queue");
+    expect(despues.count).toBe(antes.count - 1);
+    expect(despues.groups.map((g) => g.pattern)).not.toContain(elegida.pattern);
+  });
+
+  it("el progreso por plata sube con la respuesta: no es una constante", async () => {
+    const antes = await json<DemoProgreso>("/api/classify/progress");
+    const cola = await json<DemoCola>("/api/classify/queue");
+
+    await post("/api/classify/silence", { counterparty: cola.groups[0].counterparty });
+
+    const despues = await json<DemoProgreso>("/api/classify/progress");
+    expect(despues.covered_total).toBeGreaterThan(antes.covered_total);
+    expect(despues.groups).toBe(antes.groups - 1);
+  });
+
+  it("una contraparte que no está en el ledger no escribe ninguna regla", async () => {
+    const res = await post("/api/classify", { counterparty: "Nombre Que No Existe", category: "salud" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "counterparty_not_found" });
+  });
+
+  it("R14: confirmar una fila en otra moneda es un 400 con su motivo", async () => {
+    const cola = await json<{ transactions: { id: number; currency: string }[] }>("/api/review");
+    const enOtraMoneda = cola.transactions.find((t) => t.currency !== "USD");
+    expect(enOtraMoneda).toBeDefined();
+
+    const res = await post(`/api/review/${enOtraMoneda?.id}/resolve`, { action: "confirm" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "foreign_currency" });
+  });
+
+  it("corregir esa misma fila sí es una salida, y la saca de la cola", async () => {
+    const antes = await json<{ count: number; transactions: { id: number; currency: string }[] }>("/api/review");
+    const enOtraMoneda = antes.transactions.find((t) => t.currency !== "USD");
+
+    const res = await post(`/api/review/${enOtraMoneda?.id}/resolve`, { action: "correct", amount: 30 });
+    const cuerpo = (await res.json()) as { changed: boolean };
+    expect(cuerpo.changed).toBe(true);
+
+    const despues = await json<{ count: number }>("/api/review");
+    expect(despues.count).toBe(antes.count - 1);
+  });
+
+  it("R13: resolver dos veces la misma fila devuelve 200 con changed:false", async () => {
+    const cola = await json<{ transactions: { id: number }[] }>("/api/review");
+    const id = cola.transactions[0].id;
+
+    const primera = (await (await post(`/api/review/${id}/resolve`, { action: "confirm" })).json()) as {
+      changed: boolean;
+    };
+    expect(primera.changed).toBe(true);
+
+    const segunda = await post(`/api/review/${id}/resolve`, { action: "confirm" });
+    expect(segunda.status).toBe(200);
+    expect(await segunda.json()).toMatchObject({ ok: true, changed: false, reason: "already_resolved" });
+  });
+
+  it("resolver baja el 'sin confirmar' del overview: los conteos no quedan viejos", async () => {
+    const antes = await json<{ counts: { needs_review: number } }>("/api/overview");
+    const cola = await json<{ transactions: { id: number }[] }>("/api/review");
+    if (cola.transactions.length === 0) return;
+
+    await post(`/api/review/${cola.transactions[0].id}/resolve`, { action: "discard" });
+
+    const despues = await json<{ counts: { needs_review: number } }>("/api/overview");
+    expect(despues.counts.needs_review).toBe(antes.counts.needs_review - 1);
+  });
+});
