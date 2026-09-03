@@ -25,13 +25,23 @@ import { onScopeDispose, ref, type Ref } from "vue";
  * antes del hogar. Un cuarto enlace en la barra la volvería un paso obligado de
  * la navegación, que es exactamente lo que el plan decidió no hacer.
  */
-export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta";
+export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta" | "conectado";
 
 /** Las que dibuja la barra lateral. No es la lista de rutas válidas. */
 export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimientos"];
 
-/** Las rutas que el hash entiende: las tres de la barra más `alta`. */
-export const RUTAS: readonly Pantalla[] = [...PANTALLAS, "alta"];
+/**
+ * Las rutas que el hash entiende: las tres de la barra más `alta` y
+ * `conectado`.
+ *
+ * `conectado` es la vuelta de Google. Tampoco tiene enlace propio, y por un
+ * motivo más fuerte que el de `alta`: **no se navega, se aterriza**. Es el
+ * destino de `RUTA_EXITO` en `functions/src/oauth/config.ts`, o sea que el
+ * único que la escribe es el redirect del callback. Si esta ruta no estuviera
+ * en la lista, `parseHash` la trataría como desconocida y mandaría al Resumen,
+ * y el usuario volvería de autorizar su correo sin que nada se lo confirme.
+ */
+export const RUTAS: readonly Pantalla[] = [...PANTALLAS, "alta", "conectado"];
 
 export interface Ruta {
   pantalla: Pantalla;
