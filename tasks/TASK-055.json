@@ -16,7 +16,7 @@
     "Si se expone como tool MCP, el bundle server/dist-mcp/mcp-server.cjs se regenera y entra en el mismo commit.",
     "npm run build y npm test en verde."
   ],
-  "status": "todo",
+  "status": "in_review",
   "priority": "high",
   "verification_tier": "tdd",
   "depends_on": [
@@ -33,15 +33,20 @@
   ],
   "assignee": null,
   "jira_key": null,
-  "linked_commits": [],
+  "linked_commits": ["cc6d8e6"],
   "linked_prs": [],
   "comments": [
     {
       "author": "orquestador",
       "body": "Especificación sellada: docs/plan-final-mvp.md §3 (fase N1). Es la fase de más riesgo de datos del MVP — una regla mal derivada reclasifica plata real — y por eso el tier es tdd.\n\nDependencia de orden, no técnica: N1 puede escribirse sin N0, pero el plan las ordena así para que nada se exponga sin puerta.\n\nAbsorbe el escritor que TASK-051 planificaba para el editor de reglas (P6). Con la decisión M4, P6 no se construye.",
       "created_at": "2026-09-02T23:00:00.000Z"
+    },
+    {
+      "author": "developer",
+      "body": "N1 implementado en la rama `n1-motor-pregunta` (commit cc6d8e6). Motor puro, sin pantalla.\n\nMódulo nuevo `server/src/classify/`: `queue.ts` (H32), `apply.ts` (H28/M4), `silenced.ts` (H33/M5), `progress.ts` (H35/M1), `movements.ts` (H21), `index.ts`. Rutas en `api/routes.ts` + `api/schemas.ts`, cinco tools MCP y el bundle regenerado.\n\nDecisiones tomadas dentro de la implementación, para que la revisión las mire:\n\n1. **Qué cuenta como \"sin clasificar\":** que `categorize()` devuelva uno de sus dos fallbacks, `otros` **o** `transferencia_persona`. Es lo que da las 334 filas del forense (118 + 216) y lo que hace que el Escenario 1 —el comercio que cobra por transferencia inmediata— llegue a la cola. Si sólo fuera `otros`, el caso principal del escenario nunca se preguntaría.\n2. **Las filas sin contraparte quedan fuera de la cola y del denominador del progreso.** No hay pregunta que hacer (no hay nombre contra el que escribir una regla) y, contadas, dejarían el criterio del 80 % fuera de alcance para siempre. Ese historial se recupera con `heal_counterparties`.\n3. **`POST /api/classify` exige una contraparte que exista tal cual en el ledger** (igualdad normalizada, no substring). Es lo que hace imposible por construcción el patrón más largo que la contraparte. Un patrón ancho a propósito (`farmacia` para todas las farmacias) sigue estando en la tool MCP `set_rule`, que es explícita sobre lo que hace.\n4. **La cobertura del progreso se deriva, no se guarda:** el mismo cálculo corrido dos veces sobre las mismas filas —con las reglas y silencios de hoy, y sin ninguno— da la plata que las respuestas ya cubrieron. Sin tabla de progreso que se pueda desincronizar del ledger.\n5. **La plata silenciada cuenta como cubierta.** La pregunta quedó cerrada; sin eso, una contraparte con dos verdades dejaría el 80 % inalcanzable.\n6. **`classifyCounterparty` sí escribe la columna `category`** de las filas que la regla movió. No hace falta para los totales (el motor recalcula), pero deja el ledger consistente con el gráfico y respeta la invariante 1 de `category/reclassify.ts`: una categoría concreta sólo la pisa una regla explícita del usuario, que es exactamente lo que acaba de pasar. Nunca toca `amount`, `direction`, `type` ni `needs_review`.\n7. **Añadido fuera de los criterios, chico y justificado:** `unsilenceCounterparty` (+ `DELETE /api/classify/silence`, + `undo` en la tool MCP). Sin él, un toque equivocado en un botón de una lista larga sólo se deshace editando la sqlite a mano.\n\nVerificación: `npm run build` y `npm test` en verde — 94 archivos, 1126 tests, 52 nuevos.",
+      "created_at": "2026-09-03T00:00:00.000Z"
     }
   ],
   "created_at": "2026-09-02T23:00:00.000Z",
-  "updated_at": "2026-09-02T23:00:00.000Z"
+  "updated_at": "2026-09-03T00:00:00.000Z"
 }
