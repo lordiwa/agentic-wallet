@@ -41,8 +41,11 @@ export interface OnboardSuggestions {
   mesesDeHistorial: number;
 }
 
-/** Median of a non-empty numeric list. */
-function median(values: number[]): number {
+/** Median of a non-empty numeric list. Exportada porque
+ * `suggestRecurringExpenses` (N4) toma la misma decisión por la misma razón —
+ * un valor atípico no puede mover una propuesta— y duplicarla dejaría dos
+ * definiciones de "mediana" que en algún momento divergen. */
+export function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];

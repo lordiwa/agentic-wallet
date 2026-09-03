@@ -33,6 +33,9 @@ import type {
   ConversationDetailResponse,
   ConversationsResponse,
   OverviewResponse,
+  ProfileResponse,
+  ProfileWriteResponse,
+  RecurringResponse,
   ReviewAction,
   ReviewResolveResponse,
   SyncResponse,
@@ -369,4 +372,36 @@ export function postReviewResolve(
     ...(input.amount === undefined ? {} : { amount: input.amount }),
     ...(input.note === undefined ? {} : { note: input.note }),
   });
+}
+
+/* ==========================================================================
+ * Lo que N4 agrega: el perfil mínimo y la lectura de gastos fijos.
+ *
+ * La confirmación de una propuesta NO tiene endpoint propio: escribe con
+ * `postClassify`, el mismo escritor de la cola (M4). Un gasto fijo confirmado
+ * es una regla de categoría, y no hay una segunda forma de escribir una.
+ * ========================================================================== */
+
+/** Los dos campos del perfil, tal como están hoy (H2 mínimo). */
+export function fetchProfile(): Promise<ProfileResponse> {
+  return getJSON<ProfileResponse>("onboarding.profile.get", "/api/onboarding/profile");
+}
+
+/**
+ * Guarda los campos presentes y sólo ésos. Parcial a propósito: el colchón y el
+ * día de pago se fijan en momentos distintos, y ninguno pisa al otro.
+ */
+export function postProfile(patch: {
+  diasPago?: string[];
+  colchonObjetivo?: number;
+}): Promise<ProfileWriteResponse> {
+  return postJSON<ProfileWriteResponse>("onboarding.profile.set", "/api/onboarding/profile", {
+    ...(patch.diasPago === undefined ? {} : { dias_pago: patch.diasPago }),
+    ...(patch.colchonObjetivo === undefined ? {} : { colchon_objetivo: patch.colchonObjetivo }),
+  });
+}
+
+/** El análisis del historial (H30). Es un GET: propone, no guarda. */
+export function fetchRecurring(): Promise<RecurringResponse> {
+  return getJSON<RecurringResponse>("onboarding.recurring", "/api/onboarding/recurring");
 }

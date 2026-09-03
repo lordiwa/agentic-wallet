@@ -297,3 +297,62 @@ export type ReviewAction = "confirm" | "correct" | "discard";
 export type ReviewResolveResponse =
   | { ok: true; changed: true; action: ReviewAction; transaction: TransactionRow; resolution: ReviewResolutionRow }
   | { ok: true; changed: false; reason: "already_resolved"; transaction: TransactionRow };
+
+/* ==========================================================================
+ * Lo que N4 agrega: el perfil mínimo (H2) y la lectura de gastos fijos (H30).
+ * ========================================================================== */
+
+/**
+ * `GET/POST /api/onboarding/profile` — `server/src/api/onboarding-route.ts`.
+ *
+ * **`colchon_fijado` no es derivable de `colchon_objetivo` sin repetir la regla
+ * en el cliente** (R25): un objetivo en cero es un objetivo que nadie fijó, no
+ * uno cumplido, y quien decide eso es el motor. `dia_de_pago_fijado` es lo
+ * mismo del otro lado: sin día de pago no hay safe-to-spend (R7), y una lista
+ * vacía es "todavía no", no "ninguno".
+ */
+export interface ProfileResponse {
+  dias_pago: string[];
+  dia_de_pago_fijado: boolean;
+  colchon_objetivo: number;
+  colchon_fijado: boolean;
+}
+
+/** La respuesta de `POST`: el perfil ya guardado más qué campos se escribieron. */
+export type ProfileWriteResponse = ProfileResponse & { ok: true; campos: string[] };
+
+/**
+ * Una propuesta de gasto fijo (H30). Espejo de `RecurringExpenseProposal` en
+ * `server/src/onboard/recurring.ts`.
+ *
+ * `monto_estimado` es la **mediana** de los totales mensuales y `sample_size`
+ * en cuántos meses se apoya. Los dos se dibujan juntos siempre: una mediana sin
+ * su muestra promete más de lo que hay (riesgo 3 del plan).
+ */
+export interface RecurringProposalRow {
+  pattern: string;
+  counterparty: string;
+  monto_estimado: number;
+  dia_tipico: number;
+  sample_size: number;
+  count: number;
+  total: number;
+  last_ts: string;
+}
+
+/**
+ * `GET /api/onboarding/recurring`.
+ *
+ * `en_la_cola` son las candidatas que no entraron al top 10 (H34) y siguen
+ * esperando en la cola de clasificación — no se perdieron. `suficiente_historial`
+ * es el freno de R33: con menos de `meses_minimos` el análisis no se dibuja
+ * activo y la pantalla dice cuánto lleva acumulado.
+ */
+export interface RecurringResponse {
+  propuestas: RecurringProposalRow[];
+  candidatas: number;
+  en_la_cola: number;
+  meses_de_historial: number;
+  meses_minimos: number;
+  suficiente_historial: boolean;
+}

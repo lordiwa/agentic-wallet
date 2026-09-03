@@ -50326,6 +50326,10 @@ var reviewResolveBodySchema = external_exports.object({
    * entró. Un nombre concreto lo pisa. */
   resolved_by: external_exports.string().min(1).optional()
 });
+var onboardingProfileBodySchema = external_exports.object({
+  dias_pago: external_exports.array(external_exports.string()).optional(),
+  colchon_objetivo: external_exports.number().finite().nonnegative().optional()
+});
 
 // src/api/routes.ts
 function buildOverview(db, now = /* @__PURE__ */ new Date()) {

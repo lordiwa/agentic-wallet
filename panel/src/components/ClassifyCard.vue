@@ -29,7 +29,7 @@
  */
 import { computed, ref } from "vue";
 import type { Category, ClassifyGroupRow } from "../api/types";
-import { nombreCategoria } from "../lib/categorias";
+import { nombreCategoria, opcionesDeCategoria } from "../lib/categorias";
 import { formatoEntero, formatoPlata, plural } from "../lib/formato";
 import { timeAgo } from "../lib/freshness";
 
@@ -57,27 +57,14 @@ const emit = defineEmits<{
 }>();
 
 /**
- * Las categorías que se pueden elegir. Es el glosario cerrado del motor
- * (`category/categorize.ts`) menos sus dos fallbacks: `otros` y
- * `transferencia_persona` son *"no sé"* y *"es una transferencia con
- * contraparte"*, que es exactamente el estado del que esta tarjeta existe para
- * salir. Ofrecerlos sería ofrecer "responder que no sabés", y la salida honesta
- * para eso ya está: se llama *No preguntarme más* (M5).
+ * Las categorías que se pueden elegir viven en `lib/categorias.ts`
+ * (`CATEGORIAS_ELEGIBLES`): son el glosario cerrado del motor menos sus dos
+ * fallbacks, y las comparte con la tarjeta de gastos fijos de N4 — es la misma
+ * pregunta sobre otra población.
  */
-const CATEGORIAS: Category[] = [
-  "comida",
-  "transporte",
-  "salud",
-  "mascota",
-  "servicios",
-  "recarga",
-  "efectivo",
-  "suscripcion",
-];
-
 const elegida = ref<Category | "">("");
 
-const opciones = computed(() => CATEGORIAS.map((clave) => ({ clave, nombre: nombreCategoria(clave) })));
+const opciones = computed(() => opcionesDeCategoria());
 
 const resumenLinea = computed(() => {
   const partes = [

@@ -15,10 +15,23 @@
  */
 import { onScopeDispose, ref, type Ref } from "vue";
 
-/** Las tres del MVP. No hay más, y por eso la navegación no dibuja más (§2.2). */
-export type Pantalla = "resumen" | "preguntas" | "movimientos";
+/**
+ * Las superficies del MVP.
+ *
+ * **Tres se navegan y una no** (§2.2). `resumen`, `preguntas` y `movimientos`
+ * son las tres de la barra lateral; `alta` —el análisis del historial de N4— es
+ * un destino sin enlace propio a propósito: se entra por una tarjeta del
+ * Resumen y se sale a la cola, y P1 nunca bloqueó a nadie, así que tampoco va
+ * antes del hogar. Un cuarto enlace en la barra la volvería un paso obligado de
+ * la navegación, que es exactamente lo que el plan decidió no hacer.
+ */
+export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta";
 
+/** Las que dibuja la barra lateral. No es la lista de rutas válidas. */
 export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimientos"];
+
+/** Las rutas que el hash entiende: las tres de la barra más `alta`. */
+export const RUTAS: readonly Pantalla[] = [...PANTALLAS, "alta"];
 
 export interface Ruta {
   pantalla: Pantalla;
@@ -31,7 +44,7 @@ export interface Ruta {
 export const RUTA_INICIAL: Ruta = { pantalla: "resumen", params: {} };
 
 function esPantalla(valor: string): valor is Pantalla {
-  return (PANTALLAS as readonly string[]).includes(valor);
+  return (RUTAS as readonly string[]).includes(valor);
 }
 
 export function parseHash(hash: string): Ruta {

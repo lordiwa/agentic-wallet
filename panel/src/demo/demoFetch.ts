@@ -183,6 +183,13 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
         total: DEMO_TRANSACTIONS.length,
         needs_review: DEMO_TRANSACTIONS.filter((t) => t.needs_review).length,
       },
+      // N4: los dos campos del perfil se guardan en la demo, así que el hogar
+      // tiene que reflejarlos. El colchón sale del perfil y no de una constante
+      // —incluido el `financiado: true` con objetivo cero, que es exactamente el
+      // caso que R25 arregla— y sin día de pago no hay próximo cobro (R7).
+      buffer_status: demoBufferStatus(),
+      next_payday: demoPerfil.dias_pago.length > 0 ? DEMO_OVERVIEW.next_payday : null,
+      safe_to_spend_hoy: demoPerfil.dias_pago.length > 0 ? DEMO_OVERVIEW.safe_to_spend_hoy : 0,
     });
   }
 
@@ -214,6 +221,12 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
   if (/^\/api\/review\/\d+\/resolve$/.test(pathname) && method === "POST") {
     return demoResolve(Number(pathname.split("/")[3]), init);
   }
+
+  if (pathname === "/api/onboarding/profile") {
+    return method === "POST" ? demoSetProfile(init) : jsonResponse(demoProfile());
+  }
+
+  if (pathname === "/api/onboarding/recurring") return jsonResponse(demoRecurring());
 
   if (pathname === "/api/conversations") return jsonResponse({ conversations: [] });
 
@@ -514,4 +527,133 @@ function demoResolve(id: number, init?: RequestInit): Response {
       resolved_at: daysAgo(0),
     },
   });
+}
+
+/* ==========================================================================
+ * N4 — el análisis del historial y el perfil mínimo.
+ *
+ * Las dos reglas del encabezado siguen valiendo: nombres ficticios (los mismos
+ * comercios inventados que ya usa la cola) y el modo se anuncia siempre.
+ *
+ * El perfil de la demo arranca **sin fijar**, que es el caso interesante: es el
+ * estado en el que R25 se ve (un colchón en cero que el motor reporta como
+ * `financiado`) y en el que la tarjeta de entrada del Resumen aparece.
+ * ========================================================================== */
+
+/** El único estado del perfil en la demo. Se reinicia al recargar. */
+const demoPerfil = { dias_pago: [] as string[], colchon_objetivo: 0 };
+
+/**
+ * El colchón como lo devolvería el motor: `financiado = reservado >= objetivo`,
+ * **con el cero adentro**. Con el objetivo sin fijar la respuesta es
+ * `financiado: true, faltante: 0`, idéntica a la de un objetivo cumplido — que
+ * es el bug R25 que el panel distingue en `lib/colchon.ts`. La demo lo
+ * reproduce a propósito: si acá mintiéramos, la pantalla se vería bien en demo
+ * y mal con datos reales.
+ */
+function demoBufferStatus() {
+  const objetivo = demoPerfil.colchon_objetivo;
+  const reservado = DEMO_OVERVIEW.buffer_status.reservado;
+  return {
+    objetivo,
+    reservado,
+    financiado: reservado >= objetivo,
+    faltante: Math.max(0, objetivo - reservado),
+  };
+}
+
+function demoProfile() {
+  return {
+    dias_pago: demoPerfil.dias_pago,
+    dia_de_pago_fijado: demoPerfil.dias_pago.length > 0,
+    colchon_objetivo: demoPerfil.colchon_objetivo,
+    // R25: cero es SIN FIJAR, no cumplido.
+    colchon_fijado: demoPerfil.colchon_objetivo > 0,
+  };
+}
+
+/** La misma normalización del motor (`onboard/profile.ts`): un día suelto pasa
+ * a ventana, y lo que el calendario no leería se rechaza en vez de caerse solo. */
+function demoNormalizarDias(entradas: string[]): string[] | null {
+  if (entradas.length === 0) return null;
+  const ventanas = new Set<string>();
+  for (const entrada of entradas) {
+    const texto = entrada.trim();
+    const suelto = /^(\d{1,2})$/.exec(texto);
+    const rango = /^(\d{1,2})-(\d{1,2})$/.exec(texto);
+    const hasta = /^<=(\d{1,2})$/.exec(texto);
+    if (suelto) {
+      const dia = Number(suelto[1]);
+      if (dia < 1 || dia > 31) return null;
+      ventanas.add(`${dia}-${dia}`);
+    } else if (rango) {
+      const desde = Number(rango[1]);
+      const hastaDia = Number(rango[2]);
+      if (desde < 1 || hastaDia > 31 || desde > hastaDia) return null;
+      ventanas.add(`${desde}-${hastaDia}`);
+    } else if (hasta) {
+      const dia = Number(hasta[1]);
+      if (dia < 1 || dia > 31) return null;
+      ventanas.add(`<=${dia}`);
+    } else {
+      return null;
+    }
+  }
+  return [...ventanas];
+}
+
+function demoSetProfile(init?: RequestInit): Response {
+  const body = cuerpo(init) as { dias_pago?: string[]; colchon_objetivo?: number };
+  const campos: string[] = [];
+
+  if (body.dias_pago !== undefined) {
+    const dias = demoNormalizarDias(body.dias_pago);
+    if (dias === null) return jsonResponse({ error: "dias_pago_invalidos" }, 400);
+    demoPerfil.dias_pago = dias;
+    campos.push("diasPago");
+  }
+  if (body.colchon_objetivo !== undefined) {
+    if (!Number.isFinite(body.colchon_objetivo) || body.colchon_objetivo < 0) {
+      return jsonResponse({ error: "colchon_invalido" }, 400);
+    }
+    demoPerfil.colchon_objetivo = body.colchon_objetivo;
+    campos.push("colchonObjetivo");
+  }
+  if (campos.length === 0) return jsonResponse({ error: "sin_campos" }, 400);
+
+  return jsonResponse({ ok: true, campos, ...demoProfile() });
+}
+
+/**
+ * Las propuestas de gasto fijo de la demo, derivadas de las mismas contrapartes
+ * inventadas de la cola: confirmar una en la pantalla de alta la saca también
+ * de la cola, porque escribe la misma regla (M4). Sin eso la demo mostraría dos
+ * listas que no se hablan, que es justo lo que el motor no hace.
+ */
+const DEMO_RECURRENTES = [
+  { pattern: "servicio de luz ficticio", counterparty: "Servicio de Luz Ficticio", monto: 40, dia: 8, meses: 5 },
+  { pattern: "suscripcion ficticia", counterparty: "Suscripcion Ficticia", monto: 15, dia: 22, meses: 4 },
+  { pattern: "mercado ejemplo", counterparty: "Mercado Ejemplo", monto: 65, dia: 3, meses: 4 },
+];
+
+function demoRecurring() {
+  const propuestas = DEMO_RECURRENTES.filter((fila) => !demoRespondidas.has(fila.pattern)).map((fila) => ({
+    pattern: fila.pattern,
+    counterparty: fila.counterparty,
+    monto_estimado: fila.monto,
+    dia_tipico: fila.dia,
+    sample_size: fila.meses,
+    count: fila.meses,
+    total: fila.monto * fila.meses,
+    last_ts: daysAgo(3),
+  }));
+
+  return {
+    propuestas,
+    candidatas: propuestas.length,
+    en_la_cola: 0,
+    meses_de_historial: 5.2,
+    meses_minimos: 3,
+    suficiente_historial: true,
+  };
 }

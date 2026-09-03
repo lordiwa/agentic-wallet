@@ -56,3 +56,36 @@ export function barrasDeCategoria(gasto: Record<string, number | undefined>): Ba
       ancho: maximo > 0 ? Math.round((total / maximo) * 100) : 0,
     }));
 }
+
+/**
+ * Las categorías que una pregunta del panel puede ofrecer: el glosario cerrado
+ * del motor **menos sus dos fallbacks**. `otros` es literalmente "no sé" y
+ * `transferencia_persona` es "es una transferencia con contraparte", que es
+ * exactamente el estado del que la pregunta existe para salir; ofrecerlos sería
+ * ofrecer "responder que no sabés", y para eso ya está *No preguntarme más*
+ * (M5).
+ *
+ * Vive acá y no en un componente porque la usan dos: la tarjeta de la cola
+ * (N3) y la de un gasto fijo propuesto (N4), y son la misma pregunta hecha
+ * sobre dos poblaciones.
+ */
+export const CATEGORIAS_ELEGIBLES: Category[] = [
+  "comida",
+  "transporte",
+  "salud",
+  "mascota",
+  "servicios",
+  "recarga",
+  "efectivo",
+  "suscripcion",
+];
+
+export interface OpcionCategoria {
+  clave: Category;
+  nombre: string;
+}
+
+/** Las mismas, ya con su nombre para dibujar. */
+export function opcionesDeCategoria(): OpcionCategoria[] {
+  return CATEGORIAS_ELEGIBLES.map((clave) => ({ clave, nombre: nombreCategoria(clave) }));
+}

@@ -7,6 +7,7 @@ import Resumen from "./Resumen.vue";
 import type {
   ClassifyProgressResponse,
   OverviewResponse,
+  RecurringResponse,
   SyncStatusResponse,
   SyncTriggerResponse,
 } from "../api/types";
@@ -16,6 +17,7 @@ const { endpoints } = vi.hoisted(() => ({
     fetchOverview: vi.fn(),
     fetchSyncStatus: vi.fn(),
     fetchClassifyProgress: vi.fn(),
+    fetchRecurring: vi.fn(),
     postSync: vi.fn(),
   },
 }));
@@ -66,6 +68,30 @@ function cola(overrides: Partial<ClassifyProgressResponse> = {}): ClassifyProgre
   };
 }
 
+/** El análisis del historial de N4 (`GET /api/onboarding/recurring`). */
+function recurring(overrides: Partial<RecurringResponse> = {}): RecurringResponse {
+  return {
+    propuestas: [
+      {
+        pattern: "servicio ficticio",
+        counterparty: "Servicio Ficticio",
+        monto_estimado: 40,
+        dia_tipico: 8,
+        sample_size: 5,
+        count: 5,
+        total: 200,
+        last_ts: "2026-09-01T10:00:00Z",
+      },
+    ],
+    candidatas: 1,
+    en_la_cola: 0,
+    meses_de_historial: 6.2,
+    meses_minimos: 3,
+    suficiente_historial: true,
+    ...overrides,
+  };
+}
+
 async function montar() {
   const wrapper = mount(Resumen);
   await flushPromises();
@@ -76,6 +102,7 @@ beforeEach(() => {
   endpoints.fetchOverview.mockResolvedValue(overview());
   endpoints.fetchSyncStatus.mockResolvedValue(syncStatus());
   endpoints.fetchClassifyProgress.mockResolvedValue(cola());
+  endpoints.fetchRecurring.mockResolvedValue(recurring());
   endpoints.postSync.mockResolvedValue({
     progress: { processed: 10, total: 10, remaining: 0, complete: true },
     inserted_ids: [],
@@ -286,5 +313,99 @@ describe("D6: el Resumen tiene diseño chico propio", () => {
   it("las cuatro tarjetas dejan de ser cuatro columnas en un teléfono", () => {
     const chico = fuente.slice(fuente.indexOf("@media (max-width: 560px)"));
     expect(chico).toContain("grid-template-columns: 1fr");
+  });
+});
+
+/**
+ * N4 — la entrada al análisis del historial y el arreglo de R25.
+ *
+ * La tarjeta es una `OverviewCard` (criterio 11) y no una bifurcación antes del
+ * hogar (criterio 9): P1 nunca bloqueó a nadie.
+ */
+describe("la entrada al análisis del historial (N4)", () => {
+  it("es una OverviewCard del Resumen y lleva a la pantalla de alta", async () => {
+    const wrapper = await montar();
+    const entrada = wrapper.get('[data-testid="entrada-gastos-fijos"]');
+
+    expect(entrada.attributes("href")).toBe("#/alta");
+    expect(entrada.text()).toContain("Todavía no leí tus gastos fijos");
+  });
+
+  it("dice cuántos gastos fijos encontró", async () => {
+    const wrapper = await montar();
+
+    expect(wrapper.get('[data-testid="entrada-gastos-fijos"]').text()).toContain("1 gasto fijo");
+  });
+
+  it("con historial corto anuncia el freno de los tres meses (R33)", async () => {
+    endpoints.fetchRecurring.mockResolvedValue(
+      recurring({ propuestas: [], suficiente_historial: false, meses_de_historial: 1.4 })
+    );
+    const wrapper = await montar();
+
+    expect(wrapper.get('[data-testid="entrada-gastos-fijos"]').text()).toContain("1,4 meses");
+  });
+
+  // §2.5, regla 4: lo que no tiene backend no se dibuja. Un server anterior a
+  // N4 no tiene la ruta, y una tarjeta que lleva a una pantalla que va a fallar
+  // es peor que ninguna tarjeta.
+  it("si el server no tiene la ruta, la tarjeta no se dibuja y el hogar sigue en pie", async () => {
+    endpoints.fetchRecurring.mockRejectedValue(new Error("404"));
+    const wrapper = await montar();
+
+    expect(wrapper.find('[data-testid="entrada-gastos-fijos"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="resumen-error"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("1840,25");
+  });
+
+  it("con el trabajo hecho y el perfil completo la tarjeta se va", async () => {
+    endpoints.fetchRecurring.mockResolvedValue(recurring({ propuestas: [], candidatas: 0 }));
+    const wrapper = await montar();
+
+    expect(wrapper.find('[data-testid="entrada-gastos-fijos"]').exists()).toBe(false);
+  });
+});
+
+/**
+ * R25 — `colchonStatus` calcula `financiado = reservado >= objetivo`, y
+ * `0 >= 0` es verdadero: un usuario nuevo veía el anillo lleno y en verde sin
+ * haber reservado un peso. La respuesta del motor no cambia; lo que cambia es
+ * que el panel distingue el objetivo en cero.
+ */
+describe("R25: un colchón sin objetivo no está financiado", () => {
+  const SIN_OBJETIVO = { objetivo: 0, reservado: 0, financiado: true, faltante: 0 };
+
+  it("dice 'Sin fijar' y no 'Financiado'", async () => {
+    endpoints.fetchOverview.mockResolvedValue(overview({ buffer_status: SIN_OBJETIVO }));
+    const wrapper = await montar();
+
+    expect(wrapper.get('[data-testid="colchon-etiqueta"]').text()).toBe("Sin fijar");
+    expect(wrapper.text()).not.toContain("Financiado");
+  });
+
+  it("no dibuja un porcentaje ni un 'falta 0,00', que se leerían como 'ya está'", async () => {
+    endpoints.fetchOverview.mockResolvedValue(overview({ buffer_status: SIN_OBJETIVO }));
+    const wrapper = await montar();
+    const texto = wrapper.get('[data-testid="colchon-sin-fijar"]').text();
+
+    expect(texto).toContain("Todavía no fijaste un objetivo");
+    expect(texto).not.toContain("falta");
+  });
+
+  it("ofrece dónde fijarlo", async () => {
+    endpoints.fetchOverview.mockResolvedValue(overview({ buffer_status: SIN_OBJETIVO }));
+    const wrapper = await montar();
+
+    expect(wrapper.get('[data-testid="colchon-sin-fijar"]').find("a").attributes("href")).toBe("#/alta");
+  });
+
+  it("con objetivo cumplido sigue diciendo Financiado: no se rompió el caso bueno", async () => {
+    endpoints.fetchOverview.mockResolvedValue(
+      overview({ buffer_status: { objetivo: 500, reservado: 500, financiado: true, faltante: 0 } })
+    );
+    const wrapper = await montar();
+
+    expect(wrapper.get('[data-testid="colchon-etiqueta"]').text()).toBe("Financiado");
+    expect(wrapper.text()).toContain("objetivo 500,00");
   });
 });

@@ -31,11 +31,19 @@
 import { computed, onMounted, ref, watch } from "vue";
 import OverviewCard from "../components/OverviewCard.vue";
 import SyncButton from "../components/SyncButton.vue";
-import { fetchClassifyProgress, fetchOverview, fetchSyncStatus, postSync } from "../api/endpoints";
-import type { ClassifyProgressResponse, OverviewResponse, SyncStatusResponse, SyncTriggerResponse } from "../api/types";
+import { fetchClassifyProgress, fetchOverview, fetchRecurring, fetchSyncStatus, postSync } from "../api/endpoints";
+import type {
+  ClassifyProgressResponse,
+  OverviewResponse,
+  RecurringResponse,
+  SyncStatusResponse,
+  SyncTriggerResponse,
+} from "../api/types";
 import { DEFAULT_REFRESH_MS, SYNC_REFRESH_MS, useRefresh } from "../composables/useRefresh";
 import { barrasDeCategoria } from "../lib/categorias";
+import { vistaColchon } from "../lib/colchon";
 import { timeAgo } from "../lib/freshness";
+import { tarjetaGastosFijos } from "../lib/gastos-fijos";
 import { ROTULO_SIN_LEER, formatoEntero, formatoFecha, formatoPlata, plural } from "../lib/formato";
 import { tagSync, vistaSync, type Backlog, type FallaSync } from "../lib/sync-estado";
 import { toHash } from "../router/ruta";
@@ -43,6 +51,9 @@ import { toHash } from "../router/ruta";
 const overview = ref<OverviewResponse | null>(null);
 const estadoSync = ref<SyncStatusResponse | null>(null);
 const cola = ref<ClassifyProgressResponse | null>(null);
+/** El análisis del historial (N4). `null` es "el server no contestó", y con eso
+ * la tarjeta de entrada no se dibuja: lo que no tiene backend no se dibuja. */
+const gastosFijos = ref<RecurringResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
 
@@ -61,6 +72,10 @@ async function cargar(): Promise<void> {
     estadoSync.value = sync;
     cola.value = progreso;
     errorCarga.value = null;
+    // Aparte de las tres de arriba y con su propio catch: un server anterior a
+    // N4 devuelve 404 en esta ruta, y eso no puede tumbar el hogar entero. Sin
+    // respuesta, la tarjeta de entrada simplemente no se dibuja.
+    gastosFijos.value = await fetchRecurring().catch(() => null);
   } catch (err) {
     // No se dibuja el último valor conocido con cara de actual (`c3`): si el
     // backend no responde, se dice.
@@ -152,11 +167,23 @@ const safeToSpend = computed(() => (hayDiaDePago.value ? overview.value?.safe_to
 
 const tarjeta = computed(() => overview.value?.card_status ?? null);
 const colchon = computed(() => overview.value?.buffer_status ?? null);
-const colchonAncho = computed(() => {
-  const datos = colchon.value;
-  if (!datos || datos.objetivo <= 0) return 0;
-  return Math.min(100, Math.round((datos.reservado / datos.objetivo) * 100));
-});
+
+/**
+ * **R25.** El motor manda `financiado: true` cuando el objetivo es cero, porque
+ * `0 >= 0` es verdadero — así que un usuario recién llegado veía el anillo
+ * lleno, en verde, "financiado", sin haber reservado un peso. Quién decide cómo
+ * se dibuja eso está en `lib/colchon.ts`, con sus tests: acá sólo se usa.
+ */
+const anillo = computed(() => vistaColchon(colchon.value));
+
+/** La tarjeta de entrada al análisis del historial (N4, criterio 9). */
+const entradaGastosFijos = computed(() =>
+  tarjetaGastosFijos({
+    recurring: gastosFijos.value,
+    hayDiaDePago: hayDiaDePago.value,
+    colchonFijado: anillo.value.fijado,
+  })
+);
 
 const proximoPago = computed(() => formatoFecha(overview.value?.next_payday ?? null));
 
@@ -230,6 +257,19 @@ const destinoCategoria = computed(() =>
       <a class="btn" :href="destinoCategoria">Decir qué son</a>
     </div>
 
+    <!-- La entrada al análisis del historial (N4). Es una OverviewCard, no una
+         bifurcación antes del hogar: P1 nunca bloqueó a nadie. -->
+    <div v-if="entradaGastosFijos.visible" class="entrada">
+      <OverviewCard
+        etiqueta="Gastos fijos"
+        :texto="entradaGastosFijos.titulo"
+        :nota="entradaGastosFijos.nota"
+        :tag="entradaGastosFijos.tag"
+        :destino="toHash('alta')"
+        data-testid="entrada-gastos-fijos"
+      />
+    </div>
+
     <div class="cards">
       <OverviewCard
         etiqueta="Saldo"
@@ -291,16 +331,26 @@ const destinoCategoria = computed(() =>
         <div class="card">
           <h2 class="h2">Colchón</h2>
           <div class="bar">
-            <span class="bar-nombre">{{ colchon?.financiado ? "Financiado" : "Sin financiar" }}</span>
-            <span class="track"><i class="fill ok" :style="{ width: `${colchonAncho}%` }"></i></span>
-            <span class="amt tabular">{{ colchonAncho }} %</span>
+            <span class="bar-nombre" data-testid="colchon-etiqueta">{{ anillo.etiqueta }}</span>
+            <span class="track"
+              ><i class="fill" :class="anillo.tag === 'ok' ? 'ok' : 'neu'" :style="{ width: `${anillo.ancho}%` }"></i
+            ></span>
+            <span v-if="anillo.fijado" class="amt tabular">{{ anillo.ancho }} %</span>
+            <span v-else class="amt muted">—</span>
           </div>
-          <p class="small">
+          <!-- R25: sin objetivo no se dibuja un porcentaje ni un "falta 0,00",
+               que se leerían como "ya está". Se dice qué falta y dónde se fija. -->
+          <p v-if="!anillo.fijado" class="small" data-testid="colchon-sin-fijar">
             <template v-if="colchon">
-              objetivo {{ formatoPlata(colchon.objetivo) }} · reservado {{ formatoPlata(colchon.reservado) }} · falta
-              {{ formatoPlata(colchon.faltante) }}
+              Todavía no fijaste un objetivo, así que no hay contra qué medir lo reservado
+              ({{ formatoPlata(colchon.reservado) }}).
+              <a class="lnk-acc" :href="toHash('alta')">Fijalo acá.</a>
             </template>
             <template v-else>{{ ROTULO_SIN_LEER }}</template>
+          </p>
+          <p v-else class="small">
+            objetivo {{ formatoPlata(colchon!.objetivo) }} · reservado {{ formatoPlata(colchon!.reservado) }} · falta
+            {{ formatoPlata(colchon!.faltante) }}
           </p>
         </div>
 
@@ -363,6 +413,15 @@ const destinoCategoria = computed(() =>
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 12px;
+}
+/* La tarjeta de entrada al análisis va en su propia fila y no como quinta
+ * columna: con cinco columnas la cifra de 26px de las otras cuatro se corta, y
+ * una cifra cortada es un número equivocado. */
+.entrada {
+  margin-bottom: 12px;
+}
+.lnk-acc {
+  color: var(--boton-terciario-texto);
 }
 .cols {
   display: grid;

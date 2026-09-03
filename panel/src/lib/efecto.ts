@@ -164,6 +164,13 @@ const MOTIVOS: Record<string, string> = {
   counterparty_not_found:
     "El motor no encontró esa contraparte en el ledger, así que no escribió ninguna regla. Una regla que no corresponde a una contraparte real no clasificaría una sola fila.",
   empty_pattern: "El nombre de la contraparte quedó vacío después de normalizarlo: no hay patrón que escribir.",
+  // Los tres del perfil de N4. El primero existe porque el calendario descarta
+  // en silencio lo que no parsea: un "15 y 30" escrito a mano se guardaba bien
+  // y dejaba el próximo cobro mudo para siempre, sin un solo error.
+  dias_pago_invalidos:
+    "Ese día de pago no se puede leer. Escribí un día (15), varios separados por coma (15, 30) o una ventana (28-30), con días entre 1 y 31.",
+  colchon_invalido: "El colchón objetivo tiene que ser un número finito y no negativo. Cero significa sin fijar.",
+  sin_campos: "No mandaste ningún campo, así que no había nada que guardar.",
 };
 
 export function motivoDelMotor(codigo: string): string {

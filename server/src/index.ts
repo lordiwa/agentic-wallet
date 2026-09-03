@@ -6,6 +6,7 @@ import { classifyRequestAuth, createAuthMiddleware, normalizeAccessToken } from 
 import { createCorsMiddleware, parseAllowedOrigins } from "./api/cors.js";
 import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
+import { createOnboardingRouter } from "./api/onboarding-route.js";
 import { createSyncRouter } from "./api/sync-route.js";
 import type { SyncRunner } from "./api/sync-route.js";
 import { createSyncGate } from "./api/sync-gate.js";
@@ -124,6 +125,7 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
   app.use("/api", createApiRouter(getDb, { isSyncRunning: syncGate.isRunning }));
   app.use("/api", createSyncRouter(getSyncRunner, syncGate));
   app.use("/api", createChatRouter({ getDb, hasCredential: hasChatCredential, queryFn: options.chatQueryFn }));
+  app.use("/api", createOnboardingRouter(getDb));
 
   // Any /api/* route not matched above is a client error, not a page route:
   // return JSON 404 instead of falling through to index.html (F1-01 follow-up).

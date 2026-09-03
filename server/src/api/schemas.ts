@@ -145,3 +145,19 @@ export const reviewResolveBodySchema = z.object({
    * entró. Un nombre concreto lo pisa. */
   resolved_by: z.string().min(1).optional(),
 });
+
+/**
+ * `POST /api/onboarding/profile` (N4, H2 mínimo).
+ *
+ * Los dos campos son opcionales porque la escritura es parcial: el colchón se
+ * fija hoy y el día de pago cuando el primer sueldo aparece en el ledger. Que
+ * un cuerpo sin ninguno de los dos sea un rechazo lo decide el motor
+ * (`onboard/profile.ts`, error `sin_campos`), igual que **qué día de pago es
+ * válido** — acá sólo se valida que sean strings y un número finito, no lo que
+ * significan. Duplicar esa regla en el borde HTTP la dejaría con dos
+ * definiciones que en algún momento divergen.
+ */
+export const onboardingProfileBodySchema = z.object({
+  dias_pago: z.array(z.string()).optional(),
+  colchon_objetivo: z.number().finite().nonnegative().optional(),
+});

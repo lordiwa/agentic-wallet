@@ -17,6 +17,7 @@ import { computed, onMounted, ref } from "vue";
 import AccessKeyScreen from "./components/AccessKeyScreen.vue";
 import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
+import AltaPerfil from "./views/AltaPerfil.vue";
 import Pendiente from "./views/Pendiente.vue";
 import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
@@ -66,6 +67,9 @@ onMounted(async () => {
       :pestana-pedida="ruta.params.pestana"
       :ids="ruta.params.ids"
     />
+    <!-- El análisis del historial (N4). No está en la barra a propósito: se
+         entra por una tarjeta del Resumen y se sale a la cola. -->
+    <AltaPerfil v-else-if="ruta.pantalla === 'alta'" />
     <Pendiente
       v-else
       titulo="Movimientos"
