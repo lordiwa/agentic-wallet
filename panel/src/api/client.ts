@@ -139,7 +139,13 @@ export function etiquetaBackend(base: string): string {
   if (value === "") return "este mismo servidor";
   if (value === DEMO_BASE) return "sin servidor";
   try {
-    return new URL(value).host;
+    // `new URL("data:…")` y `new URL("javascript:…")` parsean feliz y dejan
+    // `host` vacio, asi que el chip mostraba un nombre en blanco — y con el,
+    // el cartel "este enlace quiere cambiar tu backend a ___" quedaba pidiendo
+    // que se confirme algo que no se puede leer. Ese cartel ES la mitigacion de
+    // R1 (wargaming ronda 2, W13): sin texto no mitiga nada.
+    const host = new URL(value).host;
+    return host === "" ? value : host;
   } catch {
     return value;
   }

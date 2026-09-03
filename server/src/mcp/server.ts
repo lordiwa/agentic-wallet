@@ -31,6 +31,7 @@ import {
   classifyProgress,
   classifyQueue,
   listSilencedCounterparties,
+  RESPONDABLE_CATEGORIES,
   silenceCounterparty,
   unsilenceCounterparty,
 } from "../classify/index.js";
@@ -524,10 +525,15 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         "`counterparty` tiene que ser una contraparte que EXISTE en el ledger, tal como la devuelve " +
         "`get_classify_queue`: el patron de la regla se deriva de la fila real, y por eso es imposible escribir " +
         "un patron mas largo que la contraparte, que nunca matchearia nada. Para un patron ancho a proposito " +
-        "('farmacia' para todas las farmacias) usa `set_rule`.",
+        "('farmacia' para todas las farmacias) usa `set_rule`. Ojo con `otras_contrapartes`: la regla matchea por " +
+        "substring, asi que responder por un nombre corto tambien mueve —y saca de la cola— los grupos cuyo nombre " +
+        "lo contiene. Ese campo dice cuantos fueron; el conteo de arriba ya los incluye.",
       inputSchema: {
         counterparty: z.string().min(1).describe("La contraparte tal cual la devuelve get_classify_queue"),
-        category: z.enum(CATEGORIES),
+        // Los dos fallbacks NO se pueden responder: escriben la regla, devuelven
+        // `ok` y dejan el grupo en la cola para siempre. Misma lista que el
+        // borde HTTP, y por eso sale del motor (W8/W14).
+        category: z.enum(RESPONDABLE_CATEGORIES),
       },
     },
     async ({ counterparty, category }) => {

@@ -172,3 +172,39 @@ describe("el motivo del motor se muestra tal cual, nunca un rojo genérico", () 
     expect(efectoDeRechazo("foreign_currency").tono).toBe("bad");
   });
 });
+
+/**
+ * Wargaming ronda 2 (W12): el número que la respuesta dice tiene que poder
+ * explicarse desde la tarjeta que el usuario acababa de leer.
+ */
+describe("efectoDeClasificar — el alcance de la regla se dice (W12)", () => {
+  function respuesta(overrides: Partial<ClassifyApplyResponse> = {}): ClassifyApplyResponse {
+    return {
+      ok: true,
+      pattern: "tienda ficticia",
+      counterparty: "TIENDA FICTICIA",
+      category: "comida",
+      reclassified: 7,
+      reclassified_this_month: 2,
+      ...overrides,
+    };
+  }
+
+  it("cuando arrastró otras contrapartes, lo dice con su número", () => {
+    const efecto = efectoDeClasificar(respuesta({ otras_contrapartes: 1 }));
+    expect(efecto.detalle).toContain("1 otra contraparte");
+  });
+
+  it("también cuando nada se movió en el mes en curso", () => {
+    const efecto = efectoDeClasificar(respuesta({ reclassified_this_month: 0, otras_contrapartes: 2 }));
+    expect(efecto.detalle).toContain("2 otras contrapartes");
+  });
+
+  it("sin arrastre no agrega ninguna frase", () => {
+    expect(efectoDeClasificar(respuesta({ otras_contrapartes: 0 })).detalle).not.toContain("contraparte");
+  });
+
+  it("un server que no manda el campo se lee como cero, no como un alcance inventado", () => {
+    expect(efectoDeClasificar(respuesta()).detalle).not.toContain("contraparte");
+  });
+});

@@ -8,6 +8,7 @@ import {
   MESES_MINIMOS_DE_HISTORIAL,
   MESES_PARA_SER_FIJO,
   TOPE_DE_PROPUESTAS,
+  diaTipicoDe,
   suggestRecurringExpenses,
 } from "./recurring.js";
 
@@ -408,5 +409,47 @@ describe("suggestRecurringExpenses — nada se guarda (criterio 4)", () => {
     expect(db.prepare("SELECT COUNT(*) as c FROM transactions WHERE category IS NOT NULL").get()).toEqual(
       antesCategorias
     );
+  });
+});
+
+/**
+ * Wargaming ronda 2 (W9). El guarda de la desviación absoluta mediana acota
+ * cuánto se dispersan los días, pero no dice nada sobre el día que se nombra:
+ * con los cargos repartidos 10/10/14/14 la mediana cae en 12, un día en el que
+ * no hubo un solo movimiento. Es exactamente la afirmación que W2 vino a
+ * eliminar, entrando por otra puerta.
+ */
+describe("diaTipicoDe — el día que se dice es un día en el que pasó algo (W9)", () => {
+  it("una distribución bimodal no inventa el hueco del medio", () => {
+    expect([10, 10, 14, 14]).toContain(diaTipicoDe([10, 10, 14, 14]));
+  });
+
+  it("dos días seguidos no producen el día de al lado", () => {
+    expect([28, 31]).toContain(diaTipicoDe([28, 28, 31, 31]));
+  });
+
+  it("nunca devuelve un día que no está entre los observados", () => {
+    const casos = [
+      [10, 10, 14, 14],
+      [13, 14, 16, 17],
+      [5, 5, 5, 9, 9, 9],
+      [3, 20, 22, 23],
+      [28, 28, 31, 31],
+    ];
+    for (const dias of casos) {
+      const dia = diaTipicoDe(dias);
+      if (dia !== null) expect(dias).toContain(dia);
+    }
+  });
+
+  it("no se afloja el guarda: una dispersión ancha sigue sin día", () => {
+    expect(diaTipicoDe([2, 27, 3, 26])).toBeNull();
+    expect(diaTipicoDe([1, 1, 29, 29])).toBeNull();
+  });
+
+  it("lo que ya leía bien sigue leyéndose igual", () => {
+    expect(diaTipicoDe([3, 4, 5])).toBe(4);
+    expect(diaTipicoDe([7, 9, 11])).toBe(9);
+    expect(diaTipicoDe([15, 15, 15])).toBe(15);
   });
 });

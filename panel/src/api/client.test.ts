@@ -185,3 +185,25 @@ describe("el backend guardado se respeta entre recargas", () => {
     expect(apiUrlFor("http://127.0.0.1:3000", "/api/health")).toBe("http://127.0.0.1:3000/api/health");
   });
 });
+
+/**
+ * Wargaming ronda 2 (W13). `new URL("data:text/html,...")` y
+ * `new URL("javascript:...")` parsean sin `host`, así que el chip mostraba una
+ * cadena vacía. El cartel *"este enlace quiere cambiar tu backend a ___"* es la
+ * mitigación de R1 entera: si no dice a qué, el usuario confirma a ciegas.
+ */
+describe("etiquetaBackend — el chip siempre dice a quién le habla (W13)", () => {
+  it("una base sin host se muestra tal cual, no en blanco", () => {
+    expect(etiquetaBackend("data:text/html,<h1>hola</h1>")).not.toBe("");
+    expect(etiquetaBackend("javascript:alert(1)")).not.toBe("");
+  });
+
+  it("un host de verdad se sigue mostrando como el host", () => {
+    expect(etiquetaBackend("https://ejemplo.invalid:8443/api")).toBe("ejemplo.invalid:8443");
+  });
+
+  it("los dos casos con nombre propio no cambian", () => {
+    expect(etiquetaBackend("")).toBe("este mismo servidor");
+    expect(etiquetaBackend("demo")).toBe("sin servidor");
+  });
+});

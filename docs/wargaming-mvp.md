@@ -294,3 +294,309 @@ Cada una se atacó, se confirmó, y se deja documentada con su razón.
 - Las limitaciones de la sección 3 no se corrigieron: ninguna produce un número
   falso en pantalla hoy, y varias son deuda del motor que merece su propio
   ticket antes que un parche desde el panel.
+
+---
+
+# Wargaming del MVP — ronda 2
+
+Segunda pasada, **más hostil que la primera y con otro objetivo**: no atacar lo
+que la ronda 1 dejó sin mirar, sino atacar **lo que la ronda 1 declaró
+resuelto**. Los ocho `ROMPE` corregidos (W1..W8), la fase que quedó `SÓLIDO`
+(N0) y cada una de las limitaciones que se aceptaron por escrito.
+
+El criterio de éxito no es "no encontré nada". Es dejar el sistema en un estado
+donde romperlo sea difícil — y una corrección que arregla el caso del que se
+enteró, y no la clase de la que ese caso era un ejemplar, no llega a eso.
+
+**Punto de partida:** `386e6cb`, 121 archivos / 1552 tests.
+**Punto de llegada:** 121 archivos / **1582 tests**, `npm run build` limpio.
+**Siete `ROMPE` nuevos, y cuatro de ellos son correcciones de la ronda 1 que se
+podían esquivar.**
+
+> Sobre los datos: mismo criterio que la ronda 1. El ledger real se leyó sobre
+> una **copia**, en sólo lectura para todo salvo las reproducciones, y de acá
+> sólo salen conteos y proporciones. Ningún nombre, ningún monto de una fila.
+
+---
+
+## 1. Veredicto por fase
+
+| Fase | Ticket | Ronda 1 | Ronda 2 | Qué se cayó ahora |
+|---|---|---|---|---|
+| N0 — la puerta mínima | TASK-054 | SÓLIDO | **ROMPE (leve)** | El chip que contesta *"¿a qué server le hablo?"* mostraba un nombre **vacío** para una base sin host, y ese cartel **es** la mitigación de R1 (W13). La lista blanca aguantó todos los vectores de imitación. |
+| N1 — el motor de la pregunta | TASK-055 | ROMPE (corregido) | **ROMPE** | W1 esquivado por substring: la tarjeta decía 1 y la respuesta 7 (W12). W8 esquivado por MCP: la tool seguía aceptando los dos fallbacks (W14). |
+| N2 — el hogar y el sync | TASK-056 | ROMPE (corregido) | **SÓLIDO** | Se atacó `null → 0,00` en todos los puntos donde se dibuja plata. No quedó ninguno. |
+| N3 — la cola de preguntas | TASK-057 | ROMPE (corregido) | **ROMPE** | W5 esquivado sin backend caído: *"Cubriste el 100 % de tu plata"* sobre una billetera recién instalada (W11). |
+| N4 — el análisis del historial | TASK-058 | ROMPE (corregido) | **ROMPE** | W2 esquivado por distribución bimodal: *"suele caer el 12"* con dispersión 2 y cero movimientos ese día (W9). W3 esquivado por el punto de miles: "1.500" entraba como 1,5 (W10). |
+| N5 — movimientos | TASK-059 | ROMPE (corregido) | **ROMPE (leve)** | Una fila corregida desde otra moneda se listaba con el **rótulo viejo** sobre el monto ya convertido (W15). El arreglo de los reversos (W4) aguantó entero. |
+
+**Las correcciones de la ronda 1, una por una:**
+
+| | Sobrevivió | Cómo se la esquivó |
+|---|---|---|
+| W1 — conteos sobre filas visibles | **NO** | El filtro por visibles quedó bien; el alcance por substring reproduce el mismo síntoma (W12). |
+| W2 — el día típico | **NO** | El guarda acota la dispersión, no exige que el día haya ocurrido (W9). |
+| W3 — el colchón ilegible | **NO** | Cerró el `NaN` silencioso y dejó la cifra silenciosamente equivocada (W10). |
+| W4 — las dos filas del reverso | **SÍ** | Se atacó con `type IS NULL`, reverso de reverso y las tres banderas. Aguanta. |
+| W5 — el estado vacío | **PARCIAL** | `ledgerLeido` cubre el backend caído; el ledger **vacío** seguía celebrando (W11). |
+| W6 — el saldo de tarjeta nulo | **SÍ** | Se auditaron los 20 puntos donde el panel escribe plata. Ninguno dibuja `null` como cifra. |
+| W7 — la moneda del perfil | **SÍ** (con una nota) | No quedan constantes en el motor. El único `"USD"` cableado vivo es del modo demo, que es internamente coherente. |
+| W8 — los dos fallbacks | **NO** | Se cerró el borde HTTP y **no** la tool MCP, que el propio hallazgo nombraba (W14). |
+
+---
+
+## 2. Los hallazgos
+
+### W9 — "Suele caer el 12", con dispersión 2 y cero movimientos ese día
+
+**ROMPE.** `server/src/onboard/recurring.ts` — `diaTipicoDe` acotaba la
+**desviación absoluta mediana** a 3 días y devolvía `Math.round(median(dias))`.
+El guarda mide cuánto se dispersan los días; no dice nada sobre el día que se
+nombra. Con la mediana de un número par de observaciones cayendo entre dos,
+alcanza una distribución bimodal apretada para volver a inventar la fecha:
+
+| días observados | día que se afirmaba | ¿pasó algo ese día? |
+|---|---|---|
+| 10, 10, 14, 14 | 12 | nunca |
+| 13, 14, 16, 17 | 15 | nunca |
+| 5, 5, 5, 9, 9, 9 | 7 | nunca |
+| 28, 28, 31, 31 | 30 | nunca |
+
+Sobre el ledger real, **1 de las 10 propuestas** seguía afirmando un día que no
+ocurrió jamás **después del arreglo de W2**: días observados 3, 20, 22 y 23, y
+la pantalla decía *"suele caer el 21"*. La dispersión daba 1,5 — el guarda de W2
+la deja pasar sin dudar.
+
+**Corregido:** el día que se nombra tiene que ser un día **observado**. Se elige
+el más cercano al centro; a igual distancia, el más frecuente, y después el más
+temprano, para que dos corridas sobre el mismo ledger den la misma lista.
+Verificado sobre el ledger real: 5 de 10 siguen diciendo un día, y **ninguna
+afirma uno que no ocurrió**.
+
+### W10 — "1.500" guardado como 1,5, sin un solo error
+
+**ROMPE.** `panel/src/lib/formato.ts` — `parsePlata` cerró el `NaN` silencioso
+de W3 y dejó abierta la otra mitad del mismo formato. En `es` el punto es
+separador de miles, y el propio panel imprime "1.234,00"; escribir **"1.500"**
+en el colchón —que es como se escribe mil quinientos— entraba como **1,5**.
+
+Es peor que W3, no una variante menor: W3 perdía el dato y no decía nada; esto
+**guarda un número mil veces más chico y tampoco dice nada**. Un colchón de mil
+quinientos guardado como uno con cincuenta no se ve como un error: se ve como un
+anillo verde y un objetivo cumplido que nadie fijó (R25).
+
+Y la vuelta también fallaba: la pantalla precargaba con `String(valor)`, así que
+un colchón de 12,345 se dibujaba `"12.345"` y volvía a guardarse como doce mil
+trescientos cuarenta y cinco.
+
+**Corregido:** `parsePlata` reconoce los grupos de exactamente tres dígitos como
+miles (`1.234` → 1234, `1.234.567` → 1234567) y deja el resto como decimal
+(`1234.5` → 1234,5; `0.500` → 0,5). La precarga se escribe con `formatoPlata`,
+que siempre lleva coma: la ida y la vuelta dejan de tener dos lecturas.
+
+### W11 — "Cubriste el 100 % de tu plata" sobre una billetera recién instalada
+
+**ROMPE.** `server/src/classify/progress.ts:109,117` devuelve `covered_ratio: 1`
+y `done: true` cuando `baseline_total` es cero — **es su guarda contra dividir
+por cero, no una afirmación**. `panel/src/lib/cola.ts` la leía como un logro.
+
+Reproducción, sin tocar nada: una base recién migrada, antes del primer sync.
+`filasDeMonto` vacío hace que la pestaña por defecto sea *Qué es esto*, y lo
+primero que la pantalla dice es *"Cubriste el 100 % de tu plata — No queda
+ninguna contraparte por responder"*, en verde, con la barra llena.
+
+Es W5 otra vez —celebrar un hecho que el ledger no dice— **sin que el backend
+tenga que caerse**: `ledgerLeido` está en `true`, porque el ledger sí se leyó y
+lo que dijo fue "no hay nada". El caso más incómodo no es el vacío sino el
+segundo: un ledger cuyo gasto está **todo en filas sin contraparte** (38 sobre
+el real) da la misma celebración con plata real dibujada dos pantallas más allá.
+
+**Corregido:** sin línea de base la pantalla dice *"Todavía no hay nada que
+clasificar"*, no celebra y la barra queda en cero. El 100 % de verdad —todo
+respondido sobre una base real— se sigue celebrando igual.
+
+### W12 — La tarjeta dice 1, la respuesta dice 7
+
+**ROMPE.** W1 arregló *qué filas* se cuentan y no la otra mitad de la misma
+frase. Una regla matchea con `includes`, así que responder por un nombre corto
+mueve también los movimientos de las contrapartes que lo contienen — y ésas
+**salen de la cola sin haber sido preguntadas**.
+
+Reproducido sobre el ledger real, con el fix de W1 puesto:
+
+| | |
+|---|---|
+| grupos donde la respuesta no coincide con la tarjeta | **10 de 147** |
+| en el peor: la tarjeta prometía | **1 movimiento** |
+| la respuesta contestaba | **"reclasificaste 7"** |
+| grupos que desaparecieron de la cola | 2 (uno nunca fue preguntado) |
+| patrones contenidos en otro patrón de la cola | 9 de 147 |
+
+O sea el síntoma exacto de W1, por otra puerta. La ronda 1 lo tenía anotado como
+limitación del alcance por substring — *"el conteo sí los incluye, así que el
+número no miente"*— y eso sigue siendo cierto: el problema no es el número, es
+que la pantalla **prometió otro** un segundo antes y no explica la diferencia.
+
+**Corregido:** el motor devuelve `otras_contrapartes` —cuántas contrapartes
+además de la preguntada movió la regla— y la pantalla lo dice: *"Incluye 1 otra
+contraparte cuyo nombre contiene a ésta: la regla las alcanza a todas y salen de
+la cola con ella"*. El conteo **no** se recorta: los 7 se movieron de verdad y el
+gráfico se mueve por los 7. Lo que faltaba era el alcance. La tool MCP lo
+declara en su descripción, que es lo único que un agente lee.
+
+### W13 — El chip que contesta "¿a qué server le hablo?" contestaba con nada
+
+**ROMPE (leve).** `panel/src/api/client.ts` — `etiquetaBackend` devolvía
+`new URL(value).host`, y `new URL("data:…")` / `new URL("javascript:…")` parsean
+feliz dejando `host` vacío. Un `?api=data:text/html,…` producía el cartel
+*"Este enlace quiere cambiar tu backend a ``"* — con el `<code>` en blanco.
+
+La llave nunca sale (la base cae en `foreign`, y eso el chip sí lo dice con
+*Sin credencial*), así que no hay fuga. Lo que se rompe es la mitigación misma:
+ese cartel **es** la defensa de R1, y un cartel que no dice a qué se está
+cambiando pide una confirmación a ciegas.
+
+**Corregido:** sin host, se muestra el valor tal cual.
+
+### W14 — W8 se corrigió en el borde HTTP y no en la tool MCP
+
+**ROMPE.** El hallazgo W8 decía, textual: *"El selector del panel ya los
+excluía, así que por la UI no se alcanzaba; **por la API y por la tool MCP** era
+un bucle infinito"*. La corrección tocó `api/schemas.ts` y dejó
+`server/src/mcp/server.ts` con `z.enum(CATEGORIES)`, el glosario entero.
+
+O sea que una de las dos superficies que el propio hallazgo nombraba siguió
+aceptando `otros` y `transferencia_persona`: escribe la regla, devuelve `ok` con
+su conteo, y el grupo sigue en la cola para siempre porque su categoría
+recalculada sigue siendo un fallback.
+
+La causa de fondo es de forma, no de olvido: la lista de categorías respondibles
+vivía en el **borde HTTP**, y una regla del motor puesta en un transporte sólo
+vale para ese transporte.
+
+**Corregido:** `RESPONDABLE_CATEGORIES` se muda a `classify/queue.ts` —al lado de
+`UNCLASSIFIED_CATEGORIES`, de la que se deriva— y las dos superficies la
+importan. Es la definición de la cola dicha al revés, y ahora está escrita una
+sola vez.
+
+### W15 — Un monto convertido con la etiqueta de la moneda vieja
+
+**ROMPE (leve).** `server/src/review/resolve.ts` rechaza `confirm` sobre una fila
+en otra moneda y deja `correct` como la salida honesta, porque `correct` **es**
+"una persona afirmando el equivalente convertido". El monto que queda guardado
+está en la moneda base y suma en los totales como tal — pero la columna
+`currency` seguía diciendo la moneda vieja.
+
+Consecuencia en pantalla (`TransactionsTable.vue:149` dibuja `{{ monto }}
+{{ moneda }}`): la tabla de movimientos muestra **"12,40 ARS"** sobre un número
+que son dólares y que el motor suma como dólares. Es W6 al revés — ahí un dato
+desconocido se dibujaba como cifra, acá una cifra real lleva el rótulo
+equivocado.
+
+**Corregido:** `correct` escribe `currency` junto con `amount` y `source`. En una
+fila que ya estaba en la moneda base no cambia nada, y `discard` no lo toca: ahí
+nadie afirmó ningún equivalente.
+
+---
+
+## 3. Lo que aguantó el ataque
+
+**N0, la lista blanca del cliente.** Se probaron los vectores de imitación uno
+por uno contra `panel/src/api/origins.ts`, y **ninguno consigue la llave**:
+
+| vector | origen que resuelve | veredicto |
+|---|---|---|
+| `https://confiable@atacante` (userinfo) | el del atacante | `foreign` |
+| `https://confiable.atacante` (sufijo) | el del atacante | `foreign` |
+| `https://confiable:8443` (puerto) | con puerto | `foreign` |
+| `//atacante` (relativo al protocolo) | no parsea | `foreign` |
+| `javascript:` / `data:` | rechazado por protocolo | `foreign` |
+| `https://CONFIABLE` (caja) | canonicalizado | `trusted` — correcto, los dos lados canonicalizan |
+| `https://confiable\@atacante` (barra invertida) | el confiable | `trusted` — correcto, `fetch` también resuelve al confiable |
+
+También aguantaron: el token **no** se acepta por query string en ninguna
+superficie (`classifyRequestAuth` sólo mira la cabecera); `parseBearer` no se
+deja pasar por cabeceras malformadas y la comparación corta por longitud antes
+de `timingSafeEqual`; y el preflight no puede colar un método raro porque
+`cors.ts` publica una lista fija que no refleja `Access-Control-Request-Method`,
+y no hay ninguna ruta registrada con `.all()` ni con `.options()` que pudiera
+devolver datos sin llave.
+
+**El fix de los reversos (W4).** Se atacó con `type IS NULL` (0 filas en el
+ledger real, y la columna es `NOT NULL` en el esquema), con el reverso de un
+reverso y con las tres banderas cruzadas. Las dos filas del reverso se tapan y
+se destapan juntas, que es lo que son: un solo hecho.
+
+**El fix del saldo nulo (W6).** Se auditaron los 25 puntos del panel donde se
+escribe una cifra de plata. Ninguno puede recibir un `null`: `OverviewCard` exige
+`typeof valor === "number" && Number.isFinite`, y los tres campos opcionales del
+resumen de tarjeta pasan por `ROTULO_SIN_LEER`.
+
+**La paginación contra el silenciador.** Silenciar las últimas contrapartes de
+la página 8 no deja la pantalla mirando la nada: `paginar` acota el número
+pedido a las páginas que existen. Y la contraparte silenciada **deja** de contar
+en el progreso, como debe: `silencedPatterns` la saca de `remaining` y su plata
+pasa a `covered`.
+
+**El mes en curso de `reclassified_this_month`.** Se atacó con una contraparte
+con filas en tres meses distintos y en el borde del mes. `localMonthRange`
+devuelve instantes UTC absolutos y `apply.ts` compara instantes: la cuenta es
+correcta también con el desfase horario configurado.
+
+**`Guardar y seguir` navega a la cola ENTERA**, no a una filtrada por lote — que
+es lo correcto: el alta no es un sync, y no hay lote al que acotar.
+
+---
+
+## 4. Limitaciones aceptables (ronda 2)
+
+Las de la ronda 1 siguen en pie salvo las que se convirtieron en `ROMPE` acá.
+Se suman estas, todas atacadas y confirmadas:
+
+- **`*.localhost` recibe la llave.** `isLoopbackOrigin` acepta cualquier
+  subdominio de `.localhost`, así que un `?api=http://ajeno.localhost` —si el
+  usuario **además** confirma la propuesta a mano— se clasifica como loopback.
+  Se apoya en RFC 6761 y en que Chrome y Firefox resuelven `*.localhost` a
+  loopback sin consultar DNS. La ventana es angosta y requiere una confirmación
+  explícita, pero la suposición está fuera del código.
+- **`covered_ratio` y `unclassified_ratio` siguen con denominadores distintos.**
+  Sin cambios respecto de la ronda 1.
+- **El progreso queda pegado cuando un refresco falla.** La tarjeta de avance no
+  cuelga de `ledgerLeido`, así que después de una escritura seguida de un
+  refresco fallido se dibuja el valor anterior al lado del cartel rojo. Es dato
+  viejo, no dato inventado — pero es dato viejo sin decir que lo es.
+- **Confirmar una propuesta del alta no refresca las demás.** Si la confirmada
+  contiene a otra de la lista, esa otra queda en pantalla como propuesta viva
+  aunque ya esté clasificada. Es el mismo substring de W12, en la otra pantalla.
+- **Silenciar sigue sin vuelta atrás desde el panel.** Se verificó que la salida
+  **existe** en las otras dos superficies: `DELETE /api/classify/silence`
+  (`api/routes.ts:299`), `GET /api/classify/silenced` y la tool MCP
+  `silence_counterparty` con `undo: true`. Lo que falta es la pantalla, y la
+  copia del panel no promete lo contrario.
+- **Los filtros de fecha siguen cortando por día UTC.** Vuelto a medir:
+  **233 de 1140 filas (20 %)** caen en un día distinto del que el Resumen les
+  asigna.
+- **El modo demo cablea `"USD"`.** Es el único `"USD"` vivo fuera del parser y
+  del default de la config. La demo es internamente coherente y no habla con
+  ningún backend.
+- **La descripción de una tool MCP dice "in USD".** `chat/engine-tools.ts:320`.
+  Es texto para el modelo, no un cálculo; no gobierna ninguna guarda.
+
+---
+
+## 5. Lo que quedó pendiente
+
+- **La verificación visual sigue siendo deuda manual.** Sin navegador headless
+  en este entorno, ninguna de las réplicas del design system se comparó lado a
+  lado con su preview. Sin cambios respecto de la ronda 1.
+- **El checklist D14 de TASK-054** sigue sin marcar: son tareas en la máquina de
+  Mato.
+- **R25 sigue mintiendo fuera del panel.** `balance.ts` devuelve
+  `financiado: true` con objetivo en cero. El panel lo corrige en su capa; la
+  superficie de agentes, no. Merece su propio ticket en el motor.
+- **El alcance por substring sigue siendo el alcance.** W12 lo hace **visible**,
+  no lo cambia: responder por un nombre corto sigue barriendo los grupos que lo
+  contienen. Cambiar el matcher a igualdad es una decisión de producto sobre
+  `categorize()`, no un parche del panel.
+- **El progreso pegado y la propuesta stale** (sección 4) no se corrigieron:
+  ninguno produce un número falso, y los dos se curan en el próximo refresco.

@@ -169,8 +169,20 @@ export function resolveReview(
       if (input.action === "correct") {
         // El único UPDATE de `amount` en todo el motor fuera del insert. Va
         // junto con `source = 'human'`: quién puso el número es parte del dato.
-        db.prepare("UPDATE transactions SET amount = @amount, source = 'human', needs_review = 0 WHERE id = @id").run({
+        //
+        // Y con `currency`: `correct` sobre una fila en otra moneda ES, por
+        // diseño, una persona afirmando el equivalente convertido (ver la
+        // guarda de arriba), así que la cifra que queda guardada está en la
+        // moneda base y suma en los totales como tal. Dejar el rótulo viejo
+        // hacía que la tabla de movimientos dibujara "12,40 ARS" sobre un
+        // número que son dólares: una cifra real con la etiqueta equivocada,
+        // que es W6 al revés (wargaming ronda 2, W15). En una fila que ya
+        // estaba en la moneda base esto no cambia nada.
+        db.prepare(
+          "UPDATE transactions SET amount = @amount, currency = @currency, source = 'human', needs_review = 0 WHERE id = @id"
+        ).run({
           amount: newAmount,
+          currency: getStrategyConfig(db).moneda,
           id: row.id,
         });
       } else if (input.action === "discard") {

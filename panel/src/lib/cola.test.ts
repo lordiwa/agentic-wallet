@@ -159,3 +159,47 @@ describe("contrapartesConMontoPendiente — el orden entre pestañas", () => {
     expect(cuenta.size).toBe(0);
   });
 });
+
+/**
+ * Wargaming ronda 2 (W11). `classifyProgress` devuelve `covered_ratio: 1` y
+ * `done: true` cuando no hay línea de base — es su guarda contra dividir por
+ * cero, no una afirmación (`server/src/classify/progress.ts:109,117`). La
+ * pantalla la leía como un logro y dibujaba *"Cubriste el 100 % de tu plata"*
+ * en verde sobre una billetera recién instalada, antes del primer sync. Es W5
+ * otra vez —celebrar sobre un ledger que no dice eso— sin necesidad de que el
+ * backend se caiga.
+ */
+describe("vistaProgreso — sin línea de base no hay nada que celebrar (W11)", () => {
+  const vacio: ClassifyProgressResponse = {
+    spending_total: 0,
+    baseline_total: 0,
+    covered_total: 0,
+    covered_ratio: 1,
+    unclassified_total: 0,
+    unclassified_ratio: 0,
+    groups: 0,
+    transactions: 0,
+    target_ratio: 0.8,
+    answers_to_target: 0,
+    amount_to_target: 0,
+    done: true,
+  };
+
+  it("no dice que se cubrió el 100 % de una plata que no existe", () => {
+    const vista = vistaProgreso(vacio);
+    expect(vista.titulo).not.toContain("100");
+    expect(vista.titulo.toLowerCase()).not.toContain("cubriste");
+  });
+
+  it("no celebra, y la barra no se dibuja llena", () => {
+    const vista = vistaProgreso(vacio);
+    expect(vista.celebra).toBe(false);
+    expect(vista.ancho).toBe(0);
+  });
+
+  it("el 100 % de verdad —todo respondido sobre una base real— sí se celebra", () => {
+    const vista = vistaProgreso({ ...vacio, baseline_total: 500, covered_total: 500 });
+    expect(vista.celebra).toBe(true);
+    expect(vista.titulo).toContain("100");
+  });
+});

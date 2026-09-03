@@ -59,8 +59,13 @@
       "author": "orquestador",
       "body": "WARGAMING DEL MVP (docs/wargaming-mvp.md) — veredicto: ROMPE. Un hallazgo, corregido con test en rojo primero.\n\nW6 (AC7) — es el ataque exacto que pide el AC, en el campo que el AC nombra. card.ts:68-69 rellena con cero lo que no pudo leer (statement.balance ?? 0) y el Resumen dibujaba ese cero con el peso de una cifra de 26px, con la nota \"minimo 0,00\": un resumen de tarjeta ilegible quedaba INDISTINGUIBLE de una tarjeta pagada. El estado es persistible (el ingestor solo rechaza si los tres campos vienen nulos) y el dato honesto ya venia en la respuesta — el calendario, dos bloques mas abajo en la misma pantalla, lo usaba bien. Corregido: la tarjeta lee overview.card.balance, que si distingue null de 0.\n\nLo que aguanto, y era el candidato mas fuerte a rotura: AC9 (R9) — el running se libera en un .finally que cubre el rechazo, verificado ejecutando la ruta con un runner que rechaza; el panel lo lee al montar y un running ausente se trata como \"no se\", no como false afirmado. Tambien aguantaron AC6 (R7, los cuatro cuadrantes de next_payday x safe_to_spend; el caso \"dice no se sabiendo\" es inalcanzable), AC8 (sin auto-encadenado, doble click bloqueado, sin division por cero), AC10 (batch_size con tope 500, barrido de 0/-5/1e9/abc/null/501/1.5 todos 400), AC2 (30 archivos / 458 tests del panel, ninguno fuera del glob), AC14 y AC18.\n\nLimitaciones documentadas: el aviso post-sync cuenta global y navega filtrado (el cartel lo explica pero no reconcilia los numeros); la etiqueta de cabecera dice \"Sincronizando\" en el estado pausado Seguir; el message del 500 se descarta y el usuario ve sync_failed; el porcentaje de la barra no se acota a 100; el modo demo suma filas needs_review al grafico por categoria, que el motor excluye, y lo hace debajo de la nota impresa que dice lo contrario.\n\nPendiente: AC13/AC15/AC16/AC17/AC19 (UI EXACTA y el telefono real) no se pudieron verificar — no hay navegador headless en este entorno.",
       "created_at": "2026-09-03T03:49:05.000Z"
+    },
+    {
+      "author": "orquestador",
+      "body": "WARGAMING RONDA 2 (docs/wargaming-mvp.md, rama wargaming-mvp-r2) — veredicto: SOLIDO. Unica fase que sale limpia del reataque.\n\nSe ataco el fix de W6 en todos los puntos donde el panel escribe plata (25 call sites de formatoPlata, sin contar tests): ninguno puede recibir un null. OverviewCard exige typeof valor === number && Number.isFinite, y los tres campos opcionales del resumen de tarjeta pasan por ROTULO_SIN_LEER.\n\nTambien aguanto el fix de W7: no quedan constantes de moneda en el motor. El unico \"USD\" cableado vivo es del modo demo, que no habla con ningun backend y es internamente coherente.\n\nAC sin cambios.",
+      "created_at": "2026-09-03T04:35:51.960Z"
     }
   ],
   "created_at": "2026-09-02T23:00:00.000Z",
-  "updated_at": "2026-09-03T03:49:05.000Z"
+  "updated_at": "2026-09-03T04:35:51.960Z"
 }

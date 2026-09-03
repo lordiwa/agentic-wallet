@@ -224,7 +224,24 @@ describe("los dos campos del perfil (criterio 6)", () => {
     const w = await montar();
 
     expect((w.get('[data-testid="campo-dias-pago"]').element as HTMLInputElement).value).toBe("15-15, 30-30");
-    expect((w.get('[data-testid="campo-colchon"]').element as HTMLInputElement).value).toBe("500");
+    // Con la coma puesta: es la forma que `parsePlata` vuelve a leer sin dos
+    // lecturas posibles (W10).
+    expect((w.get('[data-testid="campo-colchon"]').element as HTMLInputElement).value).toBe("500,00");
+  });
+
+  /**
+   * Wargaming ronda 2 (W10): lo que la pantalla precarga tiene que volver a
+   * entrar como lo mismo. Con `String()` un colchón de 12,345 se dibujaba
+   * "12.345" y se guardaba como doce mil trescientos cuarenta y cinco.
+   */
+  it("la cifra precargada vuelve a guardarse como la misma cifra", async () => {
+    endpoints.fetchProfile.mockResolvedValue(perfil({ colchon_objetivo: 1500, colchon_fijado: true }));
+    const w = await montar();
+
+    await w.get('[data-testid="alta-guardar-y-seguir"]').trigger("click");
+    await flushPromises();
+
+    expect(endpoints.postProfile).toHaveBeenCalledWith(expect.objectContaining({ colchonObjetivo: 1500 }));
   });
 
   it("guarda los dos campos y manda los días separados como los escribió el usuario", async () => {

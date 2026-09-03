@@ -233,3 +233,65 @@ describe("classifyCounterparty (H28, M4) — responder escribe UNA regla", () =>
     expect(categorias).toEqual([{ category: "salud" }, { category: "salud" }]);
   });
 });
+
+/**
+ * Wargaming ronda 2 (W12) — el alcance por substring vuelve a hacer que la
+ * respuesta contradiga a la tarjeta.
+ *
+ * W1 arregló *qué filas* se cuentan, pero no la otra mitad de la misma frase:
+ * una regla matchea con `includes`, así que responder por un nombre corto
+ * mueve también los movimientos de las contrapartes que lo contienen, y ésas
+ * salen de la cola **sin haber sido preguntadas**. Sobre el ledger real le pasa
+ * a 10 de los 147 grupos, y en el peor la tarjeta prometía **1 movimiento** y
+ * la respuesta contestaba **"reclasificaste 7"** — el mismo síntoma que W1, por
+ * otra puerta.
+ *
+ * El conteo no se recorta: los 7 se movieron de verdad y el gráfico se mueve
+ * por los 7. Lo que faltaba era **decir que hubo más de una contraparte**.
+ */
+describe("classifyCounterparty — el alcance se dice, no se descubre (W12)", () => {
+  function ledgerConSolapamiento(): void {
+    insertTransaction(db, tx({ gmail_msg_id: "s1", counterparty: "TIENDA FICTICIA", amount: 10 }));
+    for (const n of [1, 2, 3]) {
+      insertTransaction(db, tx({ gmail_msg_id: `s2-${n}`, counterparty: "TIENDA FICTICIA NORTE", amount: 5 }));
+    }
+  }
+
+  it("informa cuántas OTRAS contrapartes arrastró la regla", () => {
+    ledgerConSolapamiento();
+
+    const result = classifyCounterparty(db, { counterparty: "TIENDA FICTICIA", category: "comida" }, AHORA);
+
+    expect(result).toMatchObject({ ok: true, reclassified: 4, otras_contrapartes: 1 });
+  });
+
+  it("sin solapamiento no arrastra a nadie y lo dice con un cero", () => {
+    insertTransaction(db, tx({ gmail_msg_id: "u1", counterparty: "TIENDA UNICA", amount: 10 }));
+
+    const result = classifyCounterparty(db, { counterparty: "TIENDA UNICA", category: "comida" }, AHORA);
+
+    expect(result).toMatchObject({ ok: true, reclassified: 1, otras_contrapartes: 0 });
+  });
+
+  it("el número que se informa es el de los grupos que desaparecen de la cola", () => {
+    ledgerConSolapamiento();
+    expect(classifyQueue(db)).toHaveLength(2);
+
+    const result = classifyCounterparty(db, { counterparty: "TIENDA FICTICIA", category: "comida" }, AHORA);
+
+    expect(classifyQueue(db)).toHaveLength(0);
+    expect(result).toMatchObject({ otras_contrapartes: 1 });
+  });
+
+  it("una contraparte arrastrada que ningún total cuenta no infla el número", () => {
+    insertTransaction(db, tx({ gmail_msg_id: "v1", counterparty: "TIENDA FICTICIA", amount: 10 }));
+    insertTransaction(
+      db,
+      tx({ gmail_msg_id: "v2", counterparty: "TIENDA FICTICIA SUR", amount: 40, is_internal: 1 })
+    );
+
+    const result = classifyCounterparty(db, { counterparty: "TIENDA FICTICIA", category: "comida" }, AHORA);
+
+    expect(result).toMatchObject({ reclassified: 1, otras_contrapartes: 0 });
+  });
+});

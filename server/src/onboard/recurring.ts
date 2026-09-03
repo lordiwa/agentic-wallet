@@ -214,15 +214,32 @@ export const DISPERSION_MAXIMA_DEL_DIA = 3;
  * observados cae a más de `DISPERSION_MAXIMA_DEL_DIA` de la mediana, no hay día
  * típico que decir. Mediana y no promedio, por lo mismo de siempre: un solo mes
  * corrido no puede tapar un patrón que los demás sostienen.
+ *
+ * Y una segunda condición, que el guarda de la dispersión **no** garantiza
+ * (wargaming ronda 2, W9): **el día que se nombra tiene que ser un día en el que
+ * pasó algo**. La mediana de un número par de observaciones cae entre dos, así
+ * que con los cargos repartidos 10/10/14/14 daba 12 — un día sin un solo
+ * movimiento, dispersión 2, guarda superado. Sobre el ledger real le seguía
+ * pasando a 1 de las 10 propuestas después del arreglo de W2. Se dice, entonces,
+ * el día **observado** más cercano al centro; a igual distancia, el más
+ * frecuente, y después el más temprano, para que la lista no se baraje sola
+ * entre dos corridas.
  */
 export function diaTipicoDe(dias: readonly number[]): number | null {
   if (dias.length === 0) return null;
   const centro = median([...dias]);
   const dispersion = median(dias.map((dia) => Math.abs(dia - centro)));
   if (dispersion > DISPERSION_MAXIMA_DEL_DIA) return null;
-  // Con un número par de días la mediana cae entre dos y se redondea — un día
-  // del mes es un entero o no es un día.
-  return Math.round(centro);
+
+  const frecuencia = new Map<number, number>();
+  for (const dia of dias) frecuencia.set(dia, (frecuencia.get(dia) ?? 0) + 1);
+
+  return [...frecuencia.keys()].sort(
+    (a, b) =>
+      Math.abs(a - centro) - Math.abs(b - centro) ||
+      (frecuencia.get(b) ?? 0) - (frecuencia.get(a) ?? 0) ||
+      a - b
+  )[0];
 }
 
 function aPropuesta(grupo: Acumulador): RecurringExpenseProposal {

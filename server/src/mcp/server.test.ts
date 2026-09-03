@@ -265,6 +265,26 @@ describe("MCP server del wallet", () => {
       expect(db.prepare("SELECT COUNT(*) as c FROM category_rules").get()).toEqual({ c: 0 });
     });
 
+    /**
+     * Wargaming ronda 2 (W14). W8 cerró los dos fallbacks en el borde HTTP
+     * (`api/schemas.ts`) y dejó la tool MCP con el glosario entero — que es,
+     * exactamente, una de las dos superficies que el hallazgo de W8 nombraba
+     * como bucle infinito. Responder `otros` escribe la regla, devuelve `ok`
+     * con su conteo, y el grupo sigue en la cola: su categoría recalculada
+     * sigue siendo un fallback.
+     */
+    it("classify_counterparty rechaza los dos fallbacks, igual que el borde HTTP (W14)", async () => {
+      for (const category of ["otros", "transferencia_persona"]) {
+        const result = (await client.callTool({
+          name: "classify_counterparty",
+          arguments: { counterparty: "VETERINARIA CENTRAL", category },
+        })) as { isError?: boolean };
+
+        expect(result.isError).toBe(true);
+      }
+      expect(db.prepare("SELECT COUNT(*) as c FROM category_rules").get()).toEqual({ c: 0 });
+    });
+
     it("silence_counterparty saca la contraparte de la cola, y undo la devuelve", async () => {
       await client.callTool({ name: "silence_counterparty", arguments: { counterparty: "MES ANTERIOR" } });
       let queue = parse(await client.callTool({ name: "get_classify_queue", arguments: {} }));

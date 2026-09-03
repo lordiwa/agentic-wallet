@@ -49400,6 +49400,9 @@ var UNCLASSIFIED_CATEGORIES = /* @__PURE__ */ new Set([
   "otros",
   "transferencia_persona"
 ]);
+var RESPONDABLE_CATEGORIES = CATEGORIES.filter(
+  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
+);
 function selectClassifiableRows(db, transactionIds) {
   if (transactionIds !== void 0 && transactionIds.length === 0) return [];
   const idFilter = transactionIds === void 0 ? "" : ` AND id IN (${transactionIds.map(() => "?").join(", ")})`;
@@ -49537,6 +49540,7 @@ function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
     const updateCategory = db.prepare("UPDATE transactions SET category = @category WHERE id = @id");
     let reclassified = 0;
     let reclassifiedThisMonth = 0;
+    const alcanzadas = /* @__PURE__ */ new Set();
     db.transaction(() => {
       for (const row of candidates) {
         const next = recategorize(row, after);
@@ -49544,14 +49548,17 @@ function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
         updateCategory.run({ id: row.id, category: next });
         if (row.visible !== 1) continue;
         reclassified += 1;
+        alcanzadas.add(toRulePattern(row.counterparty));
         const ts = new Date(row.ts).getTime();
         if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;
       }
     })();
+    const otrasContrapartes = alcanzadas.size - (alcanzadas.has(pattern) ? 1 : 0);
     emitMetric2("classify.rule_written", {
       category: request.category,
       reclassified,
-      reclassified_this_month: reclassifiedThisMonth
+      reclassified_this_month: reclassifiedThisMonth,
+      otras_contrapartes: otrasContrapartes
     });
     return {
       ok: true,
@@ -49559,7 +49566,8 @@ function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
       counterparty,
       category: request.category,
       reclassified,
-      reclassified_this_month: reclassifiedThisMonth
+      reclassified_this_month: reclassifiedThisMonth,
+      otras_contrapartes: otrasContrapartes
     };
   });
 }
@@ -50209,8 +50217,11 @@ function resolveReview(db, input, options = {}) {
     const newAmount = input.action === "correct" ? input.amount : null;
     const apply = db.transaction(() => {
       if (input.action === "correct") {
-        db.prepare("UPDATE transactions SET amount = @amount, source = 'human', needs_review = 0 WHERE id = @id").run({
+        db.prepare(
+          "UPDATE transactions SET amount = @amount, currency = @currency, source = 'human', needs_review = 0 WHERE id = @id"
+        ).run({
           amount: newAmount,
+          currency: getStrategyConfig(db).moneda,
           id: row.id
         });
       } else if (input.action === "discard") {
@@ -50287,11 +50298,9 @@ var transactionsQuerySchema = external_exports.object({
    */
   category: external_exports.enum(CATEGORIES).optional()
 });
-var RESPONDABLE_CATEGORIES = CATEGORIES.filter(
-  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
-);
 var classifyBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1),
+  /** El glosario **menos los dos fallbacks** — ver `RESPONDABLE_CATEGORIES`. */
   category: external_exports.enum(RESPONDABLE_CATEGORIES)
 });
 var syncBodySchema = external_exports.object({
@@ -52015,10 +52024,13 @@ function createWalletMcpServer(deps) {
     "classify_counterparty",
     {
       title: "Decir que es un comercio de la cola",
-      description: "Responde 'que es esto' por UN comercio: escribe una regla de categoria y devuelve cuantos movimientos quedaron reclasificados y cuantos de ellos son del mes en curso (el grafico del Resumen es solo del mes en curso, asi que sin ese segundo numero no se puede decir por que una barra no se movio). `counterparty` tiene que ser una contraparte que EXISTE en el ledger, tal como la devuelve `get_classify_queue`: el patron de la regla se deriva de la fila real, y por eso es imposible escribir un patron mas largo que la contraparte, que nunca matchearia nada. Para un patron ancho a proposito ('farmacia' para todas las farmacias) usa `set_rule`.",
+      description: "Responde 'que es esto' por UN comercio: escribe una regla de categoria y devuelve cuantos movimientos quedaron reclasificados y cuantos de ellos son del mes en curso (el grafico del Resumen es solo del mes en curso, asi que sin ese segundo numero no se puede decir por que una barra no se movio). `counterparty` tiene que ser una contraparte que EXISTE en el ledger, tal como la devuelve `get_classify_queue`: el patron de la regla se deriva de la fila real, y por eso es imposible escribir un patron mas largo que la contraparte, que nunca matchearia nada. Para un patron ancho a proposito ('farmacia' para todas las farmacias) usa `set_rule`. Ojo con `otras_contrapartes`: la regla matchea por substring, asi que responder por un nombre corto tambien mueve \u2014y saca de la cola\u2014 los grupos cuyo nombre lo contiene. Ese campo dice cuantos fueron; el conteo de arriba ya los incluye.",
       inputSchema: {
         counterparty: external_exports.string().min(1).describe("La contraparte tal cual la devuelve get_classify_queue"),
-        category: external_exports.enum(CATEGORIES)
+        // Los dos fallbacks NO se pueden responder: escriben la regla, devuelven
+        // `ok` y dejan el grupo en la cola para siempre. Misma lista que el
+        // borde HTTP, y por eso sale del motor (W8/W14).
+        category: external_exports.enum(RESPONDABLE_CATEGORIES)
       }
     },
     async ({ counterparty, category }) => {

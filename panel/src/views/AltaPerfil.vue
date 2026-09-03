@@ -77,8 +77,14 @@ async function cargar(): Promise<void> {
     // Lo ya guardado se muestra; lo que nunca se fijó queda vacío. Un `0` de
     // colchón es "sin fijar" (R25) y un campo con "0" escrito diría lo
     // contrario.
+    //
+    // La precarga se escribe con `formatoPlata` y no con `String()`: la cifra
+    // que sale por acá es la misma que va a volver a entrar por `parsePlata`,
+    // y `String(12.345)` es "12.345", que en `es` se lee como doce mil
+    // trescientos cuarenta y cinco. Con la coma puesta la ida y la vuelta no
+    // tienen dos lecturas (wargaming ronda 2, W10).
     diasPago.value = datosPerfil.dias_pago.join(", ");
-    colchon.value = datosPerfil.colchon_fijado ? String(datosPerfil.colchon_objetivo) : "";
+    colchon.value = datosPerfil.colchon_fijado ? formatoPlata(datosPerfil.colchon_objetivo) : "";
     errorCarga.value = null;
   } catch (err) {
     errorCarga.value = err instanceof Error ? err.message : String(err);

@@ -36,6 +36,22 @@ export interface Efecto {
 }
 
 /** El resultado de responder "qué es esto". */
+/**
+ * **De dónde salieron los movimientos de más** (wargaming ronda 2, W12).
+ *
+ * Una regla matchea con `includes`, así que responder por un nombre corto
+ * alcanza a los grupos cuyo nombre lo contiene, y ésos salen de la cola sin
+ * haber sido preguntados. La tarjeta hablaba de una contraparte y prometía sus
+ * movimientos; la respuesta contestaba un número más grande y no decía por qué
+ * —sobre el ledger real, 1 contra 7—, que es exactamente el síntoma que W1 vino
+ * a cerrar. El número es correcto: lo que faltaba era el alcance.
+ */
+function alcanceDeMas(respuesta: ClassifyApplyResponse): string {
+  const otras = respuesta.otras_contrapartes ?? 0;
+  if (otras === 0) return "";
+  return ` Incluye ${plural(otras, "otra contraparte", "otras contrapartes")} cuyo nombre contiene a ésta: la regla las alcanza a todas y salen de la cola con ella.`;
+}
+
 export function efectoDeClasificar(respuesta: ClassifyApplyResponse): Efecto {
   const categoria = nombreCategoria(respuesta.category);
   const movidos = respuesta.reclassified;
@@ -55,7 +71,8 @@ export function efectoDeClasificar(respuesta: ClassifyApplyResponse): Efecto {
       tono: "ok",
       titulo: `Reclasificaste ${plural(movidos, "movimiento", "movimientos")} a ${categoria}, ninguno de este mes.`,
       detalle:
-        "El gráfico del Resumen es sólo del mes en curso, así que no vas a ver moverse ninguna barra: lo que se ordenó es historial.",
+        "El gráfico del Resumen es sólo del mes en curso, así que no vas a ver moverse ninguna barra: lo que se ordenó es historial." +
+        alcanceDeMas(respuesta),
     };
   }
 
@@ -71,9 +88,10 @@ export function efectoDeClasificar(respuesta: ClassifyApplyResponse): Efecto {
   return {
     tono: "ok",
     titulo: `Reclasificaste ${plural(movidos, "movimiento", "movimientos")} a ${categoria}, ${cuantosDelMes}.`,
-    detalle: `${
-      delMes === 1 ? "Ese movimiento es el que mueve" : `Esos ${formatoEntero(delMes)} son los que mueven`
-    } el gráfico del Resumen, que sólo dibuja el mes en curso.`,
+    detalle:
+      `${
+        delMes === 1 ? "Ese movimiento es el que mueve" : `Esos ${formatoEntero(delMes)} son los que mueven`
+      } el gráfico del Resumen, que sólo dibuja el mes en curso.` + alcanceDeMas(respuesta),
   };
 }
 

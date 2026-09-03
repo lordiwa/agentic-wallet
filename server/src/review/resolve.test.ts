@@ -5,6 +5,7 @@ import { insertTransaction, type NewTransaction, type TransactionRow } from "../
 import { queryReviewTransactions } from "../api/queries.js";
 import { seedFixture } from "../seed/seed.fixture.js";
 import { balanceActual } from "../strategy/balance.js";
+import { getStrategyConfig } from "../db/strategy-config.js";
 import { listReviewResolutions, resolveReview } from "./resolve.js";
 
 let db: Database.Database;
@@ -121,6 +122,39 @@ describe("resolveReview: moneda extranjera", () => {
     expect(result.ok && result.changed).toBe(true);
     expect(result.ok && result.changed && result.transaction.amount).toBe(12.4);
     expect(result.ok && result.changed && result.transaction.source).toBe("human");
+  });
+
+  /**
+   * Wargaming ronda 2 (W15). `correct` es, por diseno, "una persona afirmando
+   * el equivalente convertido": el numero que queda guardado esta en la moneda
+   * base y suma en los totales como tal. La columna `currency`, en cambio,
+   * seguia diciendo la moneda vieja, asi que la tabla de movimientos dibujaba
+   * "12,40 ARS" sobre un monto que son dolares — una cifra real con la etiqueta
+   * equivocada, que es el mismo defecto que W6 al reves.
+   */
+  it("`correct` deja la fila rotulada en la moneda en la que quedo (W15)", () => {
+    const row = enOtraMoneda();
+
+    const result = resolveReview(db, { id: row.id, action: "correct", amount: 12.4, resolvedBy: "tester" }, { now: NOW });
+
+    expect(result.ok && result.changed && result.transaction.currency).toBe(getStrategyConfig(db).moneda);
+  });
+
+  it("una fila que ya estaba en la moneda base no cambia de rotulo", () => {
+    const row = enRevision({ amount: 10, currency: "USD" });
+
+    const result = resolveReview(db, { id: row.id, action: "correct", amount: 11, resolvedBy: "tester" }, { now: NOW });
+
+    expect(result.ok && result.changed && result.transaction.currency).toBe("USD");
+  });
+
+  it("`discard` no toca el rotulo: no se afirmo ningun equivalente", () => {
+    const row = enOtraMoneda();
+
+    resolveReview(db, { id: row.id, action: "discard", resolvedBy: "tester" }, { now: NOW });
+
+    const fila = db.prepare("SELECT currency FROM transactions WHERE id = ?").get(row.id) as { currency: string };
+    expect(fila.currency).toBe("ARS");
   });
 
   it("deja pasar `discard`", () => {

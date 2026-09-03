@@ -104,6 +104,25 @@ export interface VistaProgreso {
 export function vistaProgreso(progreso: ClassifyProgressResponse): VistaProgreso {
   const ancho = Math.min(100, Math.max(0, Math.round(progreso.covered_ratio * 100)));
 
+  /*
+   * Sin línea de base no hay nada que celebrar (wargaming ronda 2, W11).
+   * `classify/progress.ts` devuelve `covered_ratio: 1` y `done: true` cuando
+   * `baseline_total` es cero — es su guarda contra dividir por cero, no una
+   * afirmación—, y esta función lo leía como un logro: una billetera recién
+   * instalada, antes del primer sync, abría la cola con *"Cubriste el 100 % de
+   * tu plata"* en verde. Es W5 otra vez —celebrar un hecho que el ledger no
+   * dice— sin que el backend tenga que caerse.
+   */
+  if (progreso.baseline_total === 0) {
+    return {
+      ancho: 0,
+      celebra: false,
+      titulo: "Todavía no hay nada que clasificar",
+      detalle:
+        "No hay ningún movimiento de gasto con contraparte sobre el que preguntar, así que no hay plata cubierta ni progreso que medir. Sincronizá y volvé.",
+    };
+  }
+
   if (progreso.done) {
     return {
       ancho,

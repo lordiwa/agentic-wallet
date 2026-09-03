@@ -31,7 +31,7 @@
  * que es otro problema.
  */
 import type Database from "better-sqlite3";
-import { categorize, toRulePattern, type Category, type EstablishmentRule } from "../category/categorize.js";
+import { CATEGORIES, categorize, toRulePattern, type Category, type EstablishmentRule } from "../category/categorize.js";
 import { listCategoryRules } from "../category/rules-repository.js";
 import { localDayKey } from "../strategy/dates.js";
 import { fromCents, toCents } from "../strategy/money.js";
@@ -46,6 +46,23 @@ export const UNCLASSIFIED_CATEGORIES: ReadonlySet<Category> = new Set<Category>(
   "otros",
   "transferencia_persona",
 ]);
+
+/**
+ * Las categorías con las que se puede **responder**: el glosario menos los dos
+ * fallbacks de arriba. Responder con uno de ellos escribe la regla, devuelve
+ * `ok` con su conteo y deja el grupo en la cola para siempre —su categoría
+ * recalculada sigue siendo un fallback—, o sea un 200 que no hace nada y un
+ * bucle infinito de preguntas.
+ *
+ * Vive **acá** y no en el borde HTTP porque no es una regla de un transporte:
+ * es la definición de la cola dicha al revés, y toda superficie que escriba una
+ * respuesta tiene que usar la misma. Estaba sólo en `api/schemas.ts` (W8) y la
+ * tool MCP —una de las dos superficies que ese hallazgo nombraba— seguía
+ * aceptando los dos (wargaming ronda 2, W14).
+ */
+export const RESPONDABLE_CATEGORIES = CATEGORIES.filter(
+  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
+) as [Category, ...Category[]];
 
 /** Un grupo de la cola: una contraparte, y todo lo que hace falta para poder
  * preguntar por ella una sola vez. */

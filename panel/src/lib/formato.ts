@@ -49,15 +49,28 @@ export function formatoEntero(valor: number): string {
  *
  * La coma manda: si hay una, es el separador decimal y los puntos son de miles
  * ("1.234,50" → 1234,5). Sin coma, el punto es decimal, que es como llega la
- * cifra ya guardada cuando la pantalla la precarga ("1234.5" → 1234,5).
+ * cifra ya guardada cuando la pantalla la precarga ("1234.5" → 1234,5) —
+ * **salvo que los puntos separen grupos de exactamente tres dígitos**, que en
+ * `es` es la única lectura posible ("1.500" es mil quinientos, y así lo imprime
+ * `formatoPlata`).
+ *
+ * Esa excepción es el wargaming ronda 2 (W10). Sin ella "1.500" entraba como
+ * 1,5 —mil veces menos— **sin un solo error**: W3 cerró el `NaN` silencioso y
+ * dejó abierta la cifra silenciosamente equivocada, que es peor. Un colchón de
+ * mil quinientos guardado como uno con cincuenta no se ve como un error: se ve
+ * como un anillo verde y un objetivo cumplido que nadie fijó (R25).
  */
+const MILES_SIN_COMA = /^-?[1-9]\d{0,2}(\.\d{3})+$/;
+
 export function parsePlata(texto: string): number | null {
   const limpio = texto.trim().replace(/\s/g, "");
   if (limpio === "") return null;
 
   const normalizado = limpio.includes(",")
     ? limpio.replace(/\./g, "").replace(",", ".")
-    : limpio;
+    : MILES_SIN_COMA.test(limpio)
+      ? limpio.replace(/\./g, "")
+      : limpio;
 
   // Forma estricta, y a propósito: `Number()` solo aceptaría hexadecimales,
   // notación científica e infinitos, que no son cifras de plata.

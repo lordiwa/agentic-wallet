@@ -268,6 +268,12 @@ export interface ClassifyApplyResponse {
   category: Category;
   reclassified: number;
   reclassified_this_month: number;
+  /**
+   * Cuántas contrapartes ADEMÁS de la preguntada movió la regla (W12). Opcional
+   * porque un server anterior a la ronda 2 no lo manda, y ausente se lee como
+   * cero: no se inventa un alcance que el motor no declaró.
+   */
+  otras_contrapartes?: number;
 }
 
 /** El rastro que `POST /api/review/:id/resolve` deja al resolver

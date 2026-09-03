@@ -6,6 +6,7 @@ import {
   formatoFecha,
   formatoPlata,
   formatoPorcentaje,
+  parsePlata,
   plural,
 } from "./formato";
 
@@ -71,5 +72,48 @@ describe("plural", () => {
 
   it("cero va en plural, como se dice", () => {
     expect(plural(0, "movimiento", "movimientos")).toBe("0 movimientos");
+  });
+});
+
+/**
+ * Wargaming ronda 2 (W10). `parsePlata` resolvió el `NaN` silencioso de W3,
+ * pero dejó abierta la otra mitad del mismo formato: en `es` el punto es
+ * separador de miles, y "1.500" —que es como se escribe mil quinientos, y como
+ * el propio panel lo imprime salvo por los decimales— entraba como 1,5. Un
+ * colchón de mil quinientos guardado como uno con cinco no da error: da un
+ * anillo verde y un objetivo cumplido que nadie fijó (R25).
+ */
+describe("parsePlata — el punto de miles de `es` (W10)", () => {
+  it("un grupo de tres es miles, no decimales", () => {
+    expect(parsePlata("1.234")).toBe(1234);
+    expect(parsePlata("1.500")).toBe(1500);
+  });
+
+  it("dos grupos de tres también", () => {
+    expect(parsePlata("1.234.567")).toBe(1234567);
+  });
+
+  it("el punto decimal de una cifra ya guardada se sigue leyendo como decimal", () => {
+    expect(parsePlata("1234.5")).toBe(1234.5);
+    expect(parsePlata("12.34")).toBe(12.34);
+    expect(parsePlata("0.500")).toBe(0.5);
+  });
+
+  it("la coma sigue mandando cuando está", () => {
+    expect(parsePlata("1.234,50")).toBe(1234.5);
+    expect(parsePlata("1234,5")).toBe(1234.5);
+  });
+
+  it("lo que no es una cifra sigue sin serlo", () => {
+    expect(parsePlata("0x10")).toBeNull();
+    expect(parsePlata("1e5")).toBeNull();
+    expect(parsePlata("1.23.4")).toBeNull();
+    expect(parsePlata("")).toBeNull();
+  });
+
+  it("la ida y vuelta con `formatoPlata` no cambia la cifra", () => {
+    for (const valor of [0, 1.5, 1234.5, 1500, 1234567.89]) {
+      expect(parsePlata(formatoPlata(valor))).toBe(valor);
+    }
   });
 });

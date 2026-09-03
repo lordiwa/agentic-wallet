@@ -70,6 +70,23 @@ export interface ClassifySuccess {
    * puede entrar en ella.
    */
   reclassified_this_month: number;
+  /**
+   * Cuántas contrapartes **además de la preguntada** movió esta regla.
+   *
+   * Una regla matchea con `includes`, así que responder por un nombre corto
+   * alcanza también a los grupos cuyo nombre lo contiene, y ésos salen de la
+   * cola sin haber sido preguntados. El conteo de arriba los incluye —se
+   * movieron de verdad, y el gráfico se mueve por ellos—, pero la tarjeta que el
+   * usuario acababa de leer hablaba de UNA contraparte: sobre el ledger real le
+   * pasa a 10 de los 147 grupos, y en el peor la tarjeta prometía 1 movimiento y
+   * la respuesta contestaba "reclasificaste 7".
+   *
+   * O sea el síntoma de W1 otra vez, por otra puerta. La salida no es recortar
+   * el número —sería falso— sino **decir el alcance**: cero cuando la regla tocó
+   * sólo lo que se preguntó, y la pantalla lo dice cuando no lo es (wargaming
+   * ronda 2, W12).
+   */
+  otras_contrapartes: number;
 }
 
 export type ClassifyError = "empty_pattern" | "counterparty_not_found";
@@ -174,6 +191,8 @@ export function classifyCounterparty(
 
     let reclassified = 0;
     let reclassifiedThisMonth = 0;
+    /** Las contrapartes que la regla movió de verdad. Ver `otras_contrapartes`. */
+    const alcanzadas = new Set<string>();
 
     db.transaction(() => {
       for (const row of candidates) {
@@ -186,10 +205,16 @@ export function classifyCounterparty(
         if (row.visible !== 1) continue;
 
         reclassified += 1;
+        alcanzadas.add(toRulePattern(row.counterparty));
         const ts = new Date(row.ts).getTime();
         if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;
       }
     })();
+
+    // La preguntada no cuenta como "otra". Se descuenta sólo si de verdad movió
+    // algo: si su propia plata no se movió, las que quedan siguen siendo las
+    // otras.
+    const otrasContrapartes = alcanzadas.size - (alcanzadas.has(pattern) ? 1 : 0);
 
     // Sólo conteos y la categoría del glosario: el nombre del comercio es un
     // dato personal y no entra a la telemetría (CLAUDE.md).
@@ -197,6 +222,7 @@ export function classifyCounterparty(
       category: request.category,
       reclassified,
       reclassified_this_month: reclassifiedThisMonth,
+      otras_contrapartes: otrasContrapartes,
     });
 
     return {
@@ -206,6 +232,7 @@ export function classifyCounterparty(
       category: request.category,
       reclassified,
       reclassified_this_month: reclassifiedThisMonth,
+      otras_contrapartes: otrasContrapartes,
     };
   });
 }
