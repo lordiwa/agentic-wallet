@@ -18,6 +18,13 @@ build/
 
 # Cache de deploys de Firebase Hosting (hashes de archivos ya subidos).
 .firebase/
+
+# Logs de los emuladores de Firebase (los deja en el cwd desde donde corren).
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+pubsub-debug.log
+ui-debug.log
 .DS_Store
 
 # Bitacora de subagentes de hivemind: runtime local, no artefacto del repo.

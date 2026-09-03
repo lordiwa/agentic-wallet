@@ -42,3 +42,18 @@ jobs:
       # un cambio: primero que compile, después que pase.
       - run: npm run build
       - run: npm test
+
+      # `functions/` está fuera de los workspaces npm de la raíz a propósito
+      # (firebase deploy sube esa carpeta sola y necesita su propio
+      # node_modules), así que `npm ci` de arriba NO la instala y su suite no
+      # correría. Sin estos dos pasos, el código del pivot a Firebase entraría
+      # a main sin que nadie lo compile.
+      - run: npm ci --prefix functions
+      - run: npm run build:functions
+
+      # Corre los tests PUROS. Los que necesitan el emulador de Firestore se
+      # saltean solos acá: el emulador es Java y levantarlo en CI es un
+      # runner distinto. Se corren a mano con `npm run test:functions:emulator`
+      # antes de cualquier deploy, y esa dependencia hay que decirla en voz
+      # alta en vez de dejar que un verde de CI parezca cobertura completa.
+      - run: npm run test:functions

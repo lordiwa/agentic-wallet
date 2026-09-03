@@ -1,0 +1,29 @@
+{
+  "name": "@agentic-wallet/functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloud Functions (2a gen) del pivot a Firebase. Fuera de los workspaces npm de la raiz a proposito: firebase deploy sube esta carpeta sola y necesita su propio node_modules, no uno hoisteado.",
+  "engines": {
+    "node": "22"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:emulator": "node scripts/with-emulator.mjs vitest run",
+    "migrate:tenant": "node --experimental-strip-types scripts/migrate-tenant.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "better-sqlite3": "^11.8.1",
+    "@types/better-sqlite3": "^7.6.12",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

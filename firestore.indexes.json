@@ -1,0 +1,67 @@
+{
+  "//": "Indices compuestos del ledger. Firestore indexa cada campo por separado solo; cualquier consulta con dos o mas condiciones necesita uno de estos declarado. Ver docs/pivot-firebase.md 1.4.",
+  "indexes": [
+    {
+      "//": "spendingRowsForMonth: el grafico de gasto por categoria del mes.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "month", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "El listado de movimientos del panel: contables, mas recientes primero.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "El mismo listado filtrado por tipo (los chips del panel).",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "La cola de clasificacion cuando se recomputa un grupo: todas las filas de una contraparte.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "queueEligible", "order": "ASCENDING" },
+        { "fieldPath": "pattern", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "El balance desde el snapshot: contables en una ventana de tiempo.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "//": "rawSubject es el asunto crudo del correo: no se filtra ni se ordena por el nunca, y cada indice de un campo que no se usa es escritura facturada y latencia de ingesta por nada.",
+      "collectionGroup": "transactions",
+      "fieldPath": "rawSubject",
+      "indexes": []
+    },
+    {
+      "//": "Idem: el id de thread de Gmail viaja para poder auditar, no para consultar.",
+      "collectionGroup": "transactions",
+      "fieldPath": "gmailThreadId",
+      "indexes": []
+    }
+  ]
+}

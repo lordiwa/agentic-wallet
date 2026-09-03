@@ -1,5 +1,24 @@
 # Pivot a SaaS multi-usuario — diseño, wargaming y plan
 
+> # ⚠️ OBSOLETO COMO DESTINO — reemplazado por [`pivot-firebase.md`](pivot-firebase.md)
+>
+> Este documento diseñaba **un SQLite por cliente en un VPS** con Caddy/sslip.io
+> y un proceso por tenant. La decisión posterior es **Firebase puro**: Hosting +
+> Cloud Functions + Firestore + Auth + Cloud Scheduler. Quedan descartados el
+> VPS Hostinger como servidor de la app, Traefik, Tailscale, sslip.io, Caddy y
+> el SQLite por cliente.
+>
+> **Qué sigue sirviendo de acá, y por eso no se borra:**
+>
+> - El **análisis del motor** (§1 y §2): dónde están escritas las suposiciones de
+>   un solo usuario — `config.ts:128`, `db/open.ts:31`, `strategy/dates.ts:33-38`,
+>   `api/sync-gate.ts:26-39`. Ese diagnóstico vale igual sobre Firebase, y de
+>   hecho el pivot nuevo lo hereda entero.
+> - El **wargaming** de §5, salvo lo que era específico del VPS.
+> - La **Fase 0**, que ya está en `main` y no se toca.
+>
+> Lo que **no** hay que seguir de acá es la arquitectura: el destino cambió.
+
 > **Estado: Fase 0 ejecutada. Fases 1-8, diseño.** El diseño de §1-§7 sigue
 > siendo el aprobado; lo que cambió es que la Fase 0 dejó de ser plan y pasó a
 > ser código, con su resultado anotado en [§9](#9-fase-0--lo-que-se-hizo).

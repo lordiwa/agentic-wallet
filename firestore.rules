@@ -1,0 +1,115 @@
+rules_version = '2';
+
+// Reglas de Firestore del pivot a Firebase.
+//
+// LO PRIMERO QUE HAY QUE SABER AL LEERLAS: estas reglas NO se le aplican a las
+// Cloud Functions. Una función corre con credenciales de administrador y pasa
+// por encima de todo lo que dice este archivo. O sea que esto no es la cerradura
+// del ledger: es la cerradura del CLIENTE, y sirve para exactamente una cosa —
+// que si mañana el panel lee Firestore directo (para un listado en vivo, por
+// ejemplo) no pueda leer el de otra persona.
+//
+// La cerradura de verdad está en `functions/src/auth/verify.ts`: el uid sale del
+// ID token verificado y nunca de la petición. Las dos tienen que estar bien; una
+// sola no alcanza. Ver `docs/pivot-firebase.md` §B.1.
+//
+// El default es NEGAR. Cada `allow` de abajo es una excepción escrita a mano.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esElDueno(uid) {
+      return request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true;
+    }
+
+    match /users/{uid} {
+      allow read: if esElDueno(uid);
+      // El perfil del tenant lo crea la función de alta, no el cliente: si el
+      // cliente pudiera escribirlo, podría fijarse a sí mismo un plan o un
+      // límite de metering.
+      allow write: if false;
+
+      // El ledger es de sólo lectura desde el navegador. Todo lo que escribe
+      // pasa por una función, porque cada escritura tiene reglas que Firestore
+      // no puede expresar: un monto sale del parser y no del usuario, una
+      // regla de categoría hay que aplicarla al historial, una resolución de
+      // revisión deja auditoría.
+      match /transactions/{txId} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /rules/{pattern} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /silenced/{pattern} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /statements/{id} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /savings/{id} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /debts/{id} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /reviews/{id} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /counterparties/{pattern} {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      // La config se parte por documento justamente por esta regla: el perfil
+      // se puede leer y el documento con el refresh token de Gmail NO, ni
+      // siquiera por su dueño. Un token que el navegador puede leer es un token
+      // que cualquier XSS en el panel se lleva, y con él el buzón entero.
+      match /config/strategy {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /config/sync {
+        allow read: if esElDueno(uid);
+        allow write: if false;
+      }
+
+      match /config/gmail {
+        allow read, write: if false;
+      }
+
+      // El metering es nuestro, no del cliente: si lo pudiera leer sabría
+      // exactamente cuánto le vamos a cobrar antes de que se lo digamos, y si
+      // lo pudiera escribir, cuánto no.
+      match /metering/{periodo} {
+        allow read, write: if false;
+      }
+
+      // Cualquier subcolección que se agregue después y a la que nadie le haya
+      // escrito una regla: negada. Esto es lo que evita que la próxima feature
+      // llegue con su colección abierta por olvido.
+      match /{documento=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /{documento=**} {
+      allow read, write: if false;
+    }
+  }
+}
