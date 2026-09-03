@@ -1315,27 +1315,10 @@ Mato entregó las credenciales de un cliente OAuth llamado
   variables del pivot llevan los nombres `WALLET_GMAIL_*` y conviven con las
   `GMAIL_OAUTH_*` del server viejo sin pisarlas.
 
-**Lo que falta, y no lo puede hacer un agente:**
-
-1. **El proyecto está en plan Spark.** `firebase functions:secrets:set` falla con
-   "must be on the Blaze (pay-as-you-go) plan […] `secretmanager.googleapis.com`
-   can't be enabled until the upgrade is complete". Sin Blaze no hay Secret
-   Manager **ni Functions de 2a generación**, así que esto bloquea el deploy
-   entero, no sólo los secretos. Es el primer paso de la lista.
-2. **Confirmar en la Google Auth Platform del proyecto `855144098021`** que
-   `Bolsillo-web-client` es de tipo **Web application**. Por CLI sólo se pudo
-   descartar el tipo limited-input; no hay API pública que liste clientes OAuth,
-   y `gcloud` tampoco los expone.
-3. **Agregar la redirect URI exacta** a "Authorized redirect URIs" de ese
-   cliente:
-   `https://us-central1-agentic-wallet-71314.cloudfunctions.net/gmailAuthCallback`
-4. **Poner el consent screen en `User Type: Internal`** (§1.6, D1) — en el
-   proyecto `855144098021`, que es donde vive el cliente.
-5. **Cargar los dos secretos** una vez haya Blaze (los comandos de arriba).
-
-Con eso el flujo OAuth queda listo para desplegar. El código no espera nada más:
-`functions/.env.agentic-wallet-71314` ya tiene las tres variables públicas y
-`src/index.ts` ya declara los dos `defineSecret`.
+**Los cinco puntos que estaban acá quedaron resueltos** — Blaze activado, tipo
+del cliente confirmado, redirect URI agregada y los dos secretos cargados. El
+detalle está en **C.8**. Queda **una sola** acción de consola pendiente: publicar
+el consent screen (C.8.4).
 
 ### C.7.6 Tests
 
@@ -1353,3 +1336,161 @@ Con eso el flujo OAuth queda listo para desplegar. El código no espera nada má
 raíz intactos. `npm run test:emulator` en `functions/` con Java 11+ en el PATH.
 
 **Sigue sin desplegarse nada.** Ningún `firebase deploy` en esta fase tampoco.
+
+---
+
+# PARTE D — EL DESPLIEGUE REAL
+
+## D.1 Qué está desplegado, al 2026-09-03
+
+Primer `firebase deploy --only functions` contra `agentic-wallet-71314`. Las
+cinco funciones existen y responden. Verificado con `curl` sobre la URL pública,
+no con la salida del deploy:
+
+| Función | URL | Sin credencial responde |
+|---|---|---|
+| `health` | `https://us-central1-agentic-wallet-71314.cloudfunctions.net/health` | `200 {"ok":true,...}` |
+| `overview` | `.../overview` | `401 {"error":"sin_token"}` |
+| `gmailAuthStart` | `.../gmailAuthStart` | `405 metodo_no_permitido` (es POST) |
+| `gmailAuthStatus` | `.../gmailAuthStatus` | `401 {"error":"sin_token"}` |
+| `gmailAuthCallback` | `.../gmailAuthCallback` | `302` a `https://agentic-wallet-71314.web.app/?gmail=state_invalido#/conectado` |
+
+**El 302 del callback es la verificación que más dice.** Para llegar a
+responderlo, la función tuvo que ejecutar `cargarConfig(process.env)` dentro del
+handler, y esa función falla si falta cualquiera de las cinco variables — las
+tres públicas del `.env` y **los dos secretos**. Un 500 ahí habría significado
+secretos mal montados; el 302 prueba que están. De paso confirma que el query
+sale **antes** del `#`, que es lo que `conResultado` existe para garantizar.
+
+El deploy terminó con **exit 1**, y no es el deploy: es el aviso de que no había
+política de limpieza para las imágenes de Artifact Registry (se acumulan y se
+facturan). Se configuró después con
+`firebase functions:artifacts:setpolicy --location us-central1 --days 3 --force`.
+
+## D.2 Los secretos
+
+Los dos existen en Secret Manager, versión 1 `ENABLED`:
+
+- **`WALLET_GMAIL_CLIENT_SECRET`** — el de `Bolsillo-web-client`, tomado del
+  `.env` local (gitignored) y cargado **por stdin**
+  (`... | firebase functions:secrets:set NOMBRE --data-file -`), así que no pasó
+  por un argumento, ni por el historial del shell, ni por stdout. Antes de
+  cargarlo se revalidó el par contra `oauth2.googleapis.com/token` con un `code`
+  inválido: `400 invalid_grant` (el control negativo es `401 invalid_client`).
+- **`WALLET_TOKEN_KEK`** — generada con `openssl rand -base64 32` y verificada
+  decodificando **sólo su longitud**: 32 bytes, que es lo que exige
+  `KEY_BYTES` en `oauth/crypto.ts`.
+
+El deploy le dio `roles/secretmanager.secretAccessor` sobre ambos al service
+account `743241056894-compute@developer.gserviceaccount.com`. Sólo las funciones
+que los declaran en su `secrets: [...]` los reciben: `gmailAuthStatus` sigue sin
+la clave maestra en su proceso, que era el punto de §C.7.
+
+## D.3 El botón "Conectar Gmail" en el panel
+
+Cinco archivos nuevos y tres tocados. El reparto es el de `SyncButton`: la
+decisión vive en una función pura y el `.vue` sólo dibuja.
+
+| Archivo | Qué es |
+|---|---|
+| `panel/src/lib/gmail-estado.ts` | `vistaGmail()` — los siete estados de la tarjeta y los siete textos del callback, como función pura |
+| `panel/src/api/gmail.ts` | el cliente de `gmailAuthStart` y `gmailAuthStatus` |
+| `panel/src/composables/useGmail.ts` | el ciclo: consultar, conectar, leer la vuelta |
+| `panel/src/components/ConectarGmail.vue` | la tarjeta |
+| `panel/src/views/Conectado.vue` | la pantalla `#/conectado` |
+| `panel/src/router/ruta.ts` | se agregó `conectado` a `RUTAS` (no a `PANTALLAS`) |
+| `panel/src/App.vue` | monta la vista nueva |
+
+Tres decisiones que no son obvias:
+
+1. **El cliente de Gmail no pasa por `panelFetch`.** Las funciones viven en otro
+   origen y con **otra credencial**: un ID token de Firebase, no la llave del
+   server. Compartir camino sería mandar `WALLET_ACCESS_TOKEN` a
+   `cloudfunctions.net`, que es el R1 que `api/base.ts` existe para evitar. Hay
+   un test que lo fija: con la llave del server en `localStorage`, el
+   `Authorization` que sale sigue siendo el ID token.
+2. **`?gmail=ok` no decide nada.** Al aterrizar en `#/conectado` se vuelve a
+   consultar `gmailAuthStatus`: quien sabe si el buzón está conectado es
+   Firestore, no un parámetro que cualquiera escribe a mano. El parámetro sólo
+   elige el texto del aviso, y se valida contra la lista de resultados conocidos
+   antes de usarse.
+3. **`conectado` tenía que entrar en `RUTAS`.** Es el destino de `RUTA_EXITO`, o
+   sea que el único que escribe esa ruta es el redirect del callback. Si no
+   estuviera en la lista, `parseHash` la mandaría al Resumen y el usuario
+   volvería de autorizar su correo sin que nada se lo confirme.
+
+**62 tests nuevos**: 21 del estado, 14 del cliente, 16 del ciclo, 11 del
+componente. Suman **67** contra el total anterior porque `tokens.test.ts` genera
+un test por archivo fuente del panel y ahora hay cinco archivos más — o sea que
+el guardián de colores ya cubre los nuevos y ninguno escribe un hex.
+
+Raíz: **1750** (eran 1683). `functions/`: **193**, intactos.
+
+### La variable que falta para que el botón hable con el deploy
+
+`panel/src/api/gmail.ts` lee `VITE_FUNCTIONS_BASE_URL` y **por defecto está
+vacía** (CLAUDE.md, regla 3: nada precargado de un despliegue concreto). Con la
+variable vacía la tarjeta muestra "Gmail no está configurado" y no ofrece botón.
+Para el piloto, el build del panel tiene que llevar:
+
+```
+VITE_FUNCTIONS_BASE_URL=https://us-central1-agentic-wallet-71314.cloudfunctions.net
+```
+
+El modo demostración es la excepción y no la necesita: no habla con ninguna
+función.
+
+## D.4 Lo que falta, y por qué no lo puede hacer un agente
+
+### D.4.1 Publicar el consent screen — **acción de Mato, 2 clicks**
+
+El consent screen está en **Testing**. Consecuencia concreta: **el refresh token
+se vence a los 7 días**, así que el piloto deja de sincronizar solo. No bloquea
+el deploy ni el botón; bloquea que la conexión dure.
+
+**No hay forma de hacerlo por CLI.** Se verificó: la API de IAP
+(`iap.googleapis.com/v1/projects/.../brands`) está deshabilitada en el proyecto
+y, aun habilitándola, el recurso `Brand` expone `applicationTitle`,
+`supportEmail` y `orgInternalOnly` — **ningún campo de publishing status**. No
+existe API pública para pasar de Testing a In Production: es consola.
+
+Los dos clicks, en el proyecto **`855144098021`** (donde vive el cliente, no en
+el de Firebase):
+
+1. Abrir <https://console.cloud.google.com/apis/credentials/consent?project=855144098021>
+2. Apretar **"Publish app"** y confirmar **"Confirm"** en el diálogo.
+
+Queda como **"In production" sin verificar**, que es lo buscado: la pantalla
+muestra el aviso de "Google hasn't verified this app" y se pasa con *Advanced →
+Go to (unsafe)*, pero el refresh token ya no se vence a los 7 días. La
+verificación de Google recién hace falta para sacar ese aviso, y para eso hay
+tope de 100 usuarios sin verificar — de sobra para un piloto.
+
+### D.4.2 El login de Firebase en el panel — **no está cableado**
+
+El botón necesita un **ID token de Firebase** y el panel todavía no tiene de
+dónde sacarlo:
+
+- **No hay Web App registrada** en el proyecto: `firebase apps:sdkconfig WEB`
+  responde "There are no WEB apps associated with this Firebase project".
+- El panel autentica hoy con `WALLET_ACCESS_TOKEN` contra el server viejo, que
+  es otra cosa.
+
+Por eso `api/gmail.ts` toma el ID token de un **proveedor inyectable**
+(`setProveedorIdToken`), que hoy devuelve `null` — y la tarjeta muestra "Entrá
+para conectar tu correo". Los tests inyectan el suyo, así que el ciclo entero
+está probado; lo que falta es el proveedor de verdad.
+
+Para cerrarlo hace falta, en este orden: registrar la Web App
+(`firebase apps:create WEB`), agregar `firebase` a `panel/package.json`,
+inicializar el SDK en `main.ts` con `signInWithPopup(GoogleAuthProvider)`, y
+registrar `() => getAuth().currentUser?.getIdToken() ?? null` como proveedor.
+**Nada de eso cambia el código de esta fase**: es un `setProveedorIdToken` en
+`main.ts`.
+
+### D.4.3 El hosting del panel — no se desplegó
+
+`firebase deploy --only hosting` **no se corrió**: el sitio público sigue
+sirviendo el panel en modo demostración, sin el botón. Es deliberado — el botón
+sin D.4.2 mostraría "Entrá para conectar tu correo" a cualquiera que abra el
+sitio. Conviene desplegarlo junto con el login, no antes.

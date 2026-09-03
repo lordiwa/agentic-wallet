@@ -18,6 +18,7 @@ import AccessKeyScreen from "./components/AccessKeyScreen.vue";
 import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
 import AltaPerfil from "./views/AltaPerfil.vue";
+import Conectado from "./views/Conectado.vue";
 import Movimientos from "./views/Movimientos.vue";
 import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
@@ -70,6 +71,9 @@ onMounted(async () => {
     <!-- El análisis del historial (N4). No está en la barra a propósito: se
          entra por una tarjeta del Resumen y se sale a la cola. -->
     <AltaPerfil v-else-if="ruta.pantalla === 'alta'" />
+    <!-- La vuelta de Google (`RUTA_EXITO` del callback). Tampoco está en la
+         barra: no se navega, se aterriza. -->
+    <Conectado v-else-if="ruta.pantalla === 'conectado'" />
     <!-- Movimientos (N5). La `key` remonta cuando cambia la categoría: tocar
          otra barra del gráfico estando ya acá tiene que traer la lista de esa
          barra, no dejar la anterior en pantalla. -->
