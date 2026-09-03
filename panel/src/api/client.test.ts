@@ -162,7 +162,7 @@ describe("etiquetaBackend", () => {
   });
 
   it("de un backend real muestra el host, no la URL entera", () => {
-    expect(etiquetaBackend("https://maquina.tail1234.ts.net/algo")).toBe("maquina.tail1234.ts.net");
+    expect(etiquetaBackend("https://maquina.tail-ejemplo.ts.net/algo")).toBe("maquina.tail-ejemplo.ts.net");
     expect(etiquetaBackend("http://127.0.0.1:3000")).toBe("127.0.0.1:3000");
   });
 });

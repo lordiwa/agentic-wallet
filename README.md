@@ -123,10 +123,17 @@ Hay una copia del dashboard en **<https://agentic-wallet-71314.web.app>**
 inventados y el sitio lo dice en un cartel arriba de todo. No lleva ningún
 dato tuyo adentro — es la interfaz, no el ledger.
 
-Se publica así a propósito: la API no tiene autenticación, y exponerla para
-que una página pública la lea equivaldría a publicar tu historial bancario.
-El sitio sabe apuntarse a tu propio server (`?api=https://...`) sin
-recompilar nada, y ahí sí muestra tus datos.
+Se publica así a propósito: exponer la API para que una página pública la lea
+equivaldría a publicar tu historial bancario. El sitio sabe apuntarse a tu
+propio server (`?api=https://...`) sin recompilar nada, y ahí sí muestra tus
+datos — **te pregunta antes de guardar ese backend**, porque un enlace que
+reapunta el sitio solo es un enlace que se lleva tu llave.
+
+La llave es `WALLET_ACCESS_TOKEN`: si la ponés en el `.env`, todo `/api/*`
+exige `Authorization: Bearer`. Sin ella la API sigue sin autenticación y el
+único límite es `WALLET_BIND_HOST` (por defecto, sólo tu máquina).
+`GET /api/health` queda siempre abierto: es el único diagnóstico que
+distingue "el server no está" de "tu llave no sirve".
 
 El paso a paso —cómo conectarlo a datos reales con `tailscale serve`, cómo se
 actualiza el sitio, y qué hace el auto-refresco— está en
