@@ -17,6 +17,30 @@
 # `WALLET_SITE_ADDRESS=http://localhost:8080` este mismo archivo se levanta en
 # local sin ACME, lo que permite probar el proxy (SSE incluido) sin depender de
 # que Let's Encrypt llegue al puerto 443. Es como se verifico en la Fase 0.
+{
+	# Vacio por defecto: en la maquina donde este Caddy atienda el 443, el
+	# redirect 80->443 que arma solo es lo que se quiere.
+	#
+	# Con `WALLET_AUTO_HTTPS="auto_https disable_redirects"` no abre el :80.
+	# Hace falta donde ese puerto ya este ocupado —esta VPS, sin ir mas
+	# lejos—: Caddy no lo saltea, aborta el arranque entero con "listening on
+	# :80: bind: address already in use" aunque el sitio viva en otro puerto.
+	{$WALLET_AUTO_HTTPS}
+
+	# Vacio por defecto = ACME real contra Let's Encrypt, que es lo correcto
+	# cuando este Caddy sea quien atiende el 80/443 publicos.
+	#
+	# Con `WALLET_LOCAL_CERTS=local_certs` firma con su CA interna. Hace falta
+	# mientras el sitio viva en un puerto no estandar: Let's Encrypt valida
+	# **solo** contra el 80 (http-01) y el 443 (tls-alpn-01), nunca contra el
+	# puerto donde escucha el sitio. Con esos dos puertos en manos de Traefik,
+	# ACME falla siempre — verificado: tls-alpn-01 devuelve "unrecognized
+	# name" (contesta Traefik) y http-01 devuelve 404. Un cert interno deja el
+	# proxy probable de punta a punta, pero NO sirve para un navegador ni para
+	# el panel en Firebase: para eso hay que emitir el cert desde el 443.
+	{$WALLET_LOCAL_CERTS}
+}
+
 {$WALLET_SITE_ADDRESS:wallet.2.25.119.1.sslip.io} {
 	# Comprimir es gratis para el panel y para el JSON de la API, pero
 	# `text/event-stream` NO entra: comprimir un stream lo hace buferear, y el

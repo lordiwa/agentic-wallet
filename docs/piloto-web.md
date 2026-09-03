@@ -16,9 +16,17 @@ qué se verificó de verdad y qué quedó bloqueado.
 ## 1. Las tres piezas
 
 ```
-navegador  ──HTTPS──>  proxy del borde (:443)  ──HTTP──>  server del wallet (127.0.0.1:3000)
+navegador  ──HTTPS──>  proxy del borde (:443)  ──HTTP──>  server del wallet (127.0.0.1:3010)
                        cert automático                     WALLET_BIND_HOST=127.0.0.1
 ```
+
+El server del piloto escucha en el **3010**, no en el 3000: en esta VPS el 3000
+lo ocupa el server viejo de `iwa-wallet`, que no se toca.
+
+Hoy corre con `nohup` (log en `/opt/data/logs/wallet-server.log`) porque acá no
+hay systemd — el PID 1 es `s6-svscan`. Eso significa que **no sobrevive a un
+reinicio**: `deploy/wallet.service` existe para cuando haya un host donde
+instalarlo (§5).
 
 | Pieza | Archivo | Estado |
 |---|---|---|
@@ -124,12 +132,39 @@ que se tragaría el `text/event-stream`.
 Cómo reproducirlo (el nombre del sitio es un parámetro justamente para esto):
 
 ```
-WALLET_SITE_ADDRESS=http://localhost:8080 WALLET_PORT=3000 \
+WALLET_SITE_ADDRESS=http://localhost:8080 WALLET_PORT=3010 \
   caddy run --config deploy/Caddyfile
 ```
 
 Sin `WALLET_SITE_ADDRESS`, el sitio es `wallet.2.25.119.1.sslip.io` y Caddy
 pide el certificado solo.
+
+**La cadena completa, sobre TLS.** Con Caddy en el 8443 y el server en el 3010
+(cert de la CA interna de Caddy, ver `WALLET_LOCAL_CERTS` en §5), resolviendo
+el nombre a loopback para no salir a internet:
+
+```
+$ curl -k --resolve wallet.2.25.119.1.sslip.io:8443:127.0.0.1 \
+    https://wallet.2.25.119.1.sslip.io:8443/api/health
+{"status":"ok","auth_required":true,"authenticated":false}
+```
+
+| Petición por Caddy sobre HTTPS | Código |
+|---|---|
+| `GET /api/health` sin llave | **200** |
+| `GET /api/transactions` sin llave | **401** |
+| `GET /api/transactions` con la llave | **200** |
+
+**El CORS refleja la lista blanca, no la copia.** Con
+`WALLET_ALLOWED_ORIGINS=https://agentic-wallet-71314.web.app`:
+
+| `Origin` de la petición | `Access-Control-Allow-Origin` |
+|---|---|
+| `https://agentic-wallet-71314.web.app` | el mismo origen, y `Vary: Origin` |
+| `https://atacante.example` | **ausente** — el navegador corta la respuesta |
+
+El preflight `OPTIONS` responde `204` con `Allow-Methods: GET, POST, DELETE,
+OPTIONS` y `Allow-Headers: Content-Type, Authorization`.
 
 ---
 
@@ -158,6 +193,73 @@ Lo verificado, en orden:
 Consecuencia: **poner Caddy en el 443 significaría sacárselo a Traefik**, que
 es tumbar lo que sea que ese Traefik esté sirviendo hoy. Eso no es una decisión
 que se toma de paso en una Fase 0.
+
+### Por qué el puerto 8443 tampoco alcanza
+
+La salida obvia al 443 ocupado es mover el sitio a un puerto libre: Google
+acepta un `redirect_uri` con puerto no estándar, así que
+`https://wallet.2.25.119.1.sslip.io:8443` parecía dejar el piloto armado sin
+tocar a Traefik. **Se intentó y no funciona**, por dos razones independientes —
+cualquiera de las dos alcanza para bloquearlo.
+
+**1. Let's Encrypt no valida en el 8443.** ACME comprueba el dominio contra
+puertos fijos, no contra el puerto donde vive el sitio: `http-01` va al **80** y
+`tls-alpn-01` va al **443**. Con Caddy escuchando en el 8443, los dos desafíos
+salieron igual hacia el borde de Traefik y fallaron:
+
+```
+challenge_type: tls-alpn-01
+  detail: "2.25.119.1: remote error: tls: unrecognized name"
+
+challenge_type: http-01
+  detail: "2.25.119.1: Invalid response from
+           http://wallet.2.25.119.1.sslip.io/.well-known/acme-challenge/…: 404"
+```
+
+El `unrecognized name` y el `404` son la firma de Traefik contestando por un
+`Host` que no tiene en su tabla — exactamente lo mismo que se ve con `curl`
+desde afuera. O sea: **el puerto del sitio no cambia dónde valida ACME**. No hay
+configuración de Caddy que evite esto; la única salida sin el 80/443 sería el
+desafío `dns-01`, y sslip.io no da control del DNS para poner el registro `TXT`.
+
+**2. El 8443 no está publicado.** Aun con un certificado, no habría a dónde
+llegar: un servidor de prueba escuchando en `0.0.0.0:8443` acá dentro responde
+por loopback pero rechaza la conexión desde la IP pública.
+
+```
+$ curl https://wallet.2.25.119.1.sslip.io:8443/api/health
+Failed to connect to wallet.2.25.119.1.sslip.io port 8443: Could not connect
+```
+
+Es el mismo hallazgo del punto 3 de arriba: los puertos de este entorno no son
+los puertos del host. Publicar el 8443 requiere el mismo acceso al host que
+haría falta para configurar Traefik — con la diferencia de que por Traefik el
+certificado sale gratis y por el 8443 seguiría sin salir.
+
+De paso quedó probado que **la VPS sí es alcanzable desde internet**: Let's
+Encrypt llegó a su 80 y a su 443 desde afuera. Lo que no es alcanzable es este
+entorno.
+
+> Para poder probar la cadena sobre TLS igual, el Caddyfile acepta
+> `WALLET_LOCAL_CERTS=local_certs`, que firma con la CA interna de Caddy. Sirve
+> para verificar el proxy de punta a punta (§4) y **no** sirve para un navegador
+> ni para el panel en Firebase: ese certificado no lo confía nadie. El default
+> del archivo sigue siendo ACME real.
+
+Así quedó levantado en esta VPS, que es lo más cerca del piloto que se puede
+llegar sin acceso al host:
+
+```
+WALLET_SITE_ADDRESS=https://wallet.2.25.119.1.sslip.io:8443 \
+WALLET_PORT=3010 \
+WALLET_LOCAL_CERTS=local_certs \
+WALLET_AUTO_HTTPS="auto_https disable_redirects" \
+  caddy run --config deploy/Caddyfile
+```
+
+Las dos últimas variables son las que **no** hacen falta en la máquina destino:
+ahí el certificado lo emite Let's Encrypt y el redirect del 80 se quiere. Los
+defaults del archivo son los de esa máquina, no los de esta.
 
 ### Cómo se desbloquea (30 minutos, con acceso al host)
 
