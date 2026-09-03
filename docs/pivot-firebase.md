@@ -11,9 +11,11 @@
 > **El server local y su SQLite quedan como LEGADO**: la fuente de la que se
 > migra, no el lugar al que se llega.
 >
-> **Estado:** §A y §B son diseño. §C es código, en la rama `pivot-firebase`,
-> con 78 tests propios en verde (61 puros + 17 que exigen el emulador de Firestore)
-> y los 1683 existentes intactos.
+> **Estado:** §A y §B son diseño. §C es código. La fase 0 (§C.1-C.6) está en
+> `main`; la **fase 1 —el consentimiento de Gmail con los tokens cifrados—**
+> está en la rama `pivot-fase1-oauth` y se documenta en **§C.7**. En total,
+> 193 tests propios de `functions/` en verde y los 1683 existentes intactos.
+> **Nada desplegado todavía.**
 >
 > **Sobre los datos:** del ledger real de tenant 1 sólo entran **conteos**.
 > Ningún nombre, ningún monto, ninguna fila (CLAUDE.md, regla 2).
@@ -414,6 +416,11 @@ Paso 4  la función valida el state (firma + expiración + un solo uso),
 Paso 5  redirige al panel: /onboarding/listo
 ```
 
+> **Lo implementado difiere en dos detalles, a propósito.** El `state` terminó
+> siendo un documento en Firestore y no un JWT firmado (el JWT no puede ser de
+> un solo uso sin llevar igual un registro; ver §C.7.2), y la función se llama
+> `gmailAuthCallback`, no `oauthCallback`. El resto del flujo es tal cual.
+
 **El `state` es un JWT firmado por nosotros y no el uid pelado.** Si fuera el uid
 pelado, cualquiera podría llamar al callback con el uid de otro y un `code`
 propio, y quedarse leyendo el buzón de esa persona desde la cuenta de la
@@ -439,10 +446,75 @@ vieja y reescribir con la nueva, tenant por tenant, sin que nadie se entere.
 
 **Workspace propio para el piloto.** Los usuarios del piloto son cuentas
 internas del Workspace de Mato. Dos consecuencias concretas: (1) los refresh
-tokens **no expiran a los 7 días** como en una app en modo *testing* con cuentas
-externas — que es la razón por la que se eligió esto; (2) la app puede quedar en
-modo *internal*, sin pasar la verificación de Google para el scope
-`gmail.readonly`, que es un trámite de semanas.
+tokens **no deberían expirar a los 7 días** como en una app en modo *testing*
+con cuentas externas — que es la razón por la que se eligió esto; (2) la app
+puede quedar en modo *internal*, sin pasar la verificación de Google para el
+scope `gmail.readonly`, que es un trámite de semanas.
+
+#### D1 — la expiración de los refresh tokens · **verificada el 2026-09-03**
+
+Era la decisión marcada `[VERIFICAR]`. Se fue a leer la documentación oficial en
+vez de asumir. Lo que dice, y lo que **no** dice:
+
+**(a) Los 7 días en modo *Testing* son reales, y nos aplicarían.** La página de
+OAuth 2.0 de Google (actualizada 2026-05-26) dice, literal:
+
+> "A Google Cloud Platform project with an OAuth consent screen configured for an
+> external user type and a publishing status of 'Testing' is issued a refresh
+> token expiring in 7 days, unless the only OAuth scopes requested are a subset
+> of name, email address, and user profile."
+
+La excepción es para apps que sólo piden identidad. Nosotros pedimos
+`gmail.readonly`, así que **no nos cubre**: una app *External + Testing* con
+nuestro scope tiene refresh tokens de 7 días, y el piloto se rompería cada
+semana. Fuente: <https://developers.google.com/identity/protocols/oauth2>,
+sección "Refresh token expiration".
+
+**(b) Que *Internal* esté exento es una inferencia nuestra, no una frase de
+Google.** La condición citada es compuesta: *external user type* **y**
+*publishing status Testing*. Un proyecto con `User Type: Internal` no cumple la
+primera, así que por la letra de la regla no le aplica. **Pero no existe en la
+documentación una frase que afirme la exención**, y las páginas de audiencia de
+la Google Auth Platform (la consola se renombró en 2025; *Internal/External* y
+*Testing/In production* siguen existiendo con esos nombres) ni siquiera
+mencionan el *publishing status* al describir *Internal*.
+
+Esto es exactamente el tipo de cosa que no conviene dar por buena: **la primera
+prueba del piloto es empírica y está agendada por el propio diseño** — conectar
+el Gmail de Mato y verificar a los 8 días que la ingesta sigue corriendo sin
+volver a consentir. `config/gmail.invalidSince` existe justamente para que esa
+verificación sea mirar un campo y no una sospecha
+(`functions/src/oauth/gmail-tokens.ts`).
+
+**(c) Salir de *Testing* con este scope cuesta caro.** `gmail.readonly` está
+listado como **restricted scope** (no sólo *sensitive*) en
+<https://developers.google.com/gmail/api/auth/scopes> (2026-07-22). Publicar en
+*External + In production* con un scope restringido exige verificación de Google
+**más un security assessment CASA** por un assessor autorizado, con
+**reverificación anual**:
+
+> "Every app that requests access to Google users' restricted data and has the
+> ability to access data from or through a third-party server must go through a
+> security assessment from Google-empanelled security assessors."
+
+Fuente:
+<https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification>
+(2026-08-19).
+
+**Recomendación para el piloto — y el precio que tiene.** Configurar el consent
+screen como **`User Type: Internal`** dentro del Workspace de Mato y correr el
+piloto sólo con cuentas de esa organización. Es lo único que evita a la vez los
+7 días y el trámite de CASA. **La contrapartida hay que decirla ahora y no
+cuando duela: una app *Internal* NO puede autorizar cuentas de fuera de la
+organización.** O sea que este camino sirve para el piloto y para nadie más: el
+primer usuario con un Gmail personal obliga a pasar a *External*, y ahí el
+camino es verificación + CASA, que son semanas y plata, no un checkbox. **Es una
+decisión de negocio con fecha de vencimiento, no una configuración.**
+
+Mientras tanto, el código no apuesta a que los tokens no expiren: si Google
+devuelve `invalid_grant` —por los 7 días, por una revocación o por un cambio de
+contraseña— la conexión se marca inválida y el panel pide reconectar, en vez de
+mostrar una ingesta vacía.
 
 ---
 
@@ -1030,8 +1102,7 @@ Ordenado por lo que bloquea a lo que sigue:
    exista, cambiar el huso después del primer sync deja el ledger inconsistente.
    **Es el más urgente porque ya es un bug latente del esquema, no una función
    que falta.**
-2. **El flujo OAuth de Gmail y el cifrado** (§1.6). Sin esto no hay usuario nuevo
-   posible: el piloto sólo puede correr sobre el tenant 1 migrado.
+2. ~~**El flujo OAuth de Gmail y el cifrado** (§1.6).~~ **Hecho** — ver §C.7.
 3. **La función de ingesta + Scheduler + Pub/Sub + el lock en Firestore** (§1.5,
    §B.5-A3).
 4. **La paginación por cursor** y el resto de las rutas del API (§B.3-R1).
@@ -1048,3 +1119,202 @@ Ordenado por lo que bloquea a lo que sigue:
 
 **Nada de esto está desplegado.** No se ejecutó ningún `firebase deploy`: el
 deploy de funciones es una fase posterior y la decisión es de Mato.
+
+---
+
+## C.7 Fase 1 — el consentimiento de Gmail, implementado
+
+Rama `pivot-fase1-oauth`. Es el punto 2 de §C.6: sin esto el piloto sólo podía
+correr sobre el tenant 1 ya migrado, porque no había forma de que una persona
+autorizara su propio buzón.
+
+### C.7.1 Las tres rutas
+
+```
+POST /gmailAuthStart      ID token  →  { authUrl, state, scopes }
+GET  /gmailAuthCallback   ?code&state  →  302 al panel con ?gmail=<resultado>
+GET  /gmailAuthStatus     ID token  →  { conectado, email, scopes, grantedAt,
+                                         necesitaReconectar }
+```
+
+**La asimetría de autenticación entre `start` y `callback` es el punto que hay
+que entender antes que ningún otro.** `start` exige ID token: es el panel
+hablando y ahí sabemos quién es. `callback` **no puede exigirlo** — lo invoca el
+navegador siguiendo un `302` de `accounts.google.com`, sin un solo header
+nuestro. Por eso el `state` es la única prueba de identidad que tiene el
+callback, y por eso tiene que ser imposible de adivinar, de un solo uso y con
+vencimiento. Si el callback aceptara un uid por query, cualquiera podría pegar
+el refresh token de su propia cuenta en el tenant de otra persona — o al revés,
+que es peor.
+
+`gmailAuthStatus` devuelve **un estado, jamás el token, ni siquiera cifrado**.
+Que el blob esté cifrado no lo hace publicable: es el material sobre el que
+trabajaría cualquier intento offline si mañana la clave se filtrara.
+
+### C.7.2 El `state`: Firestore en vez del JWT firmado que decía §1.6
+
+§1.6 proponía un JWT firmado por nosotros. **Se implementó un documento en
+Firestore** (`oauth_states/{state}`, colección raíz, negada entera en
+`firestore.rules`). El motivo:
+
+Un JWT firmado da dos de las tres propiedades que hacen falta —lo emitimos
+nosotros, es reciente— pero **no la tercera: un solo uso**. Un JWT vale tantas
+veces como lo presenten hasta que expire, y un `state` reusable convierte
+cualquier filtración de la URL de callback (historial, `Referer`, un log de
+proxy) en un replay. Para que un JWT sea de un solo uso hay que llevar la lista
+de los ya usados, o sea: un documento por state. Si de todas formas hay que
+escribir en Firestore, **el documento *es* el state** y la firma sobra.
+
+Y hay una razón que el JWT no resuelve de ninguna forma: el `code_verifier` de
+PKCE tiene que sobrevivir el viaje y **no puede pasar por el navegador**. Si
+pasa, PKCE deja de proteger de lo único de lo que protege. En el documento va
+cifrado con el mismo AES-256-GCM que el refresh token, con el id del state como
+AAD.
+
+El consumo es **transaccional**: dos callbacks con el mismo state que lleguen a
+la vez —un doble clic, un reintento del navegador— entran los dos y sólo uno
+sale con el verifier. Hay un test que lo dispara tres veces en paralelo contra
+el emulador y verifica que gane exactamente uno.
+
+Vencimiento: **10 minutos**. `expiresAt` es un `Timestamp` para que la política
+TTL nativa de Firestore lo pueda borrar gratis; `limpiarStatesVencidos()` existe
+para los tests y para mientras esa política no esté configurada.
+
+### C.7.3 El cifrado
+
+| | |
+|---|---|
+| algoritmo | **AES-256-GCM**, IV aleatorio de 12 bytes **por escritura**, tag de 16 |
+| clave | 32 bytes en **Secret Manager**, secreto `WALLET_TOKEN_KEK` (base64) |
+| AAD | el **uid** para el refresh token; el **id del state** para el verifier |
+| formato | base64 en Firestore: `{ alg, keyVersion, iv, ciphertext, tag }` |
+| dónde | `users/{uid}/config/gmail` — negado al cliente, incluso a su dueño |
+
+**GCM y no CBC** porque GCM autentica: un byte cambiado en Firestore hace que el
+descifrado *falle*, en vez de devolver basura que recién explota en la llamada a
+Google como un "token inválido" que no señala a nadie.
+
+**El AAD es el uid**, y eso es lo que cierra el ataque 2 de §B.2: quien pueda
+escribir un documento de Firestore no puede copiar el blob de otra persona a su
+propio tenant, porque descifrar con otro uid falla. Hay un test que hace
+exactamente esa copia y verifica que falle.
+
+**`keyVersion` viaja desde el día uno.** Sin él, rotar la clave obliga a que
+todo el mundo vuelva a consentir. Con él, la rotación es descifrar con la vieja
+y reescribir con la nueva, tenant por tenant, sin que nadie se entere:
+`WALLET_TOKEN_KEK_PREVIOUS=1:<base64>` deja las dos vivas mientras dura.
+
+**Todos los fallos de descifrado dicen lo mismo.** Distinguir "el tag no cierra"
+de "esa versión de clave ya no existe" es un oráculo para quien esté probando
+documentos manipulados. Hay un test que junta los cuatro caminos de error y
+exige que el conjunto de mensajes tenga tamaño 1.
+
+**Mínimo privilegio en el runtime**: `gmailAuthStatus` se despliega **sin**
+`secrets: [...]`. No descifra nada, así que no necesita la clave maestra, y no
+tenerla en su proceso es una garantía más fuerte que cualquier revisión de
+código.
+
+### C.7.4 Lo que protege el flujo, además del cifrado
+
+- **PKCE S256 aunque el cliente sea confidencial.** El `client_secret` ya impide
+  que un tercero canjee el code, pero no tapa la **inyección de código de
+  autorización**: que alguien haga llegar al callback un `code` ajeno con la
+  sesión de la víctima. Con PKCE, el canje exige el verifier que sólo existe de
+  nuestro lado y atado a *ese* state. Nunca `plain`.
+- **`access_type=offline` + `prompt=consent`.** Sin `prompt=consent`, Google
+  manda refresh token sólo la primera vez que esa cuenta autoriza el cliente;
+  la segunda vez devuelve 200 con sólo un access token y "reconectá tu Gmail"
+  quedaría roto de una forma difícil de ver.
+- **El `returnTo` se valida al guardarlo, no al usarlo.** Sólo rutas relativas
+  de una barra del origen del panel; se rechazan la absoluta, la
+  protocol-relative (`//ajeno`) y la del backslash (`/\ajeno`, que algunos
+  navegadores normalizan a la anterior). Sin esto, la función es un redirector
+  abierto con nuestro dominio de fachada — y con el `code` en la URL.
+- **Nunca se guarda una conexión a medias.** Si Google no manda refresh token, o
+  si el usuario destildó `gmail.readonly` en la pantalla de consentimiento, el
+  callback vuelve al panel con el motivo y **no escribe el documento**. Un
+  "conectado" que falla recién en la primera ingesta es peor que un error.
+- **El correo se le pregunta al token, no se asume el de Firebase Auth.** El
+  selector de cuentas de Google permite loguearse al wallet con una cuenta y
+  autorizar el Gmail de otra; `login_hint` es una sugerencia, no una
+  restricción. Guardar el correo equivocado haría que el panel diga "conectado:
+  X" mientras la ingesta lee otro buzón.
+- **`Cache-Control: no-store`** en callback y status: la URL del callback lleva
+  el `code`.
+- **El callback siempre termina en un 302 al panel**, incluso al fallar. Un JSON
+  de error en `cloudfunctions.net` deja al usuario en una página en blanco fuera
+  de la app; el panel lee `?gmail=<resultado>` y lo dice en su idioma. Los
+  resultados: `ok`, `cancelado`, `state_invalido`, `sin_refresh_token`,
+  `scope_insuficiente`, `google_rechazo`, `error`.
+- **Nada se loguea.** Ni el body del canje, ni la respuesta de Google, ni el
+  code. Un `console.log` de la respuesta deja el refresh token en Cloud Logging,
+  que lo lee cualquiera con `Viewer` en el proyecto y sobrevive a que borremos
+  el documento de Firestore.
+
+### C.7.5 Configuración — lo que le falta a esto para andar
+
+Variables de entorno de las funciones (las dos primeras, secretos de Secret
+Manager; **ninguna va al repo**):
+
+```
+WALLET_TOKEN_KEK             secreto  32 bytes aleatorios en base64
+WALLET_GMAIL_CLIENT_SECRET   secreto  el client_secret del cliente OAuth
+WALLET_GMAIL_CLIENT_ID       env      el client_id (no es secreto, viaja en la URL)
+WALLET_OAUTH_REDIRECT_URI    env      https://us-central1-agentic-wallet-71314
+                                      .cloudfunctions.net/gmailAuthCallback
+WALLET_PANEL_ORIGIN          env      https://agentic-wallet-71314.web.app
+WALLET_TOKEN_KEK_PREVIOUS    env      sólo durante una rotación: "1:<base64>"
+```
+
+```bash
+# la clave maestra, generada donde no quede en un historial
+node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))' \
+  | firebase functions:secrets:set WALLET_TOKEN_KEK --data-file -
+firebase functions:secrets:set WALLET_GMAIL_CLIENT_SECRET
+```
+
+**El `redirect_uri` se compara como string, byte por byte.** Una barra final de
+más y Google contesta `redirect_uri_mismatch`. Tiene que estar idéntica en
+"Authorized redirect URIs" del cliente OAuth.
+
+**Sobre las credenciales OAuth — acción de Mato, con un dato a favor.** En el
+`.env` local (gitignored) ya hay un `GMAIL_OAUTH_CLIENT_ID` /
+`GMAIL_OAUTH_CLIENT_SECRET` que Mato usó para el server viejo. Sirven como punto
+de partida, pero **no se pueden reutilizar tal cual** por dos razones que hay que
+resolver antes del deploy:
+
+1. **Tipo de cliente.** El server viejo obtenía su refresh token por un flujo de
+   escritorio. Un cliente de tipo *Desktop* no acepta un `redirect_uri` `https://`
+   —sólo `http://localhost`— así que el callback como Cloud Function necesita un
+   cliente de tipo **Web application**. Si el existente ya es Web, alcanza con
+   **agregarle** la URL del callback a "Authorized redirect URIs".
+2. **Mismo proyecto o no.** El número de proyecto que lleva ese `client_id` no
+   se pudo comparar con el de `agentic-wallet-71314`: el panel todavía no tiene
+   config de Firebase (no hay `messagingSenderId` en el repo con qué
+   contrastar). Si no son el mismo, el cliente OAuth puede vivir igual en otro
+   —el `client_id` no tiene por qué ser del proyecto de Firebase— pero el
+   consent screen que hay que poner en `User Type: Internal` (§1.6, D1) es el de
+   **ese** proyecto, y su Workspace tiene que ser el de Mato.
+
+Lo que Mato tiene que hacer, en orden: (a) confirmar en la Google Auth Platform
+si ese cliente es Web y de qué proyecto es; (b) agregarle la URL del callback;
+(c) poner el consent screen en `Internal`; (d) cargar los dos secretos. Nada de
+eso lo puede hacer un agente y ninguna de las dos credenciales aparece en el
+repo.
+
+### C.7.6 Tests
+
+| Archivo | Tests | Qué prueba lo que no es obvio |
+|---|---|---|
+| `oauth/crypto.test.ts` | 17 | que el blob no contenga el texto en claro ni un fragmento; que 50 escrituras den 50 IV y 50 ciphertext distintos; que el blob de un tenant no descifre con otro uid; que un ciphertext o un tag tocado *falle*; que los cuatro caminos de error digan lo mismo; la rotación de clave en las dos direcciones |
+| `oauth/pkce.test.ts` | 11 | el largo y el alfabeto del RFC 7636; que el challenge sea el SHA-256 exacto; que la URL pida `offline`+`consent` y **sólo** `gmail.readonly` (con una lista negra explícita de `modify`/`send`/`mail.google.com`); que nunca aparezca `plain` |
+| `oauth/config.test.ts` | 22 | seis intentos de redirector abierto, incluida la del backslash; que falte cualquier variable haga fallar el arranque; que el query quede **antes** del `#` para que Vue Router lo vea |
+| `oauth/google.test.ts` | 14 | el body exacto del grant; que `refresh_token` ausente sea `null` y no `""`; que el código de error de Google se conserve pero el secreto y el code no aparezcan en el mensaje |
+| `oauth/state-store.test.ts` | 12 | **contra el emulador**: un solo uso, tres canjes en paralelo con un solo ganador, el vencimiento a los 10 min y el "justo antes todavía sirve", el verifier cifrado en la base, el blob de otro state que no descifra |
+| `oauth/gmail-tokens.test.ts` | 10 | **contra el emulador**: que el documento no contenga el token en claro; el ataque de copiar el `config/gmail` de un tenant a otro; que el estado del panel no traiga `ciphertext` ni `AES` y tenga exactamente cinco campos |
+| `api/gmail-oauth.test.ts` | 29 | **el flujo entero**: que el uid del state salga del token y no de la petición; que el verifier nunca vuelva al navegador; que el `code_verifier` enviado a Google hashee al challenge que viajó en la URL (si no, el mock estaría tapando un canje que en la realidad Google rechazaría); que un state inventado ni siquiera llame a Google; los cinco caminos que **no** guardan; que el 302 nunca salga del panel |
+
+**193 tests en `functions/`** (78 previos + 115 nuevos), y los **1683** de la
+raíz intactos. `npm run test:emulator` en `functions/` con Java 11+ en el PATH.
+
+**Sigue sin desplegarse nada.** Ningún `firebase deploy` en esta fase tampoco.

@@ -108,6 +108,19 @@ service cloud.firestore {
       }
     }
 
+    // El `state` del OAuth de Gmail. Es una colección RAÍZ y no cuelga de
+    // `users/{uid}` porque el callback la busca ANTES de saber de qué uid es —
+    // el uid es justamente lo que el documento guarda. Ver
+    // `functions/src/oauth/state-store.ts`.
+    //
+    // Negada por completo, incluso a su dueño: el documento contiene el
+    // `code_verifier` de PKCE, y un verifier que el navegador puede leer deja
+    // de proteger de la inyección de código de autorización, que es para lo
+    // único que PKCE está ahí. La escribe y la consume la Cloud Function.
+    match /oauth_states/{state} {
+      allow read, write: if false;
+    }
+
     match /{documento=**} {
       allow read, write: if false;
     }
