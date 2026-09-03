@@ -5,6 +5,7 @@ import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { classifyRequestAuth, createAuthMiddleware, normalizeAccessToken } from "./api/auth.js";
 import { createCorsMiddleware, parseAllowedOrigins } from "./api/cors.js";
+import { createRateLimitMiddleware } from "./api/rate-limit.js";
 import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
 import { createOnboardingRouter } from "./api/onboarding-route.js";
@@ -68,6 +69,19 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
   // Antes de cualquier ruta para que el preflight OPTIONS tambien lo vea.
   // Sin `WALLET_ALLOWED_ORIGINS` la lista queda vacia y esto es un no-op.
   app.use(createCorsMiddleware(parseAllowedOrigins(loadConfig().WALLET_ALLOWED_ORIGINS)));
+
+  // Antes del auth y antes de /api/health: un tope que empieza *despues* de
+  // la llave no frena a quien la esta adivinando, y `health` es justamente el
+  // endpoint sin llave, o sea el mas barato de martillar. Sin
+  // WALLET_RATE_LIMIT_RPS es un no-op.
+  const rateLimitConfig = loadConfig();
+  app.use(
+    createRateLimitMiddleware({
+      rps: rateLimitConfig.WALLET_RATE_LIMIT_RPS,
+      burst: rateLimitConfig.WALLET_RATE_LIMIT_BURST,
+      trustProxy: rateLimitConfig.WALLET_TRUST_PROXY,
+    })
+  );
 
   let lazyDb = db;
   const getDb = (): Database.Database => {
@@ -222,11 +236,29 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = createApp();
   app.listen(config.PORT, config.WALLET_BIND_HOST, () => {
     console.log(`Agentic Wallet escuchando en http://${config.WALLET_BIND_HOST}:${config.PORT}`);
-    if (config.WALLET_BIND_HOST === "0.0.0.0" && normalizeAccessToken(config.WALLET_ACCESS_TOKEN) === null) {
+    // Un bind que no es loopback es una decision explicita; lo que no puede
+    // pasar en silencio es que le falte alguna de las protecciones que esa
+    // decision vuelve obligatorias (TASK-054, D14). Se avisa por separado
+    // porque faltan por motivos distintos y se arreglan en lugares distintos.
+    const expuesto = !["127.0.0.1", "localhost", "::1"].includes(config.WALLET_BIND_HOST);
+    if (expuesto) {
+      if (normalizeAccessToken(config.WALLET_ACCESS_TOKEN) === null) {
+        console.warn(
+          `AVISO: WALLET_BIND_HOST=${config.WALLET_BIND_HOST} expone la API fuera de esta ` +
+            "maquina y no hay WALLET_ACCESS_TOKEN, asi que la API no pide llave. " +
+            "Genera una (openssl rand -hex 32) antes de exponer el puerto."
+        );
+      }
+      if (config.WALLET_RATE_LIMIT_RPS <= 0) {
+        console.warn(
+          "AVISO: la API esta expuesta y WALLET_RATE_LIMIT_RPS=0, asi que los " +
+            "intentos de adivinar la llave no tienen tope. Ver docs/piloto-web.md."
+        );
+      }
       console.warn(
-        "AVISO: WALLET_BIND_HOST=0.0.0.0 expone la API en todas las interfaces " +
-          "y no hay WALLET_ACCESS_TOKEN, asi que la API no pide llave. En una " +
-          "maquina con IP publica usa 127.0.0.1 + `tailscale serve`."
+        "AVISO: este proceso habla HTTP plano. Exponerlo directo publica el " +
+          "historial bancario en claro; detras tiene que haber un proxy con TLS " +
+          "(ver el Caddyfile de deploy/ y docs/piloto-web.md)."
       );
     }
   });

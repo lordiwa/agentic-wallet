@@ -63,6 +63,30 @@ const envSchema = z.object({
    * en `.env`, nunca en el repo.
    */
   WALLET_ACCESS_TOKEN: z.string().optional(),
+  /**
+   * Tope de peticiones por segundo y por IP (ver api/rate-limit.ts). `0` —el
+   * default— lo apaga, igual que las dos variables de arriba: en local el
+   * unico cliente sos vos y un tope nacido activo solo puede romper un uso
+   * que ya andaba.
+   *
+   * Se enciende con la misma decision que abre el puerto. Protege a la llave,
+   * no la reemplaza: sin tope, los intentos de adivinarla son gratis.
+   */
+  WALLET_RATE_LIMIT_RPS: z.coerce.number().default(0),
+  /** Pico tolerado antes de que mande el promedio. Vacio = el doble de
+   * `WALLET_RATE_LIMIT_RPS`, que es lo que deja arrancar al panel (pide
+   * varios endpoints de una) sin ampliar el sostenido. */
+  WALLET_RATE_LIMIT_BURST: z.coerce.number().optional(),
+  /**
+   * Leer la IP del cliente de `X-Forwarded-For`. Va en `false` a proposito:
+   * activarlo sin un proxy propio delante deja que cualquiera elija su propia
+   * IP —y con ella un cubo nuevo por peticion—, que es peor que no limitar.
+   * Se pone en `true` solo cuando Caddy/nginx es el unico camino al puerto.
+   */
+  WALLET_TRUST_PROXY: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
    * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
    * nombre viejo no se leeria nunca. */
