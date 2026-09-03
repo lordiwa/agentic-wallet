@@ -1,0 +1,72 @@
+# Caddy delante del server del piloto (Fase 0 del pivot a SaaS).
+#
+# Que hace y por que existe: el server de `server/src/index.ts` habla HTTP
+# plano y escucha en loopback. Exponerlo directo publica el historial bancario
+# en claro, y ademas el `redirect_uri` de OAuth de Google **no acepta** ni
+# `http://` ni una IP pelada — o sea que sin esto no hay onboarding web
+# (docs/pivot-saas.md §3.2 paso 3, P25).
+#
+# El dominio: `wallet.<IP>.sslip.io`. sslip.io resuelve cualquier nombre de la
+# forma `<lo-que-sea>.1.2.3.4.sslip.io` a `1.2.3.4`, asi que da un hostname
+# publico real —y por lo tanto un certificado de Let's Encrypt real— sin
+# comprar un dominio. Es la opcion 1 de la decision D5, elegida para dejar el
+# piloto armado; migrar a un dominio propio despues es cambiar esta linea y el
+# `redirect_uri` en la consola de Google, nada mas.
+#
+# Se parametriza el nombre del sitio a proposito: con
+# `WALLET_SITE_ADDRESS=http://localhost:8080` este mismo archivo se levanta en
+# local sin ACME, lo que permite probar el proxy (SSE incluido) sin depender de
+# que Let's Encrypt llegue al puerto 443. Es como se verifico en la Fase 0.
+{$WALLET_SITE_ADDRESS:wallet.2.25.119.1.sslip.io} {
+	# Comprimir es gratis para el panel y para el JSON de la API, pero
+	# `text/event-stream` NO entra: comprimir un stream lo hace buferear, y el
+	# chat del panel se lee token a token con `res.body.getReader()`
+	# (panel/src/api/endpoints.ts). Por eso la lista es explicita en vez de un
+	# `text/*`, que se tragaria el SSE.
+	encode {
+		zstd
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/plain*
+			header Content-Type text/css*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	reverse_proxy 127.0.0.1:{$WALLET_PORT:3000} {
+		# `-1` = escribir al cliente apenas llega cada byte, sin buferear.
+		# Sin esto `POST /api/chat` (text/event-stream, api/chat-route.ts)
+		# llega entero al final y el chat parece colgado. Es el requisito que
+		# docs/pivot-saas.md §3.1 marca como obligatorio para el router.
+		flush_interval -1
+
+		# El server no tiene timeout propio para el sync ni para el chat: un
+		# sync de un buzon grande tarda minutos. El default de Caddy no corta,
+		# pero se deja escrito para que nadie lo "arregle" a 30s.
+		transport http {
+			response_header_timeout 5m
+		}
+	}
+
+	header {
+		# Un año. Solo tiene sentido con el certificado ya emitido; si se
+		# activa antes, un fallo de TLS deja el sitio inaccesible en los
+		# navegadores que ya lo vieron.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		# El server ya no es el unico que sabe que hay un proxy; que no se
+		# filtre que version corre.
+		-Server
+	}
+
+	# A stderr, que es donde systemd lo recoge. Nunca a un archivo con ruta
+	# fija: un directorio que no existe deja a Caddy sin arrancar.
+	log {
+		format json
+	}
+}

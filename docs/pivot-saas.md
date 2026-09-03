@@ -1,12 +1,16 @@
 # Pivot a SaaS multi-usuario — diseño, wargaming y plan
 
-> **Estado: DISEÑO. No se cambió una línea de código.** Este documento existe
-> para que el pivot se discuta y se rompa *antes* de tocar el motor. Todo lo
-> que se afirma del código está anclado a `archivo:línea` del commit
-> `3795ab1`; lo que no pude verificar está marcado como **[VERIFICAR]**.
+> **Estado: Fase 0 ejecutada. Fases 1-8, diseño.** El diseño de §1-§7 sigue
+> siendo el aprobado; lo que cambió es que la Fase 0 dejó de ser plan y pasó a
+> ser código, con su resultado anotado en [§9](#9-fase-0--lo-que-se-hizo).
+> Todo lo que se afirma del código está anclado a `archivo:línea`; lo que no se
+> pudo verificar está marcado como **[VERIFICAR]**.
 >
-> **Punto de partida verificado:** `3795ab1`, 122 archivos / **1667 tests en
+> **Punto de partida del diseño:** `3795ab1`, 122 archivos / **1667 tests en
 > verde** (`npx vitest run` con el entorno limpio, 55 s).
+>
+> **Después de la Fase 0:** 123 archivos / **1681 tests en verde**, y ahora
+> también con el `.env` real presente — que es justamente lo que se arregló.
 >
 > **Sobre los datos:** del ledger real (`bolsillo.sqlite`) sólo entran
 > **conteos**. Ningún nombre, ningún monto, ninguna fila (CLAUDE.md, regla 2).
@@ -128,7 +132,7 @@ Verificado, no recordado.
 | La guarda de sync vive en memoria del proceso | `api/sync-gate.ts:26-39` | No sirve entre el server web y el cron |
 | Sin `busy_timeout` | `db/open.ts:33` sólo pone `journal_mode = WAL` | Dos escritores concurrentes → `SQLITE_BUSY` inmediato en vez de esperar |
 | El refresh token de Gmail es una variable de entorno | `config.ts:113`, `build-sync-runner.ts:78-84` | Un token global para un servicio de N usuarios |
-| La suite depende del `.env` de la máquina | `config.ts:24-27` | Verificado: con el `.env` real presente, `npm test` da **107 fallos de 1667** (401 Unauthorized). Sin él, 1667 en verde |
+| ~~La suite depende del `.env` de la máquina~~ | `config.ts:24-27` | **Corregido en la Fase 0** (§9.1). Era: con el `.env` real presente, `npm test` daba **107 fallos de 1667** (401 Unauthorized) |
 
 ---
 
@@ -964,8 +968,8 @@ buferee (§3.1).
 | P21 | Rate limit por IP | Facturación | **ROMPE** |
 | P22 | Metering dentro del tenant | Facturación | **ROMPE** |
 | P23 | Syncs manuales sin cuota | Facturación | **ROMPE** |
-| P24 | La suite depende del `.env` local | Operación | LIMITACIÓN |
-| P25 | HTTP plano, sin TLS ni docs de despliegue | Operación | LIMITACIÓN |
+| P24 | La suite depende del `.env` local | Operación | ~~LIMITACIÓN~~ → **CORREGIDO** (§9.1) |
+| P25 | HTTP plano, sin TLS ni docs de despliegue | Operación | LIMITACIÓN → `deploy/` y `docs/piloto-web.md` existen; el TLS público sigue bloqueado (§9.4) |
 | P26 | CORS + SSE al dominio nuevo | Operación | **SÓLIDO** |
 
 **13 ROMPE, 9 limitaciones aceptables, 4 sólidos.** Los 13 se corrigen en el
@@ -980,7 +984,7 @@ este repo no son opcionales.
 
 | Fase | Qué se construye | Qué se reutiliza | Días |
 |---|---|---|---|
-| **0. Candados y despliegue** | `busy_timeout`; la suite deja de leer el `.env` de la raíz (P24); `deploy/` + TLS + dominio + `docs/piloto-web.md` (P25); test que prohíbe `openDb()` sin ruta (P3); reescribir la promesa de privacidad del sitio público | Todo el motor | **3-4** |
+| ~~**0. Candados y despliegue**~~ | **Hecha en parte — ver [§9](#9-fase-0--lo-que-se-hizo).** Quedan pendientes `busy_timeout` y el test que prohíbe `openDb()` sin ruta (P3), que se mueven a la Fase 1 porque es donde muerden | Todo el motor | ~~3-4~~ |
 | **1. Capa multi-tenant** | `TenantContext`; registro de tenants; validación de `tenant_id` (P4); supervisor de procesos + router con proxy SSE; layout de directorios | `createApp(db)`, `buildProductionSyncRunner(config, getDb)` — los seams ya existen | **5-7** |
 | **2. Auth Firebase en el server** | `firebase-admin`; middleware de verificación; `uid`→`tenant_id`; el panel usa `getIdToken()`; sale la llave de `localStorage` | `api/auth.ts`, `api/cors.ts`, la política de orígenes del panel | **2-3** |
 | **3. OAuth de Gmail web + cifrado** | `authorize-url` / `callback`; `state`+PKCE server-side (P9); sobre AES-256-GCM con AAD (P11); rotación por `kid`; desconectar+revocar | `scripts/gmail-auth.ts` (el flujo PKCE ya está escrito y probado) | **5-7** |
@@ -1008,7 +1012,7 @@ camino es verificación + CASA, el calendario lo fija Google, no nosotros.
 | El coste de Claude supera el precio de venta | Media | Medio | El metering es de la Fase 6, no de "más adelante" |
 | El motor se rompe al multi-tenantizarlo | **Baja** | Alto | Los 1667 tests corren en cada fase; un proceso por tenant no cambia el motor |
 | Sólo hay parser de Produbanco | **Certeza** | Medio | Es scoping, no riesgo: el piloto se ofrece a usuarios de Produbanco (§6) |
-| El sitio público promete lo contrario del pivot | **Certeza** | Medio | `docs/index.md` dice hoy *"No hay servidor en la nube. No hay cuenta que crear. Nadie más ve tus movimientos — ni siquiera nosotros, porque no hay un 'nosotros' del otro lado."* Con el SaaS **sí** hay un nosotros, y sí vemos el ledger. Reescribir esa página es parte de la Fase 0: publicar un servicio bajo una promesa de privacidad que ya no es cierta es el peor error posible en este producto |
+| ~~El sitio público promete lo contrario del pivot~~ | **Certeza** | Medio | **CERRADO en la Fase 0** (§9.2). Decía *"Nadie más ve tus movimientos — ni siquiera nosotros, porque no hay un 'nosotros' del otro lado."* Reescrito: ahora dice que podemos leer el ledger, qué protege cada medida y cuál no, y mantiene visible la opción de correrlo uno mismo. Publicar un servicio bajo una promesa de privacidad que ya no es cierta es el peor error posible en este producto |
 
 ---
 
@@ -1099,3 +1103,212 @@ Para que el próximo que lo lea sepa qué está medido y qué está razonado.
 - **No verificado, y marcado como tal:** la política vigente de Google sobre
   refresh tokens en estado *Testing* (P7) y las tarifas de la API de Anthropic
   (§3.6). Esta sesión no tuvo acceso a la red.
+
+---
+
+## 9. Fase 0 — lo que se hizo
+
+Lo que sigue está *ejecutado y verificado*, no planeado. Cada punto dice qué se
+hizo, cómo se comprobó, y lo que quedó afuera dice por qué.
+
+### 9.1 La suite dejó de depender del `.env` de la máquina (P24) ✅
+
+`config.ts` cargaba el `.env` de la raíz al importarse, en **cada proceso de
+test**. Ahora la carga pasa por `shouldLoadRootEnv(env)`, que devuelve `false`
+bajo `VITEST` o `NODE_ENV=test`, y `true` para el server real.
+
+| Medición | Antes | Después |
+|---|---|---|
+| `npx vitest run` con el `.env` real presente | **107 fallos** de 1667 (401) | **1681 en verde** |
+| Archivos de test | 122 | 123 |
+
+Los 14 tests nuevos incluyen un candado que no es un test de la función sino
+del síntoma: corriendo la suite, se lee el `.env` real si existe y se verifica
+que **ninguna de sus claves llegó a `process.env` con su valor**. Compara
+valores y no presencia —que una variable exista en el shell no es una fuga— y
+reporta sólo los *nombres*, nunca los valores.
+
+Por qué importaba más de lo que parecía: con el pivot ese archivo va a tener la
+KEK y el `client_secret` de OAuth. La suite pasaba a depender de secretos de
+producción para dar verde, y "verde en CI" no probaba que producción arranca.
+
+### 9.2 El sitio público ya no promete lo que el SaaS no puede cumplir ✅
+
+`docs/index.md` decía, literal: *"No hay servidor en la nube. No hay cuenta que
+crear. Nadie más ve tus movimientos — ni siquiera nosotros, porque no hay un
+'nosotros' del otro lado."* Con el servicio administrado **hay** un nosotros y
+sí puede leer el ledger.
+
+La página reescrita:
+
+- **Dice que podemos leer el historial**, en la sección de privacidad y otra vez
+  en la primera pregunta del FAQ. Sin eufemismos y sin "tu privacidad nos
+  importa".
+- **Distingue qué protege cada medida**: el token de Gmail va cifrado, el ledger
+  **no** está cifrado fila por fila, y el cifrado de disco es trabajo pendiente
+  (es P12, dicho en castellano de usuario).
+- **Presenta los dos caminos en una tabla comparativa**: el servicio y correrlo
+  vos. La versión local no se esconde — es la que mantiene disponible la
+  promesa vieja para quien la quiera, y es el argumento honesto frente a "no me
+  gusta que tengan mis datos".
+- **Dice que el piloto es cerrado y que la app no está verificada por Google**,
+  antes de que alguien se lo encuentre en la pantalla de consentimiento (P7).
+- Arrastra la misma corrección al `description` de `docs/_config.yml` (sale en
+  la tarjeta al compartir el enlace, o sea que también es una promesa pública)
+  y al encabezado del `README.md`.
+
+### 9.3 La migración del tenant 1 quedó probada, no ejecutada ✅
+
+Se escribió `server/scripts/tenant-snapshot.ts` (+ 11 tests) y se corrió contra
+el ledger real **en sólo lectura**. Hace los pasos 0, 1, 5 y 6 de §3.8: mide,
+consolida con `VACUUM INTO`, aplica el esquema y re-verifica.
+
+Resultado de la corrida real (`npm run tenant-snapshot`), sólo conteos:
+
+| | Valor |
+|---|---|
+| `transactions` | **1159** — idénticas antes y después |
+| Huella SHA-256 de `transactions` | idéntica origen/destino |
+| `needs_review` / descartadas | 4 / 1, sin cambios |
+| Tablas creadas por `migrate()` | `classify_silenced` (confirmado, §3.8 hecho 2) |
+| Filas que agregó `seedDatabase()` | ninguna (ya tenía sus 7 + 1) |
+| WAL de 614 KB | consolidado; el snapshot queda sin `-wal` |
+| `PRAGMA integrity_check` del snapshot | `ok` |
+| Veredicto | `"ok": true`, `"mismatches": []` |
+
+El snapshot quedó en `/opt/data/backups/wallet-tenant1-vacuum.sqlite` (0600,
+581 KB). **El original no se tocó**: verificado por `md5sum` del `.sqlite` y del
+`-wal` antes y después. La conexión de origen se abre `readonly`, así que
+SQLite rechaza cualquier escritura por construcción.
+
+Tres decisiones de diseño del script que vale la pena no perder:
+
+1. **La verificación no imprime datos personales.** El control de que no se
+   perdió ni cambió una fila es un SHA-256 sobre las filas ordenadas, no una
+   lista de montos y comercios. Dos huellas iguales prueban lo mismo que
+   comparar fila por fila (CLAUDE.md, regla 2).
+2. **La huella se calcula sobre las columnas del origen.** El ledger real es
+   anterior a `account_holder` y a `is_discarded`; comparar juegos de columnas
+   distintos leería un `ALTER TABLE` como "cambió el contenido".
+3. **Las rutas relativas se anclan a la raíz del repo, no al cwd** — la misma
+   regla que `db/open.ts`, y por el mismo motivo. Se descubrió en carne propia:
+   la primera corrida, con `--source bolsillo.sqlite`, abrió
+   `server/bolsillo.sqlite` (una base vacía homónima) y reportó *"0
+   transacciones, todo OK"*. Un éxito falso sobre la base equivocada es el peor
+   resultado posible en una herramienta de migración, así que además hay un
+   aviso a `stderr` cuando el ledger de origen no tiene ni una transacción.
+
+**Los datos no se migraron**: eso es la Fase 7 y necesita el flujo web de §3.2
+(paso 3: el tenant se crea por el onboarding real, no copiando un directorio a
+mano).
+
+### 9.4 TLS y despliegue: escrito y probado, **no** publicado ⚠️
+
+Es lo único de la Fase 0 que quedó a medias, y el motivo no es de configuración
+del wallet.
+
+**Lo que sí quedó, y está verificado:**
+
+| Artefacto | Estado |
+|---|---|
+| `deploy/Caddyfile` | `caddy validate` → *Valid configuration* |
+| `deploy/traefik-wallet.yml` | Escrito (dos `TODO` que dependen del host) |
+| `deploy/wallet.service` | Escrito |
+| `docs/piloto-web.md` | Escrito — cierra la mitad documental de P25 |
+
+El proxy se levantó de verdad contra el server de este repo:
+
+| Petición | Directo | Por el proxy |
+|---|---|---|
+| `GET /api/health` | 200 | **200** |
+| `GET /api/overview` sin llave | 401 | **401** |
+| `GET /api/overview` con la llave | 200 | **200** |
+| `GET /api/overview` con llave inventada | 401 | **401** |
+
+Y **el SSE no se buferea**, que es el requisito que §3.1 marca como obligatorio
+para el router: contra un emisor de un evento cada 700 ms, los eventos llegaron
+a +750, +1447, +2151 y +2856 ms — a medida que se producían, no todos juntos al
+final. `content-encoding: null` confirma que la compresión no agarró el
+`text/event-stream`; por eso la lista de tipos comprimibles del Caddyfile es
+explícita en vez de un `text/*`, que se lo tragaría.
+
+**Lo que no se pudo hacer, y por qué:**
+
+1. La IP `2.25.119.1` **es** la VPS (PTR `srv1932491.hstgr.cloud`).
+2. Pero su puerto 443 **ya lo tiene Traefik**: el certificado que presenta es
+   `CN=TRAEFIK DEFAULT CERT` y devuelve `404 page not found` para cualquier
+   `Host` que no conozca, incluido `wallet.2.25.119.1.sslip.io`.
+3. El entorno donde corrió la Fase 0 **no llega a ese puerto**: un servidor de
+   prueba en `0.0.0.0:80` acá dentro no recibe lo que va a `http://2.25.119.1/`.
+   Son espacios de red distintos.
+4. Y no hay con qué instalarlo: PID 1 es `s6-svscan`, no systemd; no hay
+   `systemctl`, no hay `sudo`, el usuario no es root.
+
+Poner Caddy en el 443 sería **sacárselo a Traefik**, o sea tumbar lo que ese
+Traefik sirva hoy. Eso no se decide de paso en una Fase 0.
+
+**Cómo se desbloquea** (≈30 min con acceso al host, procedimiento completo en
+`docs/piloto-web.md` §5): copiar `deploy/traefik-wallet.yml` al directorio
+dinámico de Traefik, completar el `certResolver` y la dirección real del server,
+instalar `deploy/wallet.service`, y verificar los dos `curl` (200 en `health`,
+401 en `overview` sin llave). El `deploy/Caddyfile` queda para una máquina con
+el 443 libre.
+
+**sslip.io funciona**: `getent hosts wallet.2.25.119.1.sslip.io` → `2.25.119.1`.
+La decisión D5 (opción 1) no es el bloqueo; el dueño del puerto sí.
+
+### 9.5 Lo de la Fase 0 que se movió a la Fase 1
+
+Dos ítems, con motivo:
+
+- **`PRAGMA busy_timeout` en `db/open.ts`.** Protege contra dos escritores
+  concurrentes (P13), y hoy no hay dos: el segundo escritor aparece con el cron
+  (Fase 4) o con el supervisor (Fase 1). Tocar la apertura de la base sin el
+  caso que lo justifica es cambiar el comportamiento de 1681 tests por una
+  hipótesis.
+- **El test que prohíbe `openDb()` sin ruta (P3).** Hoy `openDb()` sin
+  argumento es *el* camino correcto (`index.ts:87-93`): el test tendría que
+  romper el código actual para prohibir algo que todavía no existe. Se escribe
+  junto con el `TenantContext`, que es lo que le da una alternativa.
+
+Ninguno de los dos se cae del plan: quedan como los dos primeros tickets de la
+Fase 1.
+
+---
+
+## 10. Lo que sigue — Fase 1
+
+**Andamiaje multi-tenant + onboarding web.** Estimación original: 5-7 días, más
+los dos ítems heredados de §9.5.
+
+En orden de dependencia:
+
+1. **`busy_timeout` en `db/open.ts`** (heredado de la Fase 0). Un pragma y su
+   test.
+2. **`TenantContext`** — la única fuente de handles de base. Reemplaza al
+   `getDb` global de `index.ts:86-93` sin cambiar la firma de nada del motor:
+   `createApp(db)` y `buildProductionSyncRunner(config, getDb)` ya reciben lo
+   que necesitan por parámetro (§2.1).
+3. **El test que prohíbe `openDb()` sin ruta** (heredado). Se escribe *después*
+   del `TenantContext` porque recién ahí hay una alternativa correcta. Es el
+   mismo patrón estructural que `panel/src/styles/tokens.test.ts` usa para los
+   colores: grepea el árbol y falla.
+4. **Registro de tenants y layout de directorios** (§3.1): `tenant_id` ULID,
+   validación `^[0-9a-hjkmnp-tv-z]{26}$` **antes** de tocar el filesystem, más
+   `path.resolve` + comprobación de prefijo (P4). `0700` en el directorio,
+   `0600` en los secretos.
+5. **`POST /api/tenant/init`**, idempotente (§3.2 paso 2).
+6. **Supervisor + router**: un proceso por tenant (D2 de Mato), puerto de
+   loopback asignado, parada por inactividad a los 30 min. El router **tiene que
+   pasar SSE sin buffer** — la configuración de proxy que se validó en la Fase 0
+   sirve de referencia y de test manual.
+
+**El test que se escribe antes que el código** (P1): petición con ID token
+válido del usuario A más `?tenant=<B>` devuelve los datos de A o un 400, jamás
+los de B.
+
+**Lo que bloquea otras fases y conviene destrabar en paralelo:** D1 — confirmar
+en la consola de Google la política vigente de refresh tokens en estado
+*Testing*. Mato ya eligió el camino (Workspace propio, usuarios internos), pero
+sigue marcado **[VERIFICAR]** y es lo único que puede mover el calendario sin
+depender de nosotros (§4.2 P7).

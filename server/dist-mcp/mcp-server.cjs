@@ -48703,8 +48703,13 @@ function repoRoot() {
   const here = import_meta.dirname;
   return here ? import_node_path.default.resolve(here, "../..") : process.cwd();
 }
+function shouldLoadRootEnv(env) {
+  if (env.VITEST !== void 0 && env.VITEST !== "") return false;
+  if (env.NODE_ENV === "test") return false;
+  return true;
+}
 var rootEnvPath = import_node_path.default.join(repoRoot(), ".env");
-if ((0, import_node_fs.existsSync)(rootEnvPath)) {
+if (shouldLoadRootEnv(process.env) && (0, import_node_fs.existsSync)(rootEnvPath)) {
   process.loadEnvFile(rootEnvPath);
 }
 var envSchema = external_exports.object({

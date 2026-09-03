@@ -1,13 +1,21 @@
 # Agentic Wallet
 
-Sitio público: [Agentic Wallet — tu copiloto financiero local-first](https://lordiwa.github.io/agentic-wallet/)
+Sitio público: [Agentic Wallet — tu copiloto financiero](https://lordiwa.github.io/agentic-wallet/)
 
-Copiloto financiero personal **local-first**: lee los correos que tu banco ya
-te manda, arma tu historial de gastos en una base SQLite en tu máquina, y te
-deja preguntarle cosas en lenguaje natural.
+Copiloto financiero: lee los correos que tu banco ya te manda, arma tu historial
+de gastos en una base SQLite, y te deja preguntarle cosas en lenguaje natural.
 
-No hay servidor en la nube, no hay cuenta que crear, no se conecta a tu banco.
-Tu plata, tu historial y tus credenciales no salen de tu computadora.
+**Se usa de dos formas, y son distintas a propósito:**
+
+- **Corriéndolo vos** (lo que hace este repo hoy): la base vive en tu máquina,
+  no hay servidor en la nube, no hay cuenta que crear, y ni tu historial ni tus
+  credenciales salen de tu computadora.
+- **Como servicio administrado** (en construcción, piloto cerrado): nosotros lo
+  corremos, tu base vive en nuestro servidor y quien lo administra puede leerla.
+  El diseño está en [`docs/pivot-saas.md`](docs/pivot-saas.md) y la promesa de
+  privacidad reescrita, en el sitio público.
+
+No se conecta a tu banco en ninguna de las dos: sólo lee correos.
 
 ```
 Gmail (solo lectura) ──► parser determinista ──► SQLite local ──► API + web + chat

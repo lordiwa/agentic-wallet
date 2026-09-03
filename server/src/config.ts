@@ -20,9 +20,38 @@ export function repoRoot(): string {
   return here ? path.resolve(here, "../..") : process.cwd();
 }
 
+/**
+ * Si este proceso puede leer el `.env` de la raiz.
+ *
+ * El server real: si. La suite de tests: **no**, y esa es toda la decision.
+ *
+ * Este modulo se importa en cada proceso de test, asi que hasta hoy la suite
+ * heredaba la configuracion de la maquina de quien la corriera. Medido: con un
+ * `.env` que tiene `WALLET_ACCESS_TOKEN`, `npm test` daba 107 fallos de 1667
+ * (401 Unauthorized) porque los tests piden `/api/*` sin llave; con el entorno
+ * limpio, 1667 en verde. El sintoma es molesto, pero lo grave es lo que
+ * significa: **verde en CI no probaba que produccion arranca**, y un
+ * desarrollador aprende a ignorar un rojo que "es de su .env". Con el pivot a
+ * SaaS ese archivo va a tener ademas la KEK y el `client_secret` de OAuth
+ * (ver docs/pivot-saas.md §3.5, P24), asi que la suite pasaria a depender de
+ * secretos de produccion para dar verde.
+ *
+ * Un test que necesita una variable la setea el mismo (`process.env.X = ...`),
+ * que es lo que ya hacen `config.test.ts` y los de `api/`. Ninguno tiene por
+ * que saber que existe un `.env` en la maquina.
+ */
+export function shouldLoadRootEnv(env: NodeJS.ProcessEnv): boolean {
+  // `VITEST` lo pone el runner en cada worker; `NODE_ENV=test` cubre a
+  // cualquier otro corredor (y al `tsx` que alguien lance a mano con esa
+  // variable) sin acoplar esto a vitest.
+  if (env.VITEST !== undefined && env.VITEST !== "") return false;
+  if (env.NODE_ENV === "test") return false;
+  return true;
+}
+
 // Load .env from repo root (Node 22 native, no dotenv dependency needed).
 const rootEnvPath = path.join(repoRoot(), ".env");
-if (existsSync(rootEnvPath)) {
+if (shouldLoadRootEnv(process.env) && existsSync(rootEnvPath)) {
   process.loadEnvFile(rootEnvPath);
 }
 

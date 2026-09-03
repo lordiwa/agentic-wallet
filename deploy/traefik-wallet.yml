@@ -1,0 +1,65 @@
+# Alternativa a Caddy: publicar el wallet por el Traefik que YA ocupa el borde
+# de esta VPS.
+#
+# Por que existe este archivo: la Fase 0 iba a poner Caddy en 80/443, pero la
+# VPS ya tiene ahi un Traefik (verificado: el certificado que presenta
+# 2.25.119.1:443 es `CN=TRAEFIK DEFAULT CERT` y devuelve 404 para cualquier
+# host que no conoce). Sacarle el puerto 443 a Traefik tumba lo que sea que ya
+# este sirviendo. Asi que hay dos caminos y los dos estan escritos:
+#
+#   A. Este archivo: se agrega una ruta a Traefik y el wallet sale publicado
+#      sin tocar nada de lo que ya funciona. **Es el camino recomendado.**
+#   B. deploy/Caddyfile: si algun dia el borde es de Caddy, o si el wallet se
+#      muda a una VPS propia. Su configuracion ya esta probada (proxy + SSE).
+#
+# Como se instala: se copia al directorio que el Traefik del host tenga
+# declarado como `providers.file.directory` (tipicamente /etc/traefik/dynamic/).
+# Traefik lo recarga solo. Requiere acceso de root al host.
+#
+# Los tres valores a completar estan marcados con TODO: no se inventan porque
+# dependen de como esta montado el Traefik de esta maquina.
+
+http:
+  routers:
+    wallet:
+      rule: "Host(`wallet.2.25.119.1.sslip.io`)"
+      entryPoints:
+        - websecure
+      service: wallet
+      tls:
+        # TODO: el nombre del certResolver ACME que ya tenga configurado este
+        # Traefik (se ve en su traefik.yml estatico). sslip.io resuelve el
+        # nombre a esta misma IP, asi que el desafio HTTP-01 se valida solo.
+        certResolver: letsencrypt
+
+  services:
+    wallet:
+      loadBalancer:
+        servers:
+          # TODO: la direccion del server del wallet vista DESDE Traefik. Si
+          # Traefik corre en el host y el wallet tambien, es 127.0.0.1:3000. Si
+          # el wallet corre en un contenedor, es la IP del contenedor o su
+          # nombre en la red de Docker — `127.0.0.1` desde Traefik apunta a
+          # Traefik, no al wallet, y ese es el error tipico.
+          - url: "http://127.0.0.1:3000"
+        # `POST /api/chat` es text/event-stream y el panel lo lee token a token
+        # con `res.body.getReader()`. Sin esto Traefik buferea la respuesta y
+        # el chat parece colgado. Es el mismo requisito que `flush_interval -1`
+        # en el Caddyfile (docs/pivot-saas.md §3.1).
+        responseForwarding:
+          flushInterval: "-1"
+
+  middlewares:
+    wallet-headers:
+      headers:
+        stsSeconds: 31536000
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "no-referrer"
+
+# NOTA sobre el rate limit: con Traefik delante, TODAS las peticiones le llegan
+# al server desde la IP de Traefik. Si se activa `WALLET_RATE_LIMIT_RPS` hay
+# que poner tambien `WALLET_TRUST_PROXY=true`, o el limitador queda global y el
+# primer abusivo deja fuera a todos (api/rate-limit.ts, decision 3; P21).
+# Y `WALLET_TRUST_PROXY=true` solo es seguro si el proxy es el UNICO camino al
+# puerto: con el server en loopback, lo es.

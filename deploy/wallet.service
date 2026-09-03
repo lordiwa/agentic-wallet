@@ -1,0 +1,62 @@
+# Unidad systemd del server del piloto. Se instala en
+# /etc/systemd/system/wallet.service y se arranca con:
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now wallet
+#
+# Requiere acceso de root al HOST de la VPS. Desde dentro de un contenedor sin
+# systemd (PID 1 no es systemd) esto no se puede instalar — ver
+# docs/piloto-web.md, "Lo que quedo bloqueado".
+
+[Unit]
+Description=Agentic Wallet - server del piloto
+Documentation=https://github.com/lordiwa/agentic-wallet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wallet
+Group=wallet
+
+# El repo desplegado. `repoRoot()` lo deduce de la ubicacion de
+# `server/dist/config.js` (dos niveles arriba), asi que las rutas relativas de
+# `WALLET_DB_PATH` se anclan aca y no al cwd — la misma regla que db/open.ts.
+WorkingDirectory=/srv/wallet/app
+ExecStart=/usr/bin/node server/dist/index.js
+
+# Los secretos NUNCA en la unidad: la unidad se versiona, el EnvironmentFile
+# no. Permisos 0600, dueño `wallet`. Con el pivot este archivo va a tener
+# ademas la KEK del cifrado de tokens (docs/pivot-saas.md §3.5), asi que tiene
+# que quedar FUERA del arbol de backup.
+EnvironmentFile=/etc/wallet/wallet.env
+
+Restart=on-failure
+RestartSec=5s
+# Un fallo al arrancar que se reintenta para siempre esconde el error real.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# El proceso escucha en loopback y el TLS lo pone el proxy del borde: nada de
+# esto necesita privilegios.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+# Lo unico escribible: el directorio de datos. Con `ProtectSystem=strict` el
+# resto del filesystem es de solo lectura para este servicio, asi que un bug
+# que escriba fuera de aca falla ruidosamente en vez de dejar una base perdida.
+ReadWritePaths=/srv/wallet/data
+
+# NO poner MemoryDenyWriteExecute=true: el JIT de V8 necesita paginas
+# W+X y Node no arranca. Es el endurecimiento que siempre se copia de mas.
+
+[Install]
+WantedBy=multi-user.target

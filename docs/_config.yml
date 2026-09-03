@@ -21,10 +21,14 @@
 # entere.
 
 title: Agentic Wallet
+# Esta descripcion sale en la tarjeta al compartir el enlace, asi que es una
+# promesa publica como cualquier otra. Decia "sin nube, sin cuenta, sin que tus
+# datos salgan de tu maquina": con el servicio administrado eso dejo de ser
+# cierto y se reescribio junto con la landing (docs/pivot-saas.md, Fase 0).
 description: >-
-  Tu copiloto financiero local-first: lee los correos que tu banco ya te manda,
-  arma tu historial en tu propia computadora, y te deja preguntarle cosas en
-  lenguaje natural. Sin nube, sin cuenta, sin que tus datos salgan de tu máquina.
+  Tu copiloto financiero: lee los correos que tu banco ya te manda, arma tu
+  historial de gastos y te deja preguntarle cosas en lenguaje natural. Como
+  servicio administrado por nosotros, o corriéndolo vos en tu computadora.
 lang: es
 
 baseurl: "/agentic-wallet"
@@ -38,8 +42,9 @@ og_image: "/assets/img/og-image.png"
 repo_url: "https://github.com/lordiwa/agentic-wallet"
 repo_blob: "https://github.com/lordiwa/agentic-wallet/blob/main"
 
-# Navegación del header. Las cuatro primeras son anclas de la landing; la última
-# es la guía para la persona que va a usar el wallet.
+# Navegación del header, toda anclas de la landing. "Privacidad" va antes que
+# "Cómo se entra" a propósito: con el servicio administrado, lo que alguien
+# tiene que poder leer antes de decidir es qué vemos y qué no.
 nav:
   - title: Qué es
     url: "#que-es"
@@ -49,8 +54,8 @@ nav:
     url: "#pantallas"
   - title: Privacidad
     url: "#privacidad"
-  - title: Instalación
-    url: "#instalacion"
+  - title: Cómo se entra
+    url: "#acceso"
   - title: Preguntas
     url: "#faq"
 
