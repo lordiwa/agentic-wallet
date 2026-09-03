@@ -46,7 +46,8 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 npm install          # Node 22+
 npm run build        # web + server (tsc, sin emit en web)
 npm test             # toda la suite (vitest)
-npm run dev          # server + web
+npm run dev          # server + web + panel
+npm run dev:panel    # server + panel (el frontend del MVP, sin el viejo)
 npm run onboard      # checklist de configuración
 npm run build:mcp    # regenera el bundle MCP (ya incluido en `npm run build`)
 ```
