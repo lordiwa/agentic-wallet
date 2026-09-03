@@ -1,26 +1,39 @@
 <script setup lang="ts">
 /**
- * El andamio minimo de la fase N0. **No es el shell del panel** — la barra
- * lateral, la navegacion y el Resumen son N2 (`p2-resumen.html`). Acá sólo
- * vive lo que N0 entrega: la barra con el chip de backend, siempre visible, y
- * la pantalla de la llave cuando el server pide una que este navegador no
- * tiene.
+ * El andamio del panel: la puerta de N0 y el shell de N2.
  *
- * El chip va **arriba de todo, tambien en la pantalla de la llave**, y eso es
- * deliberado: un enlace con `?api=` apuntando a un host ajeno tiene que poder
- * rechazarse ANTES de que alguien escriba su llave, no despues.
+ * Dos cosas se deciden acá y en ningún otro lado:
+ *
+ * 1. **El chip de backend va arriba de todo, también en la pantalla de la
+ *    llave** (N0). Un enlace con `?api=` apuntando a un host ajeno tiene que
+ *    poder rechazarse ANTES de que alguien escriba su llave, no después.
+ * 2. **Sin llave no hay shell.** Si el server pide una y este navegador no la
+ *    tiene, no se dibuja una barra lateral con tres pantallas que van a fallar
+ *    todas: se pide la llave.
+ *
+ * El reloj compartido se monta acá, una vez, y lo heredan las pantallas.
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import AccessKeyScreen from "./components/AccessKeyScreen.vue";
+import AppShell from "./components/AppShell.vue";
 import BackendChip from "./components/BackendChip.vue";
+import Pendiente from "./views/Pendiente.vue";
+import Resumen from "./views/Resumen.vue";
 import { probeHealth } from "./api/client";
 import type { DiagnosticoConexion } from "./api/client";
+import { provideRefresh } from "./composables/useRefresh";
+import { useRuta } from "./router/ruta";
 
 const diagnostico = ref<DiagnosticoConexion | null>(null);
+const { ruta } = useRuta();
+
+provideRefresh();
 
 function necesitaLlave(diag: DiagnosticoConexion | null): boolean {
   return diag !== null && (diag.estado === "sin-llave" || diag.estado === "llave-rechazada");
 }
+
+const pidiendoLlave = computed(() => necesitaLlave(diagnostico.value));
 
 onMounted(async () => {
   diagnostico.value = await probeHealth();
@@ -28,23 +41,38 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app">
+  <div v-if="pidiendoLlave" class="puerta">
     <header class="barra">
       <BackendChip />
     </header>
-    <AccessKeyScreen v-if="necesitaLlave(diagnostico)" @acceso="diagnostico = $event" />
-    <main v-else class="vista">
-      <h1>Panel</h1>
-      <p class="sub">
-        La fase N0 entrega la puerta: la llave del server y el chip de backend. El Resumen, las
-        Preguntas y los Movimientos llegan en las fases siguientes.
-      </p>
-    </main>
+    <AccessKeyScreen @acceso="diagnostico = $event" />
   </div>
+
+  <AppShell v-else :pantalla="ruta.pantalla">
+    <template #chip>
+      <header class="barra">
+        <BackendChip />
+      </header>
+    </template>
+
+    <Resumen v-if="ruta.pantalla === 'resumen'" />
+    <Pendiente
+      v-else-if="ruta.pantalla === 'preguntas'"
+      titulo="Preguntas"
+      fase="N3"
+      que="Dos preguntas distintas: qué es un movimiento, y cuánto fue."
+    />
+    <Pendiente
+      v-else
+      titulo="Movimientos"
+      fase="N5"
+      que="Todo lo que el ledger tiene, con dos filtros y sin paginador."
+    />
+  </AppShell>
 </template>
 
 <style scoped>
-.app {
+.puerta {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -52,25 +80,16 @@ onMounted(async () => {
   color: var(--tinta);
   font: var(--body-size) / 1.5 var(--fuente);
 }
-.barra {
+.puerta .barra {
   background: var(--panel);
   border-bottom: 1px solid var(--linea);
   padding: 0 26px;
   flex: none;
 }
-.vista {
-  padding: var(--shell-padding);
-}
-h1 {
-  font-size: var(--h1-size);
-  font-weight: var(--h1-weight);
-  letter-spacing: var(--h1-tracking);
-  margin: 0 0 3px;
-}
-.sub {
-  color: var(--apagado);
-  font-size: 13px;
-  margin: 0;
-  max-width: 52em;
+/* Dentro del shell el chip no es una barra del ancho de la ventana: es la
+ * primera fila de la columna de contenido. */
+.barra {
+  border-bottom: 1px solid var(--linea);
+  margin-bottom: 14px;
 }
 </style>

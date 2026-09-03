@@ -1,0 +1,44 @@
+# T6. Hasta N2 "build y test en verde" dependía de que alguien se acordara de
+# correrlos a mano, en su máquina, antes de empujar. Esto lo corre siempre y en
+# limpio.
+#
+# Dos cosas que este workflow NO hace, a propósito:
+#
+# - **No toca ningún secreto.** No hay `secrets:` acá y no debe haberlos: el
+#   proyecto es local-first y sus credenciales (Gmail, Claude, la llave del
+#   server) viven en el `.env` de una máquina, no en un repositorio. La suite
+#   corre entera contra bases en memoria y dobles inyectados.
+# - **No despliega.** Sólo compila y prueba.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Un push encima de otro cancela la corrida vieja: interesa el estado del
+# último commit, no la historia de los intermedios.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-y-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 es el mínimo del proyecto (ver CLAUDE.md y package.json).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # `npm ci` y no `npm install`: la corrida usa exactamente las versiones
+      # del lockfile, que es lo que hace que un verde acá signifique algo.
+      - run: npm ci
+
+      # El mismo orden que se le pide a una persona antes de dar por terminado
+      # un cambio: primero que compile, después que pase.
+      - run: npm run build
+      - run: npm test

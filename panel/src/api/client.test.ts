@@ -75,6 +75,18 @@ describe("panelFetch", () => {
     expect(url).toBe(`${AJENO}/api/overview`);
     expect(new Headers(init.headers).has("Authorization")).toBe(false);
   });
+
+  it("en modo demo no toca la red: contesta la demo (T4)", async () => {
+    setApiBase("demo");
+    const fake = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fake);
+
+    const res = await panelFetch("/api/overview");
+
+    expect(fake).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
+    expect(await res.json()).toHaveProperty("safe_to_spend_hoy");
+  });
 });
 
 describe("probeHealth", () => {

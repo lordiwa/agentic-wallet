@@ -37,7 +37,10 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 | Esquema de la base | `server/src/db/schema.ts` |
 | Rutas HTTP | `server/src/api/` |
 | La llave del server (`WALLET_ACCESS_TOKEN`) | `server/src/api/auth.ts` |
+| Si hay un sync corriendo ahora (`running`) | `server/src/api/sync-gate.ts` |
 | Panel (Vue 3, el frontend del MVP) | `panel/src/` — ver `docs/plan-final-mvp.md` |
+| El reloj compartido y la navegación del panel | `panel/src/composables/`, `panel/src/router/` |
+| El modo demostración del panel | `panel/src/demo/demoFetch.ts` |
 | Tokens del design system | `panel/src/styles/tokens.css` — el único lugar con un hex |
 | Dashboard viejo (React) | `web/src/` |
 
@@ -54,7 +57,9 @@ npm run build:mcp    # regenera el bundle MCP (ya incluido en `npm run build`)
 ```
 
 Antes de dar por terminado cualquier cambio: **`npm run build` y `npm test` en
-verde**. No hay excepción.
+verde**. No hay excepción. `.github/workflows/ci.yml` corre las dos en cada
+push, así que el olvido se ve; el workflow no es el reemplazo de correrlas
+antes de empujar.
 
 ## Convenciones
 

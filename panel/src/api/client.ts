@@ -9,6 +9,7 @@
  * "no anda", que es exactamente lo que ya se ve.
  */
 import { credentialAllowed, currentBackendVerdict, getAccessToken, getApiBase, isDemoMode } from "./base";
+import { demoFetch } from "../demo/demoFetch";
 import { DEMO_BASE, normalizeBase } from "./origins";
 import type { OriginVerdict } from "./origins";
 
@@ -59,11 +60,9 @@ export function buildHeaders(init?: RequestInit): Headers {
 }
 
 export function panelFetch(path: string, init?: RequestInit): Promise<Response> {
-  if (isDemoMode()) {
-    // El modo demo de N2 trae sus propias respuestas; en N0 todavia no hay
-    // ninguna, y fallar claro es mejor que fingir una llamada.
-    return Promise.reject(new Error("modo demostracion: no hay datos locales todavia"));
-  }
+  // N2 (T4): el modo demo ya tiene sus respuestas. No sale a la red — ni
+  // siquiera al mismo origen — y por eso se decide aca y no en cada endpoint.
+  if (isDemoMode()) return demoFetch(path, init);
   return fetch(apiUrl(path), { ...init, headers: buildHeaders(init) });
 }
 

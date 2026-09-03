@@ -100,8 +100,9 @@ Resumen de los cinco pasos:
 Cuando el checklist esté completo:
 
 ```bash
-npm run build    # la primera vez: sin `web/dist` el dashboard da 404
-npm run dev      # API + web en http://localhost:3000
+npm run build     # la primera vez: sin `web/dist` el dashboard da 404
+npm run dev       # API + dashboard viejo + panel
+npm run dev:panel # API + el panel del MVP (en http://localhost:5174)
 ```
 
 ## Cómo se actualiza
@@ -220,7 +221,12 @@ server/src/
   mcp/        el wallet como herramientas MCP para agentes
   api/        rutas Express
   db/         esquema SQLite, repositorio, telemetría
-web/src/      SPA React (dashboard, gráficos, chat, bandeja de revisión)
+web/src/      SPA React (dashboard viejo: gráficos, chat, bandeja de revisión)
+panel/src/    SPA Vue 3 (el panel del MVP: Resumen, Preguntas, Movimientos)
+  api/        a qué backend le habla este navegador, y con qué llave
+  components/ el shell y los componentes del design system
+  views/      las pantallas
+  demo/       el modo demostración, sin salir a la red
 ```
 
 ## Licencia

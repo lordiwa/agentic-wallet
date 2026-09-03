@@ -1,6 +1,11 @@
 /*
- * El reset y el lienzo, con los mismos valores que abren todas las tarjetas
- * del design system. Ningún color acá: sólo variables de tokens.css.
+ * El reset, el lienzo y **el bloque de estilos que se repite idéntico en las
+ * once `p*.html` del design system**: `.card`, `.btn`, `.tag`, `.num`,
+ * `.track/.fill`, los rótulos. Vive acá y no en cada componente por la misma
+ * razón por la que se repite igual en cada tarjeta del sistema: es el sistema,
+ * no la decoración de una pantalla.
+ *
+ * Ningún color acá: sólo variables de tokens.css.
  */
 * {
   box-sizing: border-box;
@@ -14,9 +19,261 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Toda cifra de plata es tabular, sin excepción (§2.1). */
+/* ---- Tipografía del sistema (§2.1) ---- */
+
+.h1 {
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
+  letter-spacing: var(--h1-tracking);
+  margin: 0 0 3px;
+}
+
+.sub {
+  color: var(--apagado);
+  font-size: 13px;
+  margin: 0;
+}
+
+.h2 {
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+
+/* La etiqueta de una tarjeta: 11px, mayúsculas, apagada (`c3`). */
+.label {
+  font-size: var(--label-size);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  color: var(--apagado);
+  margin: 0 0 6px;
+  font-weight: var(--label-weight);
+}
+
+.small {
+  font-size: var(--small-size);
+  color: var(--apagado);
+}
+
+.muted {
+  color: var(--apagado);
+}
+
+/*
+ * Toda cifra de plata es tabular, sin excepción (§2.1). `.num` es la cifra de
+ * 26px del sistema; `.tabular` es para cualquier otro número que se dibuje
+ * fuera de una tarjeta (un conteo en una barra, el "1 240 de 3 800" del chip):
+ * si alternan dígitos de distinto ancho, un número que se actualiza solo
+ * tiembla.
+ */
+.num,
 .cifra {
   font-size: var(--cifra-size);
   font-weight: var(--cifra-weight);
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  display: block;
+  margin: 2px 0 1px;
+}
+
+/* La misma cifra cuando lo que hay que decir no es un número ("Sin leer"):
+ * más chica y apagada, para que nunca se lea como una cantidad. */
+.num.sm {
+  font-size: 18px;
+  color: var(--apagado);
+  font-weight: 500;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Tarjeta ---- */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-tarjeta);
+  padding: 14px 16px;
+  position: relative;
+}
+
+/* ---- Botones (§2.1) ---- */
+
+.btn {
+  border: 1px solid var(--boton-secundario-borde);
+  background: var(--boton-secundario-bg);
+  color: var(--tinta);
+  border-radius: var(--radio-boton);
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  filter: brightness(0.96);
+}
+
+.btn.pri {
+  background: var(--boton-primario-bg);
+  border-color: var(--boton-primario-bg);
+  color: var(--boton-primario-texto);
+  font-weight: 600;
+}
+
+.btn.ok {
+  background: var(--al-dia);
+  border-color: var(--al-dia);
+  color: var(--boton-primario-texto);
+  font-weight: 600;
+}
+
+.btn.warnb {
+  background: var(--boton-secundario-bg);
+  border-color: var(--atencion);
+  color: var(--tag-warn-texto);
+  font-weight: 600;
+}
+
+.btn.badb {
+  background: var(--falla);
+  border-color: var(--falla);
+  color: var(--boton-primario-texto);
+  font-weight: 600;
+}
+
+.btn.qui {
+  border-color: transparent;
+  background: none;
+  color: var(--boton-terciario-texto);
+  padding: 7px 4px;
+}
+
+.btn:disabled,
+.btn.dis {
+  background: var(--boton-off-bg);
+  border-color: var(--boton-off-bg);
+  color: var(--boton-off-texto);
+  cursor: default;
+  filter: none;
+}
+
+/* ---- Etiquetas de estado (§2.1) ---- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--label-size);
+  font-weight: 600;
+  border-radius: var(--radio-etiqueta);
+  padding: 1px 8px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.tag.ok {
+  background: var(--tag-ok-bg);
+  border-color: var(--tag-ok-borde);
+  color: var(--tag-ok-texto);
+}
+
+.tag.warn {
+  background: var(--tag-warn-bg);
+  border-color: var(--tag-warn-borde);
+  color: var(--tag-warn-texto);
+}
+
+.tag.bad {
+  background: var(--tag-bad-bg);
+  border-color: var(--tag-bad-borde);
+  color: var(--tag-bad-texto);
+}
+
+.tag.neu {
+  background: var(--tag-neu-bg);
+  border-color: var(--tag-neu-borde);
+  color: var(--tag-neu-texto);
+}
+
+.tag.acc {
+  background: var(--tag-acc-bg);
+  border-color: var(--tag-acc-borde);
+  color: var(--tag-acc-texto);
+}
+
+/* ---- Barra de progreso (`c1`, `c3`, `p2`, `p3`) ---- */
+
+.track {
+  height: 7px;
+  background: var(--superficie-suave);
+  border-radius: var(--radio-etiqueta);
+  overflow: hidden;
+  display: block;
+}
+
+.fill {
+  height: 100%;
+  border-radius: var(--radio-etiqueta);
+  background: var(--accion);
+  display: block;
+}
+
+.fill.warn {
+  background: var(--atencion);
+}
+
+.fill.ok {
+  background: var(--al-dia);
+}
+
+.fill.neu {
+  background: var(--nav-texto-claro);
+}
+
+/* ---- El aviso amarillo de `p2-resumen.html` ---- */
+
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--tag-warn-bg);
+  border: 1px solid var(--atencion);
+  border-radius: var(--radio-tarjeta);
+  padding: 11px 14px;
+}
+
+.alert b {
+  font-size: 13.5px;
+}
+
+.alert p {
+  margin: 1px 0 0;
+  font-size: var(--small-size);
+  color: var(--aviso-texto);
+}
+
+/* ---- Enlace que envuelve una tarjeta o una fila, sin verse como enlace ---- */
+
+a.lnk {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.lnk:hover {
+  filter: brightness(0.97);
+}
+
+a.card.lnk {
+  display: block;
 }
