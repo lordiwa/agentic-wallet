@@ -90,6 +90,14 @@ export interface SyncProgressReport {
 }
 
 export interface SyncResult extends IngestSummary {
+  /**
+   * Las filas que ESTE lote agrego al ledger. Es lo que hace posible el aviso
+   * post-sync de D7-b: "quedaron N sin clasificar" lleva a la cola acotada a
+   * lo que acaba de entrar (`GET /api/classify/queue?transaction_ids=`), no a
+   * la cola entera. Por lote y no acumulado a proposito — la pregunta es por
+   * lo recien leido.
+   */
+  insertedIds: number[];
   progress: SyncProgressReport;
   /** Los mismos contadores pero de TODO el backlog, no solo de este lote.
    * Cuando el buzon entra en una sola llamada, es identico al resumen. */
@@ -147,7 +155,7 @@ export async function runSync(deps: IngestDeps, options: RunSyncOptions = {}): P
         maxMs: options.maxMs ?? DEFAULT_SYNC_MAX_MS,
         monotonicNow: options.monotonicNow,
       })
-    : EMPTY_SUMMARY;
+    : { ...EMPTY_SUMMARY, insertedIds: [] };
 
   const pendingIds = progress.pendingIds.slice(summary.seen);
   const processed = progress.processed + summary.seen;

@@ -5,7 +5,7 @@ export type { AmountValidationResult } from "./amount-validate.js";
 export { extractReversoFields } from "./reverso-extract.js";
 export type { ExtractedReversoFields } from "./reverso-extract.js";
 export { buildSearchQuery, ingestBatch, ingestOnce, searchMessageIds } from "./pipeline.js";
-export type { IngestBatchOptions, IngestDeps, IngestOptions, IngestSummary } from "./pipeline.js";
+export type { IngestBatchOptions, IngestBatchResult, IngestDeps, IngestOptions, IngestSummary } from "./pipeline.js";
 export { createGoogleapisGmailClient } from "./googleapis-gmail-client.js";
 export { DEFAULT_HEAL_LIMIT, healCounterparties } from "./heal-counterparty.js";
 export type {

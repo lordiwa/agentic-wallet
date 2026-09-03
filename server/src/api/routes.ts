@@ -135,8 +135,18 @@ const briefQuerySchema = z.object({
     .optional(),
 });
 
-export function createApiRouter(getDb: () => Database.Database): Router {
+export interface ApiRouterOptions {
+  /**
+   * La guarda de `POST /api/sync`, para poder publicarla en
+   * `GET /api/sync/status` (R9). Por defecto "no hay ninguno corriendo": un
+   * router montado solo (un test de estas rutas) no tiene un sync en vuelo.
+   */
+  isSyncRunning?: () => boolean;
+}
+
+export function createApiRouter(getDb: () => Database.Database, options: ApiRouterOptions = {}): Router {
   const router = Router();
+  const isSyncRunning = options.isSyncRunning ?? (() => false);
 
   router.get("/transactions", (req, res) => {
     const parsed = transactionsQuerySchema.safeParse(req.query);
@@ -315,6 +325,13 @@ export function createApiRouter(getDb: () => Database.Database): Router {
    * de `sync_progress` (el drenado a medias); ver db/schema.ts para por que
    * son dos tablas. Sin fila en `sync_progress` el backlog es `null`: no hay
    * nada pendiente, no es que valga cero.
+   *
+   * `running` (R9) es la tercera pregunta, y es de otro tipo: las dos primeras
+   * salen de la base, esta sale de la memoria del proceso (`api/sync-gate.ts`).
+   * Sin ella, un F5 en medio de un lote rehidrata en un estado limpio falso y
+   * el reintento del 409 le pega a un lote de minutos. Un backlog a medias
+   * **no** implica `running`: quedar a medias es el estado normal entre dos
+   * llamadas.
    */
   router.get("/sync/status", (_req, res) => {
     const db = getDb();
@@ -322,6 +339,7 @@ export function createApiRouter(getDb: () => Database.Database): Router {
     const progress = getSyncProgress(db);
     res.json({
       last_sync_ts: state?.last_sync_ts ?? null,
+      running: isSyncRunning(),
       backlog: progress
         ? {
             processed: progress.processed,

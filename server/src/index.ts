@@ -8,6 +8,7 @@ import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
 import { createSyncRouter } from "./api/sync-route.js";
 import type { SyncRunner } from "./api/sync-route.js";
+import { createSyncGate } from "./api/sync-gate.js";
 import { classifyClaudeCredential } from "./claude-credential.js";
 import { buildDailyBrief } from "./brief/build-brief.js";
 import { startDailyBriefScheduler } from "./brief/scheduler.js";
@@ -115,9 +116,13 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
   // WALLET_ACCESS_TOKEN es un no-op y el server se comporta como siempre.
   app.use("/api", createAuthMiddleware(accessToken));
 
+  // Una sola guarda de sync para los dos routers: `POST /api/sync` la toma y
+  // `GET /api/sync/status` la publica como `running` (R9).
+  const syncGate = createSyncGate();
+
   // Mounted before the SPA catch-all so /api/* is fully handled here.
-  app.use("/api", createApiRouter(getDb));
-  app.use("/api", createSyncRouter(getSyncRunner));
+  app.use("/api", createApiRouter(getDb, { isSyncRunning: syncGate.isRunning }));
+  app.use("/api", createSyncRouter(getSyncRunner, syncGate));
   app.use("/api", createChatRouter({ getDb, hasCredential: hasChatCredential, queryFn: options.chatQueryFn }));
 
   // Any /api/* route not matched above is a client error, not a page route:

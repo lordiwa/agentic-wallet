@@ -344,12 +344,16 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         // `progress` y `cumulative` salen del resumen del lote para que el
         // agente no tenga que conocer la forma interna del motor; `summary`
         // queda con los contadores de ESTA llamada, tal cual los emite.
-        const { progress, cumulative, ...summary } = await runner({ batchSize: batch_size });
+        // `insertedIds` sale afuera como `inserted_ids` por lo mismo que
+        // `progress`: son las filas de ESTE lote, y es a lo que se acota la
+        // cola de clasificacion despues de sincronizar (D7-b).
+        const { progress, cumulative, insertedIds, ...summary } = await runner({ batchSize: batch_size });
         return json({
           ok: true,
           summary,
           cumulative,
           progress,
+          inserted_ids: insertedIds,
           next_action: progress.complete
             ? "Sync al dia: no queda backlog."
             : `Faltan ${progress.remaining} correos: volve a llamar \`sync\`.`,

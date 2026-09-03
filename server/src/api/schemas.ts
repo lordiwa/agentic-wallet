@@ -67,6 +67,18 @@ export const classifyBodySchema = z.object({
   category: z.enum(CATEGORIES),
 });
 
+/**
+ * POST /sync (H19). Un solo campo opcional: cuantos correos drena esta
+ * llamada. El tope de 500 no es una politica nueva — es la misma cota que ya
+ * usan las consultas de este archivo, y existe para que un `batch_size`
+ * absurdo sea un 400 y no un lote que corre media hora contra Gmail y Claude.
+ * Ausente significa "el default del motor" (`DEFAULT_SYNC_BATCH_SIZE`), nunca
+ * un numero elegido en esta capa.
+ */
+export const syncBodySchema = z.object({
+  batch_size: z.coerce.number().int().positive().max(500).optional(),
+});
+
 /** POST /classify/silence y DELETE /classify/silence/:counterparty (H33, M5). */
 export const silenceBodySchema = z.object({
   counterparty: z.string().min(1),

@@ -409,3 +409,38 @@ describe("runSync por lotes (checkpoint)", () => {
     expect(countTransactions()).toBe(3);
   });
 });
+
+describe("runSync: los ids del lote (D7-b)", () => {
+  it("devuelve los ids de las filas que ESTE lote agrego", async () => {
+    const consumo = message({
+      gmail_msg_id: "msg-consumo",
+      subject: "Consumo tarjeta de débito por USD 9.42",
+      body: "Transacción: Consumo Tarjeta de Débito Produbanco\nEstablecimiento: COMISARIATO EXPRESS",
+    });
+    const extractor = new FakeEmailExtractor(
+      new Map([[consumo.subject, { amount_text_raw: "USD 9.42", counterparty: "COMISARIATO EXPRESS" }]])
+    );
+
+    const first = await runSync(deps(new FakeGmailClient([consumo]), extractor), {
+      now: "2026-07-20T10:00:00.000Z",
+    });
+
+    expect(first.insertedIds).toHaveLength(1);
+    const persisted = db.prepare("SELECT id FROM transactions").all() as { id: number }[];
+    expect(first.insertedIds).toEqual(persisted.map((row) => row.id));
+
+    // Un segundo pase sobre el mismo correo no agrega nada: la lista queda
+    // vacia, no repite el id de la vez pasada. El aviso post-sync pregunta por
+    // lo que entro AHORA.
+    const second = await runSync(deps(new FakeGmailClient([consumo]), extractor), {
+      now: "2026-07-20T11:00:00.000Z",
+    });
+    expect(second.inserted).toBe(0);
+    expect(second.insertedIds).toEqual([]);
+  });
+
+  it("un backlog vacio devuelve una lista vacia, no undefined", async () => {
+    const summary = await runSync(deps(new FakeGmailClient([])), { now: "2026-07-20T10:00:00.000Z" });
+    expect(summary.insertedIds).toEqual([]);
+  });
+});

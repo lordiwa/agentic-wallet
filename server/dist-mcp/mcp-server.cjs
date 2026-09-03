@@ -50288,6 +50288,9 @@ var classifyBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1),
   category: external_exports.enum(CATEGORIES)
 });
+var syncBodySchema = external_exports.object({
+  batch_size: external_exports.coerce.number().int().positive().max(500).optional()
+});
 var silenceBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1)
 });
@@ -51214,9 +51217,10 @@ function reversoAuditRow(candidate, threadId, needsReview) {
 }
 async function ingestBatch(deps, options) {
   return withSpan("ingest.batch", { count: options.messageIds.length }, async () => {
-    const summary = await runIngest(deps, options);
+    const result = await runIngest(deps, options);
+    const { insertedIds: _ids, ...summary } = result;
     emitMetric("ingest.summary", { ...summary });
-    return summary;
+    return result;
   });
 }
 async function searchMessageIds(deps, sinceTs) {
@@ -51303,12 +51307,14 @@ async function runIngest(deps, options) {
   let inserted = 0;
   let duplicates = 0;
   let needsReview = 0;
+  const insertedIds = [];
   const categoryRules = listCategoryRules(db);
   const persist = (tx) => {
     const result = insertTransaction(db, tx);
     let finalNeedsReview = Boolean(result.row.needs_review);
     if (result.inserted) {
       inserted += 1;
+      insertedIds.push(result.row.id);
       finalNeedsReview = Boolean(tx.needs_review);
     } else {
       duplicates += 1;
@@ -51345,7 +51351,8 @@ async function runIngest(deps, options) {
     skipped,
     statementsPersisted,
     statementsNeedReview,
-    reversalsApplied: reconciled.reversalsApplied.length
+    reversalsApplied: reconciled.reversalsApplied.length,
+    insertedIds
   };
 }
 
@@ -51615,7 +51622,7 @@ async function runSync(deps, options = {}) {
     messageIds: batch,
     maxMs: options.maxMs ?? DEFAULT_SYNC_MAX_MS,
     monotonicNow: options.monotonicNow
-  }) : EMPTY_SUMMARY;
+  }) : { ...EMPTY_SUMMARY, insertedIds: [] };
   const pendingIds = progress.pendingIds.slice(summary.seen);
   const processed = progress.processed + summary.seen;
   const cumulative = addSummaries(progress.totals, summary);
@@ -51872,12 +51879,13 @@ function createWalletMcpServer(deps) {
       if (syncing) return json({ ok: false, error: "sync_already_running" });
       syncing = true;
       try {
-        const { progress, cumulative, ...summary } = await runner({ batchSize: batch_size });
+        const { progress, cumulative, insertedIds, ...summary } = await runner({ batchSize: batch_size });
         return json({
           ok: true,
           summary,
           cumulative,
           progress,
+          inserted_ids: insertedIds,
           next_action: progress.complete ? "Sync al dia: no queda backlog." : `Faltan ${progress.remaining} correos: volve a llamar \`sync\`.`
         });
       } finally {

@@ -102,6 +102,20 @@ export interface IngestSummary {
 }
 
 /**
+ * Lo que un lote devuelve, que es el resumen **mas los ids de las filas nuevas**.
+ *
+ * Los ids no viven en `IngestSummary` a proposito: ese tipo es una bolsa de
+ * contadores que `sync/run-sync.ts` suma campo a campo entre lotes, y un
+ * arreglo no se suma. Ademas la pregunta que responden es de UN lote, no del
+ * backlog acumulado: es el "lo que entro en ese lote" de D7-b — el aviso
+ * post-sync que lleva a la cola de clasificacion acotada a lo recien leido
+ * (`GET /api/classify/queue?transaction_ids=`).
+ */
+export interface IngestBatchResult extends IngestSummary {
+  insertedIds: number[];
+}
+
+/**
  * Builds the Gmail search query per spec §6.1/§7: "from:produbanco
  * after:{last_sync}". Gmail's `after:` operator only accepts a date
  * (YYYY/MM/DD) and is evaluated in the Gmail ACCOUNT's local timezone
@@ -219,7 +233,7 @@ function reversoAuditRow(candidate: ReversoCandidate, threadId: string | null, n
 export async function ingestOnce(deps: IngestDeps, options: IngestOptions): Promise<IngestSummary> {
   return withSpan("ingest.run", { since_ts: options.sinceTs }, async () => {
     const ids = await searchMessageIds(deps, options.sinceTs);
-    const summary = await runIngest(deps, { messageIds: ids });
+    const { insertedIds: _ids, ...summary } = await runIngest(deps, { messageIds: ids });
     emitMetric("ingest.summary", { ...summary });
     return summary;
   });
@@ -236,11 +250,14 @@ export async function ingestOnce(deps: IngestDeps, options: IngestOptions): Prom
  * Everything this batch touched is persisted before it returns — that's what
  * makes an interrupted first sync resumable rather than a total loss.
  */
-export async function ingestBatch(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestSummary> {
+export async function ingestBatch(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestBatchResult> {
   return withSpan("ingest.batch", { count: options.messageIds.length }, async () => {
-    const summary = await runIngest(deps, options);
+    const result = await runIngest(deps, options);
+    // Los ids salen de la metrica: es una serie de contadores, y un arreglo
+    // ahi no significa nada.
+    const { insertedIds: _ids, ...summary } = result;
     emitMetric("ingest.summary", { ...summary });
-    return summary;
+    return result;
   });
 }
 
@@ -251,7 +268,7 @@ export async function searchMessageIds(deps: Pick<IngestDeps, "gmailClient">, si
   return withSpan("ingest.gmail_search", { query }, () => deps.gmailClient.searchMessageIds(query));
 }
 
-async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestSummary> {
+async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise<IngestBatchResult> {
   const { db, gmailClient, extractor, titular } = deps;
   const ids = options.messageIds;
   const monotonicNow = options.monotonicNow ?? (() => Date.now());
@@ -354,6 +371,7 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
   let inserted = 0;
   let duplicates = 0;
   let needsReview = 0;
+  const insertedIds: number[] = [];
 
   /**
    * Review fix (TASK-017 HIGH-1, part a): `insertTransaction` alone is
@@ -374,6 +392,7 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
 
     if (result.inserted) {
       inserted += 1;
+      insertedIds.push(result.row.id);
       finalNeedsReview = Boolean(tx.needs_review);
     } else {
       duplicates += 1;
@@ -423,5 +442,6 @@ async function runIngest(deps: IngestDeps, options: IngestBatchOptions): Promise
     statementsPersisted,
     statementsNeedReview,
     reversalsApplied: reconciled.reversalsApplied.length,
+    insertedIds,
   };
 }

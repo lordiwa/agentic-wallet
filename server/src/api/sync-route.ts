@@ -19,6 +19,8 @@
  */
 import { Router } from "express";
 import type { SyncResult } from "../sync/run-sync.js";
+import { syncBodySchema } from "./schemas.js";
+import { createSyncGate, type SyncGate } from "./sync-gate.js";
 
 export interface SyncRunnerOptions {
   /** Cuantos correos como maximo drena esta llamada. Sin valor manda el
@@ -33,28 +35,44 @@ export interface SyncRunnerOptions {
  */
 export type SyncRunner = (options?: SyncRunnerOptions) => Promise<SyncResult>;
 
-export function createSyncRouter(getRunner: () => SyncRunner | null): Router {
+/**
+ * `gate` se inyecta para que `GET /api/sync/status` pueda publicar `running`
+ * (R9): la guarda es una sola por proceso y la comparten los dos routers. Sin
+ * pasarla, cada router se arma la suya — que es lo correcto para un test que
+ * monta este router solo.
+ */
+export function createSyncRouter(getRunner: () => SyncRunner | null, gate: SyncGate = createSyncGate()): Router {
   const router = Router();
-  let running = false;
 
-  router.post("/sync", (_req, res) => {
+  router.post("/sync", (req, res) => {
     const runner = getRunner();
     if (!runner) {
       res.status(503).json({ error: "gmail_not_configured" });
       return;
     }
-    if (running) {
+
+    // H19: cuantos correos drena esta llamada. El runner ya lo aceptaba; lo
+    // unico que faltaba era poder decirlo por HTTP. Sin el campo manda el
+    // default del motor, no un numero elegido aca.
+    const body = syncBodySchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json({ error: "invalid sync body", details: body.error.flatten() });
+      return;
+    }
+
+    if (!gate.begin()) {
       res.status(409).json({ error: "sync_already_running" });
       return;
     }
 
-    running = true;
-    runner()
+    runner({ batchSize: body.data.batch_size })
       .then((summary) => {
         // `progress` se repite fuera de `summary` para que el cliente no
         // tenga que saber que forma tiene el resumen del motor: con
         // `complete:false` hay que volver a pulsar Sincronizar.
-        res.json({ summary, progress: summary.progress });
+        // `inserted_ids` viaja igual de afuera: es a lo que apunta el aviso
+        // post-sync de categoria (D7-b), acotado a ESTE lote.
+        res.json({ summary, progress: summary.progress, inserted_ids: summary.insertedIds ?? [] });
       })
       .catch((error: unknown) => {
         res.status(500).json({
@@ -63,7 +81,7 @@ export function createSyncRouter(getRunner: () => SyncRunner | null): Router {
         });
       })
       .finally(() => {
-        running = false;
+        gate.end();
       });
   });
 
