@@ -1253,8 +1253,12 @@ código.
 
 ### C.7.5 Configuración — lo que le falta a esto para andar
 
-Variables de entorno de las funciones (las dos primeras, secretos de Secret
-Manager; **ninguna va al repo**):
+Variables de entorno de las funciones. Las dos primeras son secretos de Secret
+Manager y **no van al repo**; las tres siguientes son públicas por construcción
+—viajan en la URL de la pantalla de consentimiento, a la vista de cualquiera que
+la abra— y **sí** están versionadas, en `functions/.env.agentic-wallet-71314`,
+porque un valor de esos que se pierda deja el deploy roto con un "falta la
+variable X" en runtime:
 
 ```
 WALLET_TOKEN_KEK             secreto  32 bytes aleatorios en base64
@@ -1270,37 +1274,68 @@ WALLET_TOKEN_KEK_PREVIOUS    env      sólo durante una rotación: "1:<base64>"
 # la clave maestra, generada donde no quede en un historial
 node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))' \
   | firebase functions:secrets:set WALLET_TOKEN_KEK --data-file -
-firebase functions:secrets:set WALLET_GMAIL_CLIENT_SECRET
+firebase functions:secrets:set WALLET_GMAIL_CLIENT_SECRET --data-file <archivo>
 ```
 
 **El `redirect_uri` se compara como string, byte por byte.** Una barra final de
 más y Google contesta `redirect_uri_mismatch`. Tiene que estar idéntica en
-"Authorized redirect URIs" del cliente OAuth.
+"Authorized redirect URIs" del cliente OAuth. El path es el nombre de la
+exportación de `index.ts`: si `gmailAuthCallback` se renombra, la URL cambia y
+hay que corregirla también en la consola de Google.
 
-**Sobre las credenciales OAuth — acción de Mato, con un dato a favor.** En el
-`.env` local (gitignored) ya hay un `GMAIL_OAUTH_CLIENT_ID` /
-`GMAIL_OAUTH_CLIENT_SECRET` que Mato usó para el server viejo. Sirven como punto
-de partida, pero **no se pueden reutilizar tal cual** por dos razones que hay que
-resolver antes del deploy:
+#### Credenciales OAuth — estado al 2026-09-03
 
-1. **Tipo de cliente.** El server viejo obtenía su refresh token por un flujo de
-   escritorio. Un cliente de tipo *Desktop* no acepta un `redirect_uri` `https://`
-   —sólo `http://localhost`— así que el callback como Cloud Function necesita un
-   cliente de tipo **Web application**. Si el existente ya es Web, alcanza con
-   **agregarle** la URL del callback a "Authorized redirect URIs".
-2. **Mismo proyecto o no.** El número de proyecto que lleva ese `client_id` no
-   se pudo comparar con el de `agentic-wallet-71314`: el panel todavía no tiene
-   config de Firebase (no hay `messagingSenderId` en el repo con qué
-   contrastar). Si no son el mismo, el cliente OAuth puede vivir igual en otro
-   —el `client_id` no tiene por qué ser del proyecto de Firebase— pero el
-   consent screen que hay que poner en `User Type: Internal` (§1.6, D1) es el de
-   **ese** proyecto, y su Workspace tiene que ser el de Mato.
+Mato entregó las credenciales de un cliente OAuth llamado
+**`Bolsillo-web-client`**. Lo que se pudo verificar sin navegador, y cómo:
 
-Lo que Mato tiene que hacer, en orden: (a) confirmar en la Google Auth Platform
-si ese cliente es Web y de qué proyecto es; (b) agregarle la URL del callback;
-(c) poner el consent screen en `Internal`; (d) cargar los dos secretos. Nada de
-eso lo puede hacer un agente y ninguna de las dos credenciales aparece en el
-repo.
+- **El `client_id` existe y el `client_secret` entregado le corresponde.** Se
+  comprobó canjeando un `code` deliberadamente inválido contra
+  `https://oauth2.googleapis.com/token`: la respuesta fue `invalid_grant` (400),
+  o sea que Google autenticó al cliente y recién después miró el `code`. El
+  control con un secreto falso devuelve `invalid_client` (401, "The provided
+  client secret is invalid"), así que la señal distingue de verdad.
+- **No es un cliente de tipo "TVs and Limited Input devices"**: el endpoint
+  `device/code` lo rechaza por tipo.
+- **El endpoint de autorización no sirve para verificar nada.** Devuelve 302 al
+  login incluso con un `client_id` inexistente y con una `redirect_uri` que no
+  está registrada (se probaron ambos controles): Google difiere toda la
+  validación al post-login. Cualquier "probé la URL y no dio error" es un falso
+  positivo.
+- **El cliente NO vive en el proyecto de Firebase.** El `client_id` lleva el
+  número de proyecto `855144098021`; `agentic-wallet-71314` es el `743241056894`.
+  Es válido —un cliente OAuth no tiene por qué ser del proyecto de Firebase— pero
+  decide **dónde** se configura el consent screen: en el proyecto `855144098021`,
+  no en el de Firebase.
+- **`Bolsillo-web-client` es un cliente nuevo, no el del server viejo.** Los dos
+  `client_id` comparten el número de proyecto pero difieren en el sufijo. El del
+  `.env` local sigue siendo el del flujo de escritorio y su `refresh_token`
+  sigue vivo (se verificó un `grant_type=refresh_token`: 200, scope
+  `gmail.readonly`). **Los dos pares no se mezclan**: el secreto de uno con el
+  `client_id` del otro da `invalid_client`. Por eso en el `.env` local las
+  variables del pivot llevan los nombres `WALLET_GMAIL_*` y conviven con las
+  `GMAIL_OAUTH_*` del server viejo sin pisarlas.
+
+**Lo que falta, y no lo puede hacer un agente:**
+
+1. **El proyecto está en plan Spark.** `firebase functions:secrets:set` falla con
+   "must be on the Blaze (pay-as-you-go) plan […] `secretmanager.googleapis.com`
+   can't be enabled until the upgrade is complete". Sin Blaze no hay Secret
+   Manager **ni Functions de 2a generación**, así que esto bloquea el deploy
+   entero, no sólo los secretos. Es el primer paso de la lista.
+2. **Confirmar en la Google Auth Platform del proyecto `855144098021`** que
+   `Bolsillo-web-client` es de tipo **Web application**. Por CLI sólo se pudo
+   descartar el tipo limited-input; no hay API pública que liste clientes OAuth,
+   y `gcloud` tampoco los expone.
+3. **Agregar la redirect URI exacta** a "Authorized redirect URIs" de ese
+   cliente:
+   `https://us-central1-agentic-wallet-71314.cloudfunctions.net/gmailAuthCallback`
+4. **Poner el consent screen en `User Type: Internal`** (§1.6, D1) — en el
+   proyecto `855144098021`, que es donde vive el cliente.
+5. **Cargar los dos secretos** una vez haya Blaze (los comandos de arriba).
+
+Con eso el flujo OAuth queda listo para desplegar. El código no espera nada más:
+`functions/.env.agentic-wallet-71314` ya tiene las tres variables públicas y
+`src/index.ts` ya declara los dos `defineSecret`.
 
 ### C.7.6 Tests
 
