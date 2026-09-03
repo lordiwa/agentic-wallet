@@ -132,7 +132,11 @@ describe("MCP server del wallet", () => {
         "onboarding_status",
         "query_transactions",
         "apply_rules",
+        "classify_counterparty",
+        "get_classify_progress",
+        "get_classify_queue",
         "heal_counterparties",
+        "silence_counterparty",
         "set_profile",
         "set_rule",
         "suggest_profile",
@@ -217,6 +221,75 @@ describe("MCP server del wallet", () => {
   it("apply_rules es idempotente: la segunda corrida no repisa nada", async () => {
     expect(parse(await client.callTool({ name: "apply_rules", arguments: {} })).updated).toBe(4);
     expect(parse(await client.callTool({ name: "apply_rules", arguments: {} })).updated).toBe(0);
+  });
+
+  describe("la cola de clasificacion (N1)", () => {
+    it("get_classify_queue agrupa por contraparte y ordena por plata", async () => {
+      const result = parse(await client.callTool({ name: "get_classify_queue", arguments: {} }));
+
+      // El reversado no entra a ningun total, asi que tampoco a la cola.
+      expect(result.groups.map((g: any) => g.pattern)).toEqual([
+        "mes anterior",
+        "veterinaria central",
+        "panaderia del barrio",
+      ]);
+      expect(result.groups[1]).toMatchObject({ count: 1, total: 30, months: 1, category: "otros" });
+    });
+
+    it("classify_counterparty escribe la regla y dice cuanto movio, y cuanto de este mes", async () => {
+      const result = parse(
+        await client.callTool({
+          name: "classify_counterparty",
+          arguments: { counterparty: "VETERINARIA CENTRAL", category: "mascota" },
+        })
+      );
+
+      expect(result).toMatchObject({
+        ok: true,
+        pattern: "veterinaria central",
+        reclassified: 1,
+        reclassified_this_month: 1,
+      });
+      // Y el gasto del mes ya lo reporta en la categoria nueva.
+      const spending = parse(await client.callTool({ name: "get_spending_by_category", arguments: {} }));
+      expect(spending.spending_by_category.mascota).toBe(30);
+    });
+
+    it("classify_counterparty falla en vez de escribir un patron mas largo que la contraparte", async () => {
+      const result = (await client.callTool({
+        name: "classify_counterparty",
+        arguments: { counterparty: "VETERINARIA CENTRAL SUCURSAL 2", category: "mascota" },
+      })) as { isError?: boolean };
+
+      expect(result.isError).toBe(true);
+      expect(db.prepare("SELECT COUNT(*) as c FROM category_rules").get()).toEqual({ c: 0 });
+    });
+
+    it("silence_counterparty saca la contraparte de la cola, y undo la devuelve", async () => {
+      await client.callTool({ name: "silence_counterparty", arguments: { counterparty: "MES ANTERIOR" } });
+      let queue = parse(await client.callTool({ name: "get_classify_queue", arguments: {} }));
+      expect(queue.groups.map((g: any) => g.pattern)).not.toContain("mes anterior");
+
+      await client.callTool({
+        name: "silence_counterparty",
+        arguments: { counterparty: "MES ANTERIOR", undo: true },
+      });
+      queue = parse(await client.callTool({ name: "get_classify_queue", arguments: {} }));
+      expect(queue.groups.map((g: any) => g.pattern)).toContain("mes anterior");
+    });
+
+    it("get_classify_progress mide en plata y no en filas", async () => {
+      const antes = parse(await client.callTool({ name: "get_classify_progress", arguments: {} }));
+      expect(antes).toMatchObject({ baseline_total: 119, covered_total: 0, groups: 3, done: false });
+
+      await client.callTool({
+        name: "classify_counterparty",
+        arguments: { counterparty: "MES ANTERIOR", category: "comida" },
+      });
+
+      const despues = parse(await client.callTool({ name: "get_classify_progress", arguments: {} }));
+      expect(despues).toMatchObject({ covered_total: 77, unclassified_total: 42, groups: 2 });
+    });
   });
 
   it("set_rule rechaza una categoria que no esta en el glosario", async () => {

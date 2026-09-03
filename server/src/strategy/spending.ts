@@ -30,26 +30,9 @@ export interface SpendingPeriodo {
  * (no zero-filled entries for the rest of the glossary).
  */
 export function spendingByCategory(db: Database.Database, periodo: SpendingPeriodo): Partial<Record<Category, number>> {
-  const rows = db
-    .prepare(
-      `SELECT type, counterparty, is_internal, amount FROM transactions
-       WHERE direction = 'out' AND ts >= @from AND ts < @to AND ${EXCLUDE_FROM_TOTALS_SQL}`
-    )
-    .all({ from: periodo.from.toISOString(), to: periodo.to.toISOString() }) as {
-    type: string;
-    counterparty: string | null;
-    is_internal: number;
-    amount: number;
-  }[];
-
-  const rules = listCategoryRules(db);
   const totalsCents = new Map<Category, number>();
-  for (const row of rows) {
-    const category = categorize(
-      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
-      rules
-    );
-    totalsCents.set(category, (totalsCents.get(category) ?? 0) + toCents(row.amount));
+  for (const row of categorizedSpendingRows(db, periodo)) {
+    totalsCents.set(row.category, (totalsCents.get(row.category) ?? 0) + toCents(row.amount));
   }
 
   const result: Partial<Record<Category, number>> = {};
@@ -57,4 +40,55 @@ export function spendingByCategory(db: Database.Database, periodo: SpendingPerio
     result[category] = fromCents(cents);
   }
   return result;
+}
+
+/** Un movimiento de gasto con su categoría ya recalculada. */
+export interface CategorizedSpendingRow {
+  id: number;
+  ts: string;
+  amount: number;
+  category: Category;
+}
+
+/**
+ * Las filas exactas que `spendingByCategory` suma, cada una con su categoría
+ * recalculada.
+ *
+ * Existe para que la **lista** de movimientos por categoría (H21) y la **barra**
+ * del gráfico no puedan discrepar: son la misma selección y el mismo recálculo,
+ * en un solo lugar. H21 estaba mal planteado en `docs/panel-viabilidad.md` como
+ * un `WHERE category = ?`, y ese filtro devuelve un conjunto distinto del que la
+ * barra contó — la barra recalcula con `categorize()` + reglas y la columna
+ * `category` puede estar vieja, sin backfill, o clasificada a mano. Tocar una
+ * barra que dice "salud 180" y ver una lista que suma otra cosa es la clase de
+ * incoherencia que hace que nadie vuelva a creerle al panel.
+ */
+export function categorizedSpendingRows(
+  db: Database.Database,
+  periodo: SpendingPeriodo
+): CategorizedSpendingRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, ts, type, counterparty, is_internal, amount FROM transactions
+       WHERE direction = 'out' AND ts >= @from AND ts < @to AND ${EXCLUDE_FROM_TOTALS_SQL}`
+    )
+    .all({ from: periodo.from.toISOString(), to: periodo.to.toISOString() }) as {
+    id: number;
+    ts: string;
+    type: string;
+    counterparty: string | null;
+    is_internal: number;
+    amount: number;
+  }[];
+
+  const rules = listCategoryRules(db);
+  return rows.map((row) => ({
+    id: row.id,
+    ts: row.ts,
+    amount: row.amount,
+    category: categorize(
+      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
+      rules
+    ),
+  }));
 }

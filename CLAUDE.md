@@ -28,6 +28,7 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 | Cómo se leen y persisten los correos | `server/src/ingest/pipeline.ts` |
 | Reversos, duplicados, transferencias internas | `server/src/rules/reconcile.ts` |
 | Categorías de gasto | `server/src/category/` |
+| La cola de clasificación, su escritor y el silenciador | `server/src/classify/` — ver `docs/plan-final-mvp.md` §N1 |
 | Saldo, sueldo, deudas, colchón, calendario | `server/src/strategy/` |
 | Qué significa "hoy" / "este mes" | `server/src/strategy/dates.ts` |
 | El chat sobre el historial | `server/src/chat/` |

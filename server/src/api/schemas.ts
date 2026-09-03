@@ -4,6 +4,7 @@
  * 400 JSON response in the route handler, not a broken query.
  */
 import { z } from "zod";
+import { CATEGORIES } from "../category/categorize.js";
 import { REVIEW_ACTIONS } from "../review/resolve.js";
 
 // Mirrors parser/types.ts TransactionType (spec catalog 5.1). Duplicated
@@ -41,9 +42,56 @@ export const transactionsQuerySchema = z.object({
   include_reversed: boolFlag,
   include_internal: boolFlag,
   include_discarded: boolFlag,
+  /**
+   * La categoría **recalculada** (H21): se llega acá tocando una barra del
+   * gráfico del Resumen, y la lista tiene que devolver las filas que esa barra
+   * contó. No es un `WHERE category = ?` — ver `classify/movements.ts`. Cuando
+   * viene, `from`/`to` acotan el mismo período que dibujó la barra y el resto de
+   * los filtros no aplica (la barra ya es sólo gasto contable).
+   */
+  category: z.enum(CATEGORIES).optional(),
 });
 
 export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
+
+/**
+ * POST /classify — la respuesta a "qué es esto".
+ *
+ * `counterparty` se valida acá sólo en forma. **Que tenga que existir en el
+ * ledger lo decide el motor** (`classify/apply.ts`), no este schema: es la regla
+ * que hace imposible la trampa del patrón más largo que la contraparte, y vive
+ * en un solo lugar.
+ */
+export const classifyBodySchema = z.object({
+  counterparty: z.string().min(1),
+  category: z.enum(CATEGORIES),
+});
+
+/** POST /classify/silence y DELETE /classify/silence/:counterparty (H33, M5). */
+export const silenceBodySchema = z.object({
+  counterparty: z.string().min(1),
+});
+
+/**
+ * GET /classify/queue. `transaction_ids` llega como lista separada por comas
+ * (el lote de un sync, D7-b) porque es una query string, no un body.
+ */
+export const classifyQueueQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  transaction_ids: z
+    .string()
+    .min(1)
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined) return undefined;
+      const ids = value.split(",").map((part) => Number(part.trim()));
+      if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "transaction_ids must be positive integers" });
+        return z.NEVER;
+      }
+      return ids;
+    }),
+});
 
 /** :id path param for POST /debts/:id/paid -- a positive integer, or 400. */
 export const debtIdParamSchema = z.object({

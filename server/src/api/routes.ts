@@ -37,12 +37,24 @@ import { getSyncProgress } from "../db/sync-progress.js";
 import { listReviewResolutions, resolveReview } from "../review/resolve.js";
 import {
   bufferBodySchema,
+  classifyBodySchema,
+  classifyQueueQuerySchema,
   debtIdParamSchema,
   projectionQuerySchema,
   reviewIdParamSchema,
   reviewResolveBodySchema,
+  silenceBodySchema,
   transactionsQuerySchema,
 } from "./schemas.js";
+import {
+  classifyCounterparty,
+  classifyProgress,
+  classifyQueue,
+  listSilencedCounterparties,
+  movementsByCategory,
+  silenceCounterparty,
+  unsilenceCounterparty,
+} from "../classify/index.js";
 import {
   colchonStatus,
   localMonthRange,
@@ -133,6 +145,27 @@ export function createApiRouter(getDb: () => Database.Database): Router {
       return;
     }
     const q = parsed.data;
+
+    // Con `category` la lista es la de una barra del gráfico, y esa la arma el
+    // motor recalculando (H21) — incluido qué período significa una barra sin
+    // fechas.
+    if (q.category) {
+      const result = movementsByCategory(getDb(), {
+        category: q.category,
+        from: q.from ? new Date(q.from) : undefined,
+        to: q.to ? new Date(q.to) : undefined,
+        limit: q.limit,
+        offset: q.offset,
+      });
+      res.json({
+        transactions: result.transactions,
+        count: result.transactions.length,
+        total: result.total,
+        amount: result.amount,
+      });
+      return;
+    }
+
     const rows = queryTransactions(getDb(), {
       from: q.from,
       to: q.to,
@@ -193,6 +226,79 @@ export function createApiRouter(getDb: () => Database.Database): Router {
   router.get("/review/resolutions", (_req, res) => {
     const resolutions = listReviewResolutions(getDb());
     res.json({ resolutions, count: resolutions.length });
+  });
+
+  /**
+   * La cola de clasificación (H32): **grupos, no filas**. `?transaction_ids=`
+   * la acota al lote de un sync, que es a donde lleva el aviso post-sync (D7-b).
+   */
+  router.get("/classify/queue", (req, res) => {
+    const parsed = classifyQueueQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid query parameters", details: parsed.error.flatten() });
+      return;
+    }
+    const groups = classifyQueue(getDb(), {
+      limit: parsed.data.limit,
+      transactionIds: parsed.data.transaction_ids,
+    });
+    res.json({ groups, count: groups.length });
+  });
+
+  /** El progreso por plata y el criterio de terminado de M1 (H35). */
+  router.get("/classify/progress", (_req, res) => {
+    res.json(classifyProgress(getDb()));
+  });
+
+  /**
+   * Responder "qué es esto" (H28). Toda la decisión vive en
+   * `classify/apply.ts`; acá sólo se valida la forma y se traduce el error
+   * tipado del motor a un status: una contraparte que no existe en el ledger es
+   * una afirmación del cliente que el motor rechaza — 400, no 404, igual que en
+   * `POST /review/:id/resolve`.
+   */
+  router.post("/classify", (req, res) => {
+    const body = classifyBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "invalid classify body", details: body.error.flatten() });
+      return;
+    }
+    const result = classifyCounterparty(getDb(), body.data);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json(result);
+  });
+
+  /** "No me preguntes más por esta" (H33, M5). */
+  router.post("/classify/silence", (req, res) => {
+    const body = silenceBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "invalid silence body", details: body.error.flatten() });
+      return;
+    }
+    if (!silenceCounterparty(getDb(), body.data.counterparty)) {
+      res.status(400).json({ error: "empty_pattern" });
+      return;
+    }
+    res.json({ ok: true, counterparty: body.data.counterparty });
+  });
+
+  /** Devuelve a la cola algo silenciado por error. */
+  router.delete("/classify/silence", (req, res) => {
+    const body = silenceBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "invalid silence body", details: body.error.flatten() });
+      return;
+    }
+    const removed = unsilenceCounterparty(getDb(), body.data.counterparty);
+    res.json({ ok: true, changed: removed });
+  });
+
+  router.get("/classify/silenced", (_req, res) => {
+    const silenced = listSilencedCounterparties(getDb());
+    res.json({ silenced, count: silenced.length });
   });
 
   router.get("/overview", (_req, res) => {

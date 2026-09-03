@@ -215,6 +215,31 @@ CREATE TABLE IF NOT EXISTS category_rules (
 `;
 
 /**
+ * Contrapartes que el usuario sacó de la cola de clasificación a mano: el
+ * *"no me preguntes más por esta"* (H33). Ver `server/src/classify/silenced.ts`.
+ *
+ * Existe porque una contraparte puede tener dos verdades — la misma persona que
+ * un mes cobra una consulta y otro devuelve un préstamo — y ninguna categoría es
+ * la correcta para todas sus filas. Sin esta tabla esa contraparte vuelve a la
+ * cola para siempre, la cola nunca cierra, y una pantalla que celebra el vacío
+ * miente. Es la única salida honesta que la v1 construye (H29, la excepción por
+ * fila, quedó explícitamente fuera).
+ *
+ * La clave es el patrón **normalizado** (`toRulePattern`), igual que en
+ * `category_rules`: silenciar "Farmacía Sur" tiene que silenciar también
+ * "FARMACIA SUR", que es el mismo comercio escrito por otro correo.
+ * `counterparty` guarda la grafía cruda con la que se silenció, para poder
+ * mostrar la lista sin volver a buscarla en el ledger.
+ */
+const CREATE_CLASSIFY_SILENCED = `
+CREATE TABLE IF NOT EXISTS classify_silenced (
+  pattern TEXT PRIMARY KEY,
+  counterparty TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
+/**
  * Auditoría de la cola de revisión: qué fila salió de `needs_review`, cómo,
  * por quién y cuándo. Ver `server/src/review/resolve.ts`.
  *
@@ -269,7 +294,7 @@ function addColumnIfMissing(db: Database.Database, table: string, column: string
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-/** Creates the 16 tables + indexes if they don't already exist. Safe to call on every startup. */
+/** Creates the 17 tables + indexes if they don't already exist. Safe to call on every startup. */
 export function migrate(db: Database.Database): void {
   db.exec(CREATE_TRANSACTIONS);
   db.exec(CREATE_STATEMENTS);
@@ -286,6 +311,7 @@ export function migrate(db: Database.Database): void {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  db.exec(CREATE_CLASSIFY_SILENCED);
   db.exec(CREATE_REVIEW_RESOLUTIONS);
   // Bases creadas antes de que el parser guardara el nombre del titular.
   addColumnIfMissing(db, "transactions", "account_holder", "TEXT");

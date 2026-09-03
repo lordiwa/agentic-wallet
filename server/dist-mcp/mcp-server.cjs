@@ -48936,6 +48936,13 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at TEXT
 );
 `;
+var CREATE_CLASSIFY_SILENCED = `
+CREATE TABLE IF NOT EXISTS classify_silenced (
+  pattern TEXT PRIMARY KEY,
+  counterparty TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
 var CREATE_REVIEW_RESOLUTIONS = `
 CREATE TABLE IF NOT EXISTS review_resolutions (
   id INTEGER PRIMARY KEY,
@@ -48978,6 +48985,7 @@ function migrate(db) {
   db.exec(CREATE_METAS);
   db.exec(CREATE_METAS_AVANCE);
   db.exec(CREATE_CATEGORY_RULES);
+  db.exec(CREATE_CLASSIFY_SILENCED);
   db.exec(CREATE_REVIEW_RESOLUTIONS);
   addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
   addColumnIfMissing(db, "transactions", "is_discarded", "INTEGER NOT NULL DEFAULT 0");
@@ -49352,9 +49360,6 @@ async function reclassifyTransactions(db, { titular }) {
   });
 }
 
-// src/api/routes.ts
-var import_express = __toESM(require_express2(), 1);
-
 // src/strategy/money.ts
 function toCents(amount) {
   return Math.round(amount * 100);
@@ -49362,6 +49367,272 @@ function toCents(amount) {
 function fromCents(cents) {
   return cents / 100;
 }
+
+// src/strategy/totals.ts
+var EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND is_discarded = 0 AND type != 'reverso'";
+
+// src/classify/silenced.ts
+function silenceCounterparty(db, rawCounterparty) {
+  const pattern = toRulePattern(rawCounterparty);
+  if (pattern === "") return false;
+  db.prepare(
+    `INSERT INTO classify_silenced (pattern, counterparty, created_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(pattern) DO UPDATE SET counterparty = excluded.counterparty`
+  ).run(pattern, rawCounterparty.trim());
+  return true;
+}
+function unsilenceCounterparty(db, rawCounterparty) {
+  const pattern = toRulePattern(rawCounterparty);
+  if (pattern === "") return false;
+  return db.prepare("DELETE FROM classify_silenced WHERE pattern = ?").run(pattern).changes > 0;
+}
+function listSilencedCounterparties(db) {
+  return db.prepare("SELECT pattern, counterparty, created_at FROM classify_silenced ORDER BY created_at DESC, pattern ASC").all();
+}
+function silencedPatterns(db) {
+  const rows = db.prepare("SELECT pattern FROM classify_silenced").all();
+  return new Set(rows.map((row) => row.pattern));
+}
+
+// src/classify/queue.ts
+var UNCLASSIFIED_CATEGORIES = /* @__PURE__ */ new Set([
+  "otros",
+  "transferencia_persona"
+]);
+function selectClassifiableRows(db, transactionIds) {
+  if (transactionIds !== void 0 && transactionIds.length === 0) return [];
+  const idFilter = transactionIds === void 0 ? "" : ` AND id IN (${transactionIds.map(() => "?").join(", ")})`;
+  return db.prepare(
+    `SELECT id, ts, type, counterparty, is_internal, amount FROM transactions
+        WHERE direction = 'out'
+          AND counterparty IS NOT NULL AND TRIM(counterparty) != ''
+          AND ${EXCLUDE_FROM_TOTALS_SQL}${idFilter}`
+  ).all(...transactionIds ?? []);
+}
+function groupUnclassified(rows, rules, silenced3 = /* @__PURE__ */ new Set()) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const category = categorize(
+      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
+      rules
+    );
+    if (!UNCLASSIFIED_CATEGORIES.has(category)) continue;
+    const pattern = toRulePattern(row.counterparty ?? "");
+    if (pattern === "" || silenced3.has(pattern)) continue;
+    const existing = groups.get(pattern);
+    const month = localDayKey(row.ts)?.slice(0, 7);
+    if (!existing) {
+      groups.set(pattern, {
+        pattern,
+        counterparty: (row.counterparty ?? "").trim(),
+        count: 1,
+        cents: toCents(row.amount),
+        months: new Set(month ? [month] : []),
+        category,
+        last_ts: row.ts
+      });
+      continue;
+    }
+    existing.count += 1;
+    existing.cents += toCents(row.amount);
+    if (month) existing.months.add(month);
+    if (row.ts > existing.last_ts) {
+      existing.last_ts = row.ts;
+      existing.counterparty = (row.counterparty ?? "").trim();
+      existing.category = category;
+    }
+  }
+  return [...groups.values()].map((group) => ({
+    pattern: group.pattern,
+    counterparty: group.counterparty,
+    count: group.count,
+    total: fromCents(group.cents),
+    months: group.months.size,
+    category: group.category,
+    last_ts: group.last_ts
+  })).sort((a, b) => b.total - a.total || b.count - a.count || a.pattern.localeCompare(b.pattern));
+}
+function classifyQueue(db, options = {}) {
+  const rows = selectClassifiableRows(db, options.transactionIds);
+  const groups = groupUnclassified(rows, listCategoryRules(db), silencedPatterns(db));
+  return options.limit === void 0 ? groups : groups.slice(0, options.limit);
+}
+
+// src/db/telemetry.ts
+var import_node_crypto2 = require("node:crypto");
+function silenced2() {
+  const raw = process.env.WALLET_TELEMETRY_SILENT;
+  return raw === "1" || raw === "true";
+}
+function emit2(level, event, fields) {
+  const line = JSON.stringify({ level, event, ...fields });
+  if (level === "error") console.error(line);
+  else if (!silenced2()) console.log(line);
+}
+function withSpanSync(name, attributes, fn) {
+  const span = { trace_id: (0, import_node_crypto2.randomUUID)(), span_id: (0, import_node_crypto2.randomUUID)() };
+  const startedAt = Date.now();
+  emit2("info", `${name}.start`, { ...span, ...attributes });
+  try {
+    const result = fn(span);
+    emit2("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
+    return result;
+  } catch (error2) {
+    emit2("error", `${name}.error`, {
+      ...span,
+      duration_ms: Date.now() - startedAt,
+      error: error2 instanceof Error ? error2.message : String(error2)
+    });
+    throw error2;
+  }
+}
+function logInfo(event, fields) {
+  emit2("info", event, fields);
+}
+function emitMetric2(name, attributes) {
+  emit2("info", `metric.${name}`, attributes);
+}
+
+// src/classify/apply.ts
+function resolveLedgerCounterparty(db, raw) {
+  const wanted = toRulePattern(raw);
+  if (wanted === "") return null;
+  const rows = db.prepare(
+    `SELECT counterparty, MAX(ts) as ts FROM transactions
+        WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''
+        GROUP BY counterparty
+        ORDER BY ts DESC`
+  ).all();
+  for (const row of rows) {
+    if (toRulePattern(row.counterparty) === wanted) return row.counterparty.trim();
+  }
+  return null;
+}
+function rowsMatching(db, pattern) {
+  const rows = db.prepare(
+    `SELECT id, ts, type, counterparty, is_internal, category FROM transactions
+        WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''`
+  ).all();
+  return rows.filter((row) => toRulePattern(row.counterparty).includes(pattern));
+}
+function recategorize(row, rules) {
+  return categorize({ type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 }, rules);
+}
+function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
+  return withSpanSync("classify.counterparty", { category: request.category }, () => {
+    if (toRulePattern(request.counterparty) === "") return { ok: false, error: "empty_pattern" };
+    const counterparty = resolveLedgerCounterparty(db, request.counterparty);
+    if (counterparty === null) return { ok: false, error: "counterparty_not_found" };
+    const pattern = toRulePattern(counterparty);
+    const before = listCategoryRules(db);
+    const candidates = rowsMatching(db, pattern);
+    const previous = new Map(candidates.map((row) => [row.id, recategorize(row, before)]));
+    const written = upsertCategoryRule(db, counterparty, request.category);
+    if (!written) return { ok: false, error: "empty_pattern" };
+    const after = listCategoryRules(db);
+    const { from, to } = localMonthRange(now);
+    const updateCategory = db.prepare("UPDATE transactions SET category = @category WHERE id = @id");
+    let reclassified = 0;
+    let reclassifiedThisMonth = 0;
+    db.transaction(() => {
+      for (const row of candidates) {
+        const next = recategorize(row, after);
+        if (next === previous.get(row.id)) continue;
+        updateCategory.run({ id: row.id, category: next });
+        reclassified += 1;
+        const ts = new Date(row.ts).getTime();
+        if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;
+      }
+    })();
+    emitMetric2("classify.rule_written", {
+      category: request.category,
+      reclassified,
+      reclassified_this_month: reclassifiedThisMonth
+    });
+    return {
+      ok: true,
+      pattern,
+      counterparty,
+      category: request.category,
+      reclassified,
+      reclassified_this_month: reclassifiedThisMonth
+    };
+  });
+}
+
+// src/classify/progress.ts
+var MONEY_TARGET_RATIO = 0.8;
+function totalCents(groups) {
+  return groups.reduce((sum, group) => sum + toCents(group.total), 0);
+}
+function ratio(part, whole) {
+  if (whole <= 0) return 0;
+  return Math.round(part / whole * 1e4) / 1e4;
+}
+function classifyProgress(db) {
+  const rows = selectClassifiableRows(db);
+  const remaining = groupUnclassified(rows, listCategoryRules(db), silencedPatterns(db));
+  const baseline = groupUnclassified(rows, []);
+  const spendingCents = rows.reduce((sum, row) => sum + toCents(row.amount), 0);
+  const baselineCents = totalCents(baseline);
+  const remainingCents = totalCents(remaining);
+  const coveredCents = Math.max(0, baselineCents - remainingCents);
+  const neededCents = Math.max(0, Math.ceil(MONEY_TARGET_RATIO * baselineCents) - coveredCents);
+  let answers = 0;
+  let accumulated = 0;
+  for (const group of remaining) {
+    if (accumulated >= neededCents) break;
+    accumulated += toCents(group.total);
+    answers += 1;
+  }
+  return {
+    spending_total: fromCents(spendingCents),
+    baseline_total: fromCents(baselineCents),
+    covered_total: fromCents(coveredCents),
+    covered_ratio: baselineCents === 0 ? 1 : ratio(coveredCents, baselineCents),
+    unclassified_total: fromCents(remainingCents),
+    unclassified_ratio: ratio(remainingCents, spendingCents),
+    groups: remaining.length,
+    transactions: remaining.reduce((sum, group) => sum + group.count, 0),
+    target_ratio: MONEY_TARGET_RATIO,
+    answers_to_target: answers,
+    amount_to_target: fromCents(accumulated),
+    done: baselineCents === 0 || coveredCents / baselineCents >= MONEY_TARGET_RATIO
+  };
+}
+
+// src/strategy/spending.ts
+function spendingByCategory(db, periodo) {
+  const totalsCents = /* @__PURE__ */ new Map();
+  for (const row of categorizedSpendingRows(db, periodo)) {
+    totalsCents.set(row.category, (totalsCents.get(row.category) ?? 0) + toCents(row.amount));
+  }
+  const result = {};
+  for (const [category, cents] of totalsCents) {
+    result[category] = fromCents(cents);
+  }
+  return result;
+}
+function categorizedSpendingRows(db, periodo) {
+  const rows = db.prepare(
+    `SELECT id, ts, type, counterparty, is_internal, amount FROM transactions
+       WHERE direction = 'out' AND ts >= @from AND ts < @to AND ${EXCLUDE_FROM_TOTALS_SQL}`
+  ).all({ from: periodo.from.toISOString(), to: periodo.to.toISOString() });
+  const rules = listCategoryRules(db);
+  return rows.map((row) => ({
+    id: row.id,
+    ts: row.ts,
+    amount: row.amount,
+    category: categorize(
+      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
+      rules
+    )
+  }));
+}
+
+// src/api/routes.ts
+var import_express = __toESM(require_express2(), 1);
 
 // src/seed/default-config.ts
 var DEFAULT_STRATEGY_CONFIG = {
@@ -49398,41 +49669,6 @@ var DEFAULT_STRATEGY_CONFIG = {
     at: "1970-01-01"
   }
 };
-
-// src/db/telemetry.ts
-var import_node_crypto2 = require("node:crypto");
-function silenced2() {
-  const raw = process.env.WALLET_TELEMETRY_SILENT;
-  return raw === "1" || raw === "true";
-}
-function emit2(level, event, fields) {
-  const line = JSON.stringify({ level, event, ...fields });
-  if (level === "error") console.error(line);
-  else if (!silenced2()) console.log(line);
-}
-function withSpanSync(name, attributes, fn) {
-  const span = { trace_id: (0, import_node_crypto2.randomUUID)(), span_id: (0, import_node_crypto2.randomUUID)() };
-  const startedAt = Date.now();
-  emit2("info", `${name}.start`, { ...span, ...attributes });
-  try {
-    const result = fn(span);
-    emit2("info", `${name}.success`, { ...span, duration_ms: Date.now() - startedAt });
-    return result;
-  } catch (error2) {
-    emit2("error", `${name}.error`, {
-      ...span,
-      duration_ms: Date.now() - startedAt,
-      error: error2 instanceof Error ? error2.message : String(error2)
-    });
-    throw error2;
-  }
-}
-function logInfo(event, fields) {
-  emit2("info", event, fields);
-}
-function emitMetric2(name, attributes) {
-  emit2("info", `metric.${name}`, attributes);
-}
 
 // src/db/strategy-config.ts
 var financeNumber = external_exports.number().finite();
@@ -49580,9 +49816,6 @@ function paydaysBetween(db, from, until) {
   return paydaysAfter(db, from, count).filter((date3) => date3.getTime() <= until.getTime());
 }
 
-// src/strategy/totals.ts
-var EXCLUDE_FROM_TOTALS_SQL = "is_internal = 0 AND is_reversed = 0 AND needs_review = 0 AND is_discarded = 0 AND type != 'reverso'";
-
 // src/strategy/card.ts
 function latestStatement(db) {
   return db.prepare("SELECT * FROM statements ORDER BY issue_date DESC, id DESC LIMIT 1").get();
@@ -49661,18 +49894,18 @@ function esencialesPromedioDiarioCents(db) {
     `SELECT ts, amount FROM transactions
        WHERE type IN (${placeholders}) AND direction = 'out' AND ${EXCLUDE_FROM_TOTALS_SQL}`
   ).all(params);
-  let totalCents = 0;
+  let totalCents2 = 0;
   let minTs = null;
   let maxTs = null;
   for (const row of rows) {
     if (localDayKey(row.ts) === null) continue;
-    totalCents += toCents(row.amount);
+    totalCents2 += toCents(row.amount);
     if (minTs === null || row.ts < minTs) minTs = row.ts;
     if (maxTs === null || row.ts > maxTs) maxTs = row.ts;
   }
   if (minTs === null || maxTs === null) return 0;
   const spanDays = Math.max(1, daysBetween(new Date(minTs), new Date(maxTs)) + 1);
-  return Math.round(totalCents / spanDays);
+  return Math.round(totalCents2 / spanDays);
 }
 function safeToSpendHoy(db, now = /* @__PURE__ */ new Date()) {
   const nextPay = nextPayday(db, now);
@@ -49700,45 +49933,23 @@ function transferenciasMes(db, now = /* @__PURE__ */ new Date()) {
        WHERE type = 'transferencia' AND is_internal = 0 AND direction = 'out'
          AND ts >= @from AND ts < @to AND ${EXCLUDE_FROM_TOTALS_SQL}`
   ).all({ from: from.toISOString(), to: to.toISOString() });
-  let totalCents = 0;
+  let totalCents2 = 0;
   const byCounterparty = /* @__PURE__ */ new Map();
   for (const row of rows) {
     const cents = toCents(row.amount);
-    totalCents += cents;
+    totalCents2 += cents;
     const key = row.counterparty ?? "otros";
     byCounterparty.set(key, (byCounterparty.get(key) ?? 0) + cents);
   }
   const topContrapartes = Array.from(byCounterparty.entries()).map(([counterparty, cents]) => ({ counterparty, total: fromCents(cents) })).sort((a, b) => b.total - a.total).slice(0, TOP_COUNTERPARTIES_LIMIT);
   const topeCents = toCents(config2.topeTransferenciasMensual);
   return {
-    total: fromCents(totalCents),
+    total: fromCents(totalCents2),
     tope: fromCents(topeCents),
-    restante: fromCents(topeCents - totalCents),
-    sobrepasado: totalCents > topeCents,
+    restante: fromCents(topeCents - totalCents2),
+    sobrepasado: totalCents2 > topeCents,
     topContrapartes
   };
-}
-
-// src/strategy/spending.ts
-function spendingByCategory(db, periodo) {
-  const rows = db.prepare(
-    `SELECT type, counterparty, is_internal, amount FROM transactions
-       WHERE direction = 'out' AND ts >= @from AND ts < @to AND ${EXCLUDE_FROM_TOTALS_SQL}`
-  ).all({ from: periodo.from.toISOString(), to: periodo.to.toISOString() });
-  const rules = listCategoryRules(db);
-  const totalsCents = /* @__PURE__ */ new Map();
-  for (const row of rows) {
-    const category = categorize(
-      { type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 },
-      rules
-    );
-    totalsCents.set(category, (totalsCents.get(category) ?? 0) + toCents(row.amount));
-  }
-  const result = {};
-  for (const [category, cents] of totalsCents) {
-    result[category] = fromCents(cents);
-  }
-  return result;
 }
 
 // src/api/queries.ts
@@ -50063,7 +50274,34 @@ var transactionsQuerySchema = external_exports.object({
   offset: external_exports.coerce.number().int().min(0).optional(),
   include_reversed: boolFlag,
   include_internal: boolFlag,
-  include_discarded: boolFlag
+  include_discarded: boolFlag,
+  /**
+   * La categoría **recalculada** (H21): se llega acá tocando una barra del
+   * gráfico del Resumen, y la lista tiene que devolver las filas que esa barra
+   * contó. No es un `WHERE category = ?` — ver `classify/movements.ts`. Cuando
+   * viene, `from`/`to` acotan el mismo período que dibujó la barra y el resto de
+   * los filtros no aplica (la barra ya es sólo gasto contable).
+   */
+  category: external_exports.enum(CATEGORIES).optional()
+});
+var classifyBodySchema = external_exports.object({
+  counterparty: external_exports.string().min(1),
+  category: external_exports.enum(CATEGORIES)
+});
+var silenceBodySchema = external_exports.object({
+  counterparty: external_exports.string().min(1)
+});
+var classifyQueueQuerySchema = external_exports.object({
+  limit: external_exports.coerce.number().int().positive().max(500).optional(),
+  transaction_ids: external_exports.string().min(1).optional().transform((value, ctx) => {
+    if (value === void 0) return void 0;
+    const ids = value.split(",").map((part) => Number(part.trim()));
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "transaction_ids must be positive integers" });
+      return external_exports.NEVER;
+    }
+    return ids;
+  })
 });
 var debtIdParamSchema = external_exports.object({
   id: external_exports.coerce.number().int().positive()
@@ -51729,6 +51967,68 @@ function createWalletMcpServer(deps) {
       const saved = upsertCategoryRule(deps.getDb(), pattern, category);
       if (!saved) throw new Error("set_rule: el patron queda vacio al normalizarlo; da un texto con contenido.");
       return json({ ok: true, pattern, category });
+    }
+  );
+  server.registerTool(
+    "get_classify_queue",
+    {
+      title: "Cola de clasificacion, agrupada por comercio",
+      description: "Los movimientos de gasto cuya categoria RECALCULADA sigue siendo un fallback ('otros' o 'transferencia_persona'), agrupados por CONTRAPARTE y ordenados por plata descendente. Cada grupo trae cuantos movimientos tiene, cuanta plata mueve y en cuantos meses distintos aparece: con eso alcanza para preguntarle al humano UNA vez por comercio en vez de una vez por fila. Responde con `classify_counterparty`. No lee la columna `category` \u2014 lee lo mismo que el grafico del Resumen.",
+      inputSchema: {
+        limit: external_exports.number().int().min(1).max(500).optional().describe("Tope de grupos, del que mas plata mueve al que menos"),
+        transaction_ids: external_exports.array(external_exports.number().int().positive()).optional().describe("Acota la cola a estos movimientos, p.ej. los que entraron en un sync")
+      }
+    },
+    async ({ limit, transaction_ids }) => {
+      const groups = classifyQueue(deps.getDb(), { limit, transactionIds: transaction_ids });
+      return json({ groups, count: groups.length });
+    }
+  );
+  server.registerTool(
+    "get_classify_progress",
+    {
+      title: "Cuanto falta de la cola de clasificacion, medido en plata",
+      description: "Cuanta plata sigue sin clasificar, que porcentaje de la que habia al principio ya esta cubierta, y cuantas respuestas mas hacen falta para llegar al 80 %. El criterio de terminado es ESE 80 % de la plata, no cero filas: con decenas de comercios de un solo movimiento, cero no es un estado alcanzable. La plata de un comercio silenciado cuenta como cubierta \u2014 la pregunta quedo cerrada.",
+      inputSchema: {}
+    },
+    async () => json(classifyProgress(deps.getDb()))
+  );
+  server.registerTool(
+    "classify_counterparty",
+    {
+      title: "Decir que es un comercio de la cola",
+      description: "Responde 'que es esto' por UN comercio: escribe una regla de categoria y devuelve cuantos movimientos quedaron reclasificados y cuantos de ellos son del mes en curso (el grafico del Resumen es solo del mes en curso, asi que sin ese segundo numero no se puede decir por que una barra no se movio). `counterparty` tiene que ser una contraparte que EXISTE en el ledger, tal como la devuelve `get_classify_queue`: el patron de la regla se deriva de la fila real, y por eso es imposible escribir un patron mas largo que la contraparte, que nunca matchearia nada. Para un patron ancho a proposito ('farmacia' para todas las farmacias) usa `set_rule`.",
+      inputSchema: {
+        counterparty: external_exports.string().min(1).describe("La contraparte tal cual la devuelve get_classify_queue"),
+        category: external_exports.enum(CATEGORIES)
+      }
+    },
+    async ({ counterparty, category }) => {
+      const result = classifyCounterparty(deps.getDb(), { counterparty, category }, deps.now());
+      if (!result.ok) throw new Error(`classify_counterparty: ${result.error}`);
+      return json(result);
+    }
+  );
+  server.registerTool(
+    "silence_counterparty",
+    {
+      title: "No preguntar mas por este comercio",
+      description: "Saca una contraparte de la cola de clasificacion para siempre, sin escribir ninguna categoria. Es la salida honesta para las contrapartes que tienen dos verdades (la misma persona que un mes cobra una consulta y otro devuelve un prestamo): ninguna categoria seria correcta para todas sus filas. Sin esto esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola.",
+      inputSchema: {
+        counterparty: external_exports.string().min(1),
+        undo: external_exports.boolean().optional().describe("Devuelve a la cola algo silenciado por error. Default false.")
+      }
+    },
+    async ({ counterparty, undo }) => {
+      const db = deps.getDb();
+      if (undo) {
+        const changed = unsilenceCounterparty(db, counterparty);
+        return json({ ok: true, silenced: false, changed });
+      }
+      if (!silenceCounterparty(db, counterparty)) {
+        throw new Error("silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido.");
+      }
+      return json({ ok: true, silenced: true, count: listSilencedCounterparties(db).length });
     }
   );
   server.registerTool(

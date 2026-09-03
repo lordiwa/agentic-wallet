@@ -30,6 +30,10 @@ tiene tests. Si un número no cuadra, el bug está en `strategy/` o en
 | `set_rule` | Asocia un comercio a una categoría | `category/rules-repository.ts` |
 | `apply_rules` | Aplica las reglas al historial ya sincronizado | `category/backfill.ts` (`backfillCategories`) |
 | `heal_counterparties` | Rellena contrapartes faltantes releyendo el correo original | `ingest/` (`healCounterparties`) |
+| `get_classify_queue` | La cola de clasificación, agrupada por contraparte | `classify/queue.ts` (`classifyQueue`) |
+| `classify_counterparty` | Responde "qué es esto": escribe una regla y dice qué movió | `classify/apply.ts` |
+| `silence_counterparty` | "No preguntarme más por esta" | `classify/silenced.ts` |
+| `get_classify_progress` | Cuánta plata falta clasificar y cuántas respuestas para el 80 % | `classify/progress.ts` |
 
 Todas devuelven JSON. Las de lectura excluyen por defecto reversos,
 transferencias internas y filas en `needs_review` — que es lo correcto para
@@ -47,6 +51,33 @@ ledger, la sugerencia viene en `null` en vez de una cifra inventada.
 sincronizado se recategoriza con `apply_rules` (el equivalente MCP de
 `npm run onboard -- --backfill`). Es idempotente y nunca repisa una categoría ya
 asignada, así que se puede llamar después de cada regla sin miedo.
+
+### La cola de clasificación
+
+`get_classify_queue` devuelve **grupos, no filas**: sobre un ledger real son 334
+movimientos en 151 contrapartes, y preguntar por fila es preguntar el doble de
+veces por lo mismo. La categoría que mira es la **recalculada** (`categorize()` +
+las reglas), la misma que reporta `get_spending_by_category` — no la columna
+`category`, que puede estar vieja.
+
+`classify_counterparty` es el escritor de esa cola y la diferencia con `set_rule`
+importa: **el patrón sale de la contraparte real del ledger**, no del texto que
+llega. Un nombre más largo que la contraparte —el clásico "FARMACIA LIMA
+SUCURSAL 3" contra un ledger que dice "FARMACIA LIMA"— produce una regla que se
+guarda bien y no clasifica una sola fila, porque el patrón se busca *dentro* de
+la contraparte. Por esta tool eso es imposible: si el nombre no existe tal cual,
+falla y no escribe nada. Para un patrón ancho a propósito (`farmacia` para todas
+las farmacias) está `set_rule`, que es explícito sobre lo que hace.
+
+`silence_counterparty` es la salida para las contrapartes que no tienen una sola
+verdad —la misma persona que un mes cobra una consulta y otro devuelve un
+préstamo—: sale de la cola sin escribir ninguna categoría. Su plata cuenta como
+*cubierta* en `get_classify_progress`, porque la pregunta quedó cerrada.
+
+`get_classify_progress` mide en **plata, no en filas**, y su criterio de
+terminado es el 80 % de la plata que había que clasificar: con decenas de
+comercios de un solo movimiento, "cero filas" no es un estado alcanzable y
+"cubriste el 80 % de tu plata" sí.
 
 Ojo con `sueldo.diasPago`: el motor lee **ventanas**, no días sueltos.
 `["15-15", "30-30"]` es "el 15 y el 30", `["18-20"]` es "entre el 18 y el 20",

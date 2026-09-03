@@ -1,0 +1,181 @@
+/**
+ * El escritor de la cola (H28) — *"qué es esto"* responde con **una regla**.
+ *
+ * Es el único escritor de categoría del MVP, y es el motivo por el que la
+ * decisión **M4** puede eliminar el editor de reglas sin perder nada: escribe
+ * exactamente la misma fila de `category_rules` que el editor escribiría a mano,
+ * con una diferencia que no es cosmética.
+ *
+ * **El patrón se deriva de la contraparte REAL del ledger, nunca del texto que
+ * llegó.** Ésa es la trampa conocida del proyecto: un patrón más largo que la
+ * contraparte no matchea nunca — `matchEstablishment` busca el patrón *dentro*
+ * de la contraparte, así que escribir "farmacia san jose sucursal 3" contra un
+ * ledger que dice "FARMACIA SAN JOSE" produce una regla que se guarda bien, se
+ * lista bien, y no clasifica una sola fila. El editor a mano hacía eso fácil; acá
+ * es **imposible por construcción**: si el texto recibido no corresponde a una
+ * contraparte que existe en el ledger, no se escribe nada y se devuelve
+ * `counterparty_not_found`. El patrón sale de la fila, no del teclado.
+ *
+ * Lo que además se escribe: la columna `category` de los movimientos que la
+ * regla acaba de mover. No hace falta para los totales —el motor recalcula en
+ * vivo, ver `strategy/spending.ts`— pero deja el ledger consistente con lo que
+ * el gráfico muestra, y respeta la invariante de `category/reclassify.ts`: una
+ * categoría concreta ya guardada sólo la pisa una regla explícita del usuario,
+ * que es precisamente lo que acaba de pasar.
+ *
+ * Lo que NO toca, nunca: `amount`, `direction`, `type`, `needs_review`. Esta capa
+ * mueve etiquetas; la plata sale del parser (CLAUDE.md, regla 1).
+ */
+import type Database from "better-sqlite3";
+import { categorize, toRulePattern, type Category, type EstablishmentRule } from "../category/categorize.js";
+import { listCategoryRules, upsertCategoryRule } from "../category/rules-repository.js";
+import { emitMetric, withSpanSync } from "../db/telemetry.js";
+import { localMonthRange } from "../strategy/dates.js";
+
+export interface ClassifyRequest {
+  /** La contraparte tal como la devuelve la cola. Se valida contra el ledger. */
+  counterparty: string;
+  category: Category;
+}
+
+export interface ClassifySuccess {
+  ok: true;
+  /** El patrón que se guardó — la contraparte real, normalizada. */
+  pattern: string;
+  /** La contraparte real del ledger contra la que se resolvió. */
+  counterparty: string;
+  category: Category;
+  /** Cuántos movimientos cambiaron de categoría por esta regla. */
+  reclassified: number;
+  /**
+   * Cuántos de ellos caen en el mes local en curso. La pantalla lo necesita para
+   * ser honesta (R19): el gráfico del Resumen es **sólo del mes en curso**
+   * (`api/routes.ts`), así que reclasificar 14 movimientos de los cuales 0 son
+   * de este mes no mueve una sola barra — y la pantalla tiene que poder decirlo
+   * en vez de prometer un efecto que no va a verse.
+   */
+  reclassified_this_month: number;
+}
+
+export type ClassifyError = "empty_pattern" | "counterparty_not_found";
+
+export type ClassifyResult = ClassifySuccess | { ok: false; error: ClassifyError };
+
+interface ClassifiedRow {
+  id: number;
+  ts: string;
+  type: string;
+  counterparty: string;
+  is_internal: number;
+  category: string | null;
+}
+
+/**
+ * Busca en el ledger la contraparte que corresponde al texto recibido,
+ * comparando en forma normalizada (misma caja, sin acentos) porque el banco
+ * escribe el mismo comercio de varias maneras. Devuelve la grafía cruda de la
+ * fila más reciente: es la que el usuario acaba de ver.
+ *
+ * Es **igualdad**, no substring, y a propósito: aceptar un fragmento convertiría
+ * a esta ruta en el editor de reglas que M4 elimina, con su trampa intacta pero
+ * disfrazada. Quien de verdad quiera un patrón ancho ("farmacia" para todas las
+ * farmacias) tiene la tool MCP `set_rule`, que es explícita sobre lo que hace.
+ */
+function resolveLedgerCounterparty(db: Database.Database, raw: string): string | null {
+  const wanted = toRulePattern(raw);
+  if (wanted === "") return null;
+
+  const rows = db
+    .prepare(
+      `SELECT counterparty, MAX(ts) as ts FROM transactions
+        WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''
+        GROUP BY counterparty
+        ORDER BY ts DESC`
+    )
+    .all() as { counterparty: string; ts: string }[];
+
+  for (const row of rows) {
+    if (toRulePattern(row.counterparty) === wanted) return row.counterparty.trim();
+  }
+  return null;
+}
+
+/** Las filas que una regla con este patrón podría mover: cualquiera cuya
+ * contraparte normalizada lo contenga, que es como matchea `categorize`. */
+function rowsMatching(db: Database.Database, pattern: string): ClassifiedRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, ts, type, counterparty, is_internal, category FROM transactions
+        WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''`
+    )
+    .all() as ClassifiedRow[];
+  return rows.filter((row) => toRulePattern(row.counterparty).includes(pattern));
+}
+
+function recategorize(row: ClassifiedRow, rules: readonly EstablishmentRule[]): Category {
+  return categorize({ type: row.type, counterparty: row.counterparty, is_internal: row.is_internal === 1 }, rules);
+}
+
+/**
+ * Escribe UNA regla para una contraparte y devuelve qué movió.
+ *
+ * `now` entra por parámetro (no `new Date()` adentro) para que el conteo del mes
+ * en curso sea testeable sin viajar en el tiempo.
+ */
+export function classifyCounterparty(
+  db: Database.Database,
+  request: ClassifyRequest,
+  now: Date = new Date()
+): ClassifyResult {
+  return withSpanSync("classify.counterparty", { category: request.category }, () => {
+    if (toRulePattern(request.counterparty) === "") return { ok: false, error: "empty_pattern" };
+
+    const counterparty = resolveLedgerCounterparty(db, request.counterparty);
+    if (counterparty === null) return { ok: false, error: "counterparty_not_found" };
+
+    // El patrón sale de la contraparte del ledger. Ver el doc del módulo.
+    const pattern = toRulePattern(counterparty);
+    const before = listCategoryRules(db);
+    const candidates = rowsMatching(db, pattern);
+    const previous = new Map(candidates.map((row) => [row.id, recategorize(row, before)]));
+
+    const written = upsertCategoryRule(db, counterparty, request.category);
+    if (!written) return { ok: false, error: "empty_pattern" };
+    const after = listCategoryRules(db);
+
+    const { from, to } = localMonthRange(now);
+    const updateCategory = db.prepare("UPDATE transactions SET category = @category WHERE id = @id");
+
+    let reclassified = 0;
+    let reclassifiedThisMonth = 0;
+
+    db.transaction(() => {
+      for (const row of candidates) {
+        const next = recategorize(row, after);
+        if (next === previous.get(row.id)) continue;
+
+        updateCategory.run({ id: row.id, category: next });
+        reclassified += 1;
+        const ts = new Date(row.ts).getTime();
+        if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;
+      }
+    })();
+
+    // Sólo conteos y la categoría del glosario: el nombre del comercio es un
+    // dato personal y no entra a la telemetría (CLAUDE.md).
+    emitMetric("classify.rule_written", {
+      category: request.category,
+      reclassified,
+      reclassified_this_month: reclassifiedThisMonth,
+    });
+
+    return {
+      ok: true,
+      pattern,
+      counterparty,
+      category: request.category,
+      reclassified,
+      reclassified_this_month: reclassifiedThisMonth,
+    };
+  });
+}

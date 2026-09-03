@@ -26,6 +26,14 @@ import { CATEGORIES } from "../category/categorize.js";
 import { backfillCategories } from "../category/backfill.js";
 import { reclassifyTransactions } from "../category/reclassify.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
+import {
+  classifyCounterparty,
+  classifyProgress,
+  classifyQueue,
+  listSilencedCounterparties,
+  silenceCounterparty,
+  unsilenceCounterparty,
+} from "../classify/index.js";
 import { buildOverview } from "../api/routes.js";
 import { countTransactions, getBalanceSnapshot, queryReviewTransactions, queryTransactions } from "../api/queries.js";
 import { getStrategyConfig, setStrategyConfig, type StrategyConfig } from "../db/strategy-config.js";
@@ -460,6 +468,97 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
       const saved = upsertCategoryRule(deps.getDb(), pattern, category);
       if (!saved) throw new Error("set_rule: el patron queda vacio al normalizarlo; da un texto con contenido.");
       return json({ ok: true, pattern, category });
+    }
+  );
+
+  server.registerTool(
+    "get_classify_queue",
+    {
+      title: "Cola de clasificacion, agrupada por comercio",
+      description:
+        "Los movimientos de gasto cuya categoria RECALCULADA sigue siendo un fallback ('otros' o " +
+        "'transferencia_persona'), agrupados por CONTRAPARTE y ordenados por plata descendente. Cada grupo trae " +
+        "cuantos movimientos tiene, cuanta plata mueve y en cuantos meses distintos aparece: con eso alcanza para " +
+        "preguntarle al humano UNA vez por comercio en vez de una vez por fila. Responde con `classify_counterparty`. " +
+        "No lee la columna `category` — lee lo mismo que el grafico del Resumen.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(500).optional().describe("Tope de grupos, del que mas plata mueve al que menos"),
+        transaction_ids: z
+          .array(z.number().int().positive())
+          .optional()
+          .describe("Acota la cola a estos movimientos, p.ej. los que entraron en un sync"),
+      },
+    },
+    async ({ limit, transaction_ids }) => {
+      const groups = classifyQueue(deps.getDb(), { limit, transactionIds: transaction_ids });
+      return json({ groups, count: groups.length });
+    }
+  );
+
+  server.registerTool(
+    "get_classify_progress",
+    {
+      title: "Cuanto falta de la cola de clasificacion, medido en plata",
+      description:
+        "Cuanta plata sigue sin clasificar, que porcentaje de la que habia al principio ya esta cubierta, y " +
+        "cuantas respuestas mas hacen falta para llegar al 80 %. El criterio de terminado es ESE 80 % de la plata, " +
+        "no cero filas: con decenas de comercios de un solo movimiento, cero no es un estado alcanzable. La plata " +
+        "de un comercio silenciado cuenta como cubierta — la pregunta quedo cerrada.",
+      inputSchema: {},
+    },
+    async () => json(classifyProgress(deps.getDb()))
+  );
+
+  server.registerTool(
+    "classify_counterparty",
+    {
+      title: "Decir que es un comercio de la cola",
+      description:
+        "Responde 'que es esto' por UN comercio: escribe una regla de categoria y devuelve cuantos movimientos " +
+        "quedaron reclasificados y cuantos de ellos son del mes en curso (el grafico del Resumen es solo del mes " +
+        "en curso, asi que sin ese segundo numero no se puede decir por que una barra no se movio). " +
+        "`counterparty` tiene que ser una contraparte que EXISTE en el ledger, tal como la devuelve " +
+        "`get_classify_queue`: el patron de la regla se deriva de la fila real, y por eso es imposible escribir " +
+        "un patron mas largo que la contraparte, que nunca matchearia nada. Para un patron ancho a proposito " +
+        "('farmacia' para todas las farmacias) usa `set_rule`.",
+      inputSchema: {
+        counterparty: z.string().min(1).describe("La contraparte tal cual la devuelve get_classify_queue"),
+        category: z.enum(CATEGORIES),
+      },
+    },
+    async ({ counterparty, category }) => {
+      const result = classifyCounterparty(deps.getDb(), { counterparty, category }, deps.now());
+      // Igual que `resolve_review`: un rechazo del motor tiene que llegar como
+      // error de la tool, no como un `ok: false` dentro de un exito.
+      if (!result.ok) throw new Error(`classify_counterparty: ${result.error}`);
+      return json(result);
+    }
+  );
+
+  server.registerTool(
+    "silence_counterparty",
+    {
+      title: "No preguntar mas por este comercio",
+      description:
+        "Saca una contraparte de la cola de clasificacion para siempre, sin escribir ninguna categoria. Es la " +
+        "salida honesta para las contrapartes que tienen dos verdades (la misma persona que un mes cobra una " +
+        "consulta y otro devuelve un prestamo): ninguna categoria seria correcta para todas sus filas. Sin esto " +
+        "esa contraparte vuelve a la cola para siempre. Con `undo: true` la devuelve a la cola.",
+      inputSchema: {
+        counterparty: z.string().min(1),
+        undo: z.boolean().optional().describe("Devuelve a la cola algo silenciado por error. Default false."),
+      },
+    },
+    async ({ counterparty, undo }) => {
+      const db = deps.getDb();
+      if (undo) {
+        const changed = unsilenceCounterparty(db, counterparty);
+        return json({ ok: true, silenced: false, changed });
+      }
+      if (!silenceCounterparty(db, counterparty)) {
+        throw new Error("silence_counterparty: el nombre queda vacio al normalizarlo; da un texto con contenido.");
+      }
+      return json({ ok: true, silenced: true, count: listSilencedCounterparties(db).length });
     }
   );
 
