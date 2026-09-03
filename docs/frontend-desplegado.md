@@ -1,11 +1,18 @@
-# El dashboard publicado
+# El panel publicado
 
 **URL: <https://agentic-wallet-71314.web.app>** (Firebase Hosting, proyecto
 `agentic-wallet-71314`).
 
 Ese sitio arranca en **modo demostracion**: numeros inventados, y lo dice en
-un cartel amarillo arriba de todo. No lleva adentro ni un dato tuyo. Este
-documento explica por que, y como apuntarlo a tu ledger de verdad.
+dos lugares fijos —el pie de la barra lateral ("Modo demostracion / Datos
+inventados") y el chip de backend de arriba—. No lleva adentro ni un dato
+tuyo. Este documento explica por que, y como apuntarlo a tu ledger de verdad.
+
+> **Que se publica hoy: el panel del MVP** (`panel/`, Vue 3), no el dashboard
+> viejo de `web/` ni la web de documentacion. El proyecto tiene **un solo**
+> sitio de hosting, asi que publicar el panel reemplazo a los docs HTML que
+> estaban ahi antes; las fuentes de esos docs siguen intactas en `docs/` y
+> `docs-site/` (ver `docs-site/README.md` para volver a publicarlos).
 
 ---
 
@@ -39,18 +46,21 @@ apuntarse a otro backend sin recompilar.
 
 ## Como elige el frontend de donde saca los datos
 
-`web/src/api/base.ts`, en orden de mas explicito a menos:
+`panel/src/api/base.ts` (y su gemelo `web/src/api/base.ts`), en orden de mas
+explicito a menos:
 
 1. **`?api=<url>` en la URL** — **previa confirmacion explicita**, y recien
    ahi se guarda en el `localStorage` de ese navegador. Es lo que permite
    reapuntar el sitio ya desplegado sin redeployar nada.
 2. Lo guardado por una visita anterior.
 3. `VITE_API_BASE_URL` del build (el sitio publicado trae `demo`, ver
-   `web/.env.demo`).
+   `panel/.env.demo`).
 4. Mismo origen — el caso local de siempre.
 
 El valor especial `demo` no habla con ningun server: sirve respuestas locales
-de `web/src/demo/demoFetch.ts`.
+de `panel/src/demo/demoFetch.ts`. Y como el orden es ese, el modo demo **gana
+sobre `?api=`** en el sitio publicado: el parametro es una propuesta que hay
+que confirmar a mano, no un cambio de fuente de datos.
 
 **La configuracion vive en el navegador de quien mira, no en el bundle.** El
 artefacto publicado no contiene ninguna URL privada.
@@ -180,17 +190,19 @@ npm run deploy:hosting     # build del bundle demo + firebase deploy --only host
 O en dos pasos:
 
 ```bash
-npm run build:hosting                  # -> web/dist-demo
+npm run build:hosting                  # -> panel/dist-demo
 firebase deploy --only hosting
 ```
 
 Dos detalles que importan:
 
-- **`web/dist-demo` no es `web/dist`.** `web/dist` es el build que sirve el
-  server local (base = mismo origen); `web/dist-demo` es el que va al hosting
-  (base = `demo`, via `web/.env.demo`). Son dos artefactos distintos a
-  proposito: publicar `web/dist` daria una pagina que le pega a un `/api` que
-  en Firebase no existe, y todas las secciones mostrarian error.
+- **`panel/dist-demo` no es `panel/dist`.** `panel/dist` es el build que sirve
+  el server local (base = mismo origen); `panel/dist-demo` es el que va al
+  hosting (base = `demo`, via `panel/.env.demo`). Son dos artefactos distintos
+  a proposito: publicar `panel/dist` daria una pagina que le pega a un `/api`
+  que en Firebase no existe, y las cuatro pantallas mostrarian error.
+  (`npm run build:hosting:web` sigue existiendo para el dashboard viejo, pero
+  ya no es lo que se publica.)
 - El deploy necesita `firebase login` y acceso al proyecto
   `agentic-wallet-71314` (ver `.firebaserc`).
 

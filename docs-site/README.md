@@ -25,8 +25,20 @@ Para agregar un documento se toca la lista `PAGES` de `build.mjs`, no el HTML.
 
 ```
 npm run build:docs    # desde la raíz: instala y genera docs-site/dist/
-npm run deploy:docs   # build + firebase deploy --only hosting
 ```
+
+> **Ya no hay `deploy:docs`, y el sitio de Firebase ya no sirve estos
+> documentos.** El proyecto `agentic-wallet-71314` tiene **un solo** sitio de
+> hosting, y desde el despliegue del MVP ese sitio sirve el panel en modo demo
+> (`panel/dist-demo`). El script se sacó en vez de dejarlo: habría corrido el
+> build de los docs y después desplegado el panel igual, que es la clase de
+> comando que miente sin fallar.
+>
+> Para volver a publicar los docs hay dos caminos: apuntar `firebase.json`
+> (`hosting.public`) de vuelta a `docs-site/dist` —y perder el panel, porque es
+> el mismo sitio—, o crear un segundo sitio en el proyecto
+> (`firebase hosting:sites:create`) y darle su propio target. Las fuentes no se
+> tocaron: siguen en `docs/`.
 
 `docs-site/dist/` es artefacto de build: no va al repo (`dist/` está en
 `.gitignore`). Las dependencias (`marked`, `highlight.js`) viven acá adentro,

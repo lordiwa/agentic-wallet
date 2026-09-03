@@ -117,12 +117,12 @@ Tu `.env` y tu `wallet.sqlite` están en `.gitignore`: un `git pull` nunca
 toca tus datos ni tus credenciales. Las migraciones de esquema corren solas al
 arrancar (`CREATE TABLE IF NOT EXISTS`), así que no hay paso manual.
 
-## El dashboard publicado
+## El panel publicado
 
-Hay una copia del dashboard en **<https://agentic-wallet-71314.web.app>**
+El panel del MVP (`panel/`) está en **<https://agentic-wallet-71314.web.app>**
 (Firebase Hosting). Arranca en **modo demostración**: los números son
-inventados y el sitio lo dice en un cartel arriba de todo. No lleva ningún
-dato tuyo adentro — es la interfaz, no el ledger.
+inventados y el sitio lo dice en el pie de la barra lateral y en el chip de
+backend. No lleva ningún dato tuyo adentro — es la interfaz, no el ledger.
 
 Se publica así a propósito: exponer la API para que una página pública la lea
 equivaldría a publicar tu historial bancario. El sitio sabe apuntarse a tu
@@ -193,8 +193,9 @@ adaptación. Todo lo demás (categorías, estrategia, chat, web) es agnóstico.
 | `npm run gmail-auth` | Genera el refresh token de Gmail |
 | `npm run seed` | Siembra la config inicial (idempotente) |
 | `npm run build:mcp` | Regenera el bundle del servidor MCP |
-| `npm run build:hosting` | Build del sitio público (`web/dist-demo`) |
+| `npm run build:hosting` | Build del sitio público: el panel en modo demo (`panel/dist-demo`) |
 | `npm run deploy:hosting` | Ese build + `firebase deploy --only hosting` |
+| `npm run build:hosting:web` | El mismo build del dashboard viejo (`web/dist-demo`), que ya no es lo que se publica |
 
 ## Como herramientas de un agente (MCP)
 

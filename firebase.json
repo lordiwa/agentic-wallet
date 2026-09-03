@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "docs-site/dist",
+    "public": "panel/dist-demo",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "cleanUrls": false,
     "trailingSlash": false,
