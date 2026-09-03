@@ -333,7 +333,8 @@ export interface RecurringProposalRow {
   pattern: string;
   counterparty: string;
   monto_estimado: number;
-  dia_tipico: number;
+  /** `null` cuando los días observados no sostienen un día típico. */
+  dia_tipico: number | null;
   sample_size: number;
   count: number;
   total: number;

@@ -160,4 +160,76 @@ describe("classifyCounterparty (H28, M4) — responder escribe UNA regla", () =>
     expect(segunda).toMatchObject({ ok: true, reclassified: 1 });
     expect(listCategoryRules(db)).toEqual([{ pattern: "farmacia lima", category: "comida" }]);
   });
+
+  /**
+   * El wargaming del MVP (`docs/wargaming-mvp.md`, hallazgo W1). Los dos conteos
+   * existen para que la pantalla pueda ser honesta (AC5 de TASK-055): la tarjeta
+   * dice "2 movimientos · 120" y la respuesta dice "reclasificaste N". Si N
+   * cuenta filas que **ningún total del motor cuenta** —un reverso, una interna,
+   * una descartada, una que todavía espera confirmación de monto, un ingreso—
+   * los dos números se contradicen en la misma pantalla, y peor:
+   * `reclassified_this_month` es literalmente la promesa *"el gráfico se va a
+   * mover"*, y el gráfico no cuenta ninguna de esas filas.
+   *
+   * Sobre el ledger real pasa en 2 de 147 grupos de la cola: la tarjeta dice 2 y
+   * la respuesta contestaba 6.
+   */
+  it("los conteos cuentan sólo lo que el gráfico y los totales cuentan", () => {
+    // La única fila que la cola ve y el gráfico suma.
+    insertTransaction(db, tx({ gmail_msg_id: "v1", counterparty: "GIMNASIO SUR", amount: 40, ts: "2026-07-02T12:00:00Z" }));
+    // Y cinco de la MISMA contraparte, del mismo mes, que ningún total cuenta.
+    insertTransaction(
+      db,
+      tx({ gmail_msg_id: "x1", counterparty: "GIMNASIO SUR", amount: 40, ts: "2026-07-03T12:00:00Z", is_reversed: true })
+    );
+    insertTransaction(
+      db,
+      tx({ gmail_msg_id: "x2", counterparty: "GIMNASIO SUR", amount: 40, ts: "2026-07-04T12:00:00Z", is_internal: true })
+    );
+    insertTransaction(
+      db,
+      tx({ gmail_msg_id: "x3", counterparty: "GIMNASIO SUR", amount: 40, ts: "2026-07-05T12:00:00Z", needs_review: true })
+    );
+    // `is_discarded` no es campo de `NewTransaction`: lo escribe `review/resolve.ts`.
+    insertTransaction(db, tx({ gmail_msg_id: "x4", counterparty: "GIMNASIO SUR", amount: 40, ts: "2026-07-06T12:00:00Z" }));
+    db.prepare("UPDATE transactions SET is_discarded = 1 WHERE gmail_msg_id = 'x4'").run();
+    // Un ingreso: el gráfico es `direction = 'out'` y nunca lo dibuja.
+    insertTransaction(
+      db,
+      tx({
+        gmail_msg_id: "x5",
+        counterparty: "GIMNASIO SUR",
+        amount: 40,
+        ts: "2026-07-07T12:00:00Z",
+        direction: "in",
+        type: "recibido",
+      })
+    );
+
+    // Lo que la tarjeta de la cola le prometió al usuario: un movimiento.
+    expect(classifyQueue(db)).toMatchObject([{ counterparty: "GIMNASIO SUR", count: 1 }]);
+
+    const result = classifyCounterparty(db, { counterparty: "GIMNASIO SUR", category: "salud" }, AHORA);
+
+    // Y lo que la respuesta le dice: el mismo movimiento, no seis.
+    expect(result).toMatchObject({ ok: true, reclassified: 1, reclassified_this_month: 1 });
+  });
+
+  /**
+   * El otro lado del mismo hallazgo: que los conteos no las cuenten no significa
+   * que el ledger quede a medias. La columna `category` se sigue escribiendo en
+   * todas las filas que la regla mueve, que es lo que el doc del módulo promete
+   * ("deja el ledger consistente con lo que el gráfico muestra").
+   */
+  it("aunque no las cuente, deja la columna `category` consistente en todas las filas", () => {
+    insertTransaction(db, tx({ gmail_msg_id: "v1", counterparty: "GIMNASIO SUR", amount: 40 }));
+    insertTransaction(db, tx({ gmail_msg_id: "x1", counterparty: "GIMNASIO SUR", amount: 40, is_reversed: true }));
+
+    classifyCounterparty(db, { counterparty: "GIMNASIO SUR", category: "salud" }, AHORA);
+
+    const categorias = db
+      .prepare("SELECT category FROM transactions WHERE counterparty = 'GIMNASIO SUR' ORDER BY gmail_msg_id")
+      .all() as { category: string | null }[];
+    expect(categorias).toEqual([{ category: "salud" }, { category: "salud" }]);
+  });
 });

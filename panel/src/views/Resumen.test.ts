@@ -4,6 +4,7 @@ import path from "node:path";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Resumen from "./Resumen.vue";
+import { ROTULO_SIN_LEER } from "../lib/formato";
 import type {
   ClassifyProgressResponse,
   OverviewResponse,
@@ -407,5 +408,37 @@ describe("R25: un colchón sin objetivo no está financiado", () => {
 
     expect(wrapper.get('[data-testid="colchon-etiqueta"]').text()).toBe("Financiado");
     expect(wrapper.text()).toContain("objetivo 500,00");
+  });
+});
+
+/**
+ * Wargaming del MVP (W6). `tarjetaStatus` rellena con cero un resumen cuyo
+ * saldo no se pudo leer (`server/src/strategy/card.ts`: `statement.balance ?? 0`),
+ * y la tarjeta del Resumen dibujaba ese cero con el peso de una cifra: un
+ * resumen ilegible quedaba indistinguible de una tarjeta pagada. Es
+ * exactamente lo que R6/X8/X11 prohíben — "todavía no sé" convertido en "no hay
+ * nada"— y el dato honesto ya viene en la respuesta (`card.balance === null`),
+ * que la misma pantalla usa bien en el calendario.
+ */
+describe("R6/X8/X11 — un saldo de tarjeta que no se pudo leer no es un cero", () => {
+  it("dibuja 'Sin leer', no 0,00, cuando el resumen no trae saldo", async () => {
+    endpoints.fetchOverview.mockResolvedValue(
+      overview({
+        card: { card_mask: null, balance: null, min_payment: null, issue_date: null, due_date: "2026-09-20" },
+        card_status: {
+          saldoCorte: 0,
+          minimo: 0,
+          fechaMaxima: "2026-09-20",
+          saldoActualEstimado: 0,
+          aTiempo: true,
+          requeridoPorQuincena: 0,
+        },
+      })
+    );
+    const w = await montar();
+    const tarjeta = w.findAll('[data-testid="overview-card"]').find((c) => c.text().includes("Tarjeta"));
+
+    expect(tarjeta?.text()).toContain(ROTULO_SIN_LEER);
+    expect(tarjeta?.text()).not.toContain("0,00");
   });
 });

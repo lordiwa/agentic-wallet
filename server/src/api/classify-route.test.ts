@@ -85,6 +85,25 @@ describe("POST /api/classify", () => {
       .expect(400);
   });
 
+  /**
+   * Wargaming del MVP (W8). Los dos fallbacks son lo que `categorize` devuelve
+   * cuando NO sabe, o sea la definición de la cola. Responder con uno escribía
+   * la regla, devolvía `ok: true` con su conteo, y el grupo **seguía en la
+   * cola**: un 200 que no hace nada, y por la API o la tool MCP un bucle
+   * infinito de preguntas. El selector del panel ya los excluía; ahora el borde
+   * también, así que la garantía no depende de qué cliente llame.
+   */
+  it.each(["otros", "transferencia_persona"])("400 con el fallback %s, que dejaría el grupo en la cola", async (category) => {
+    await request(app).post("/api/classify").send({ counterparty: "FARMACIA LIMA", category }).expect(400);
+
+    await request(app)
+      .get("/api/classify/queue")
+      .expect(200)
+      .then((queue) => {
+        expect(queue.body.count).toBe(1);
+      });
+  });
+
   /** La contraparte inventada es un rechazo del motor, no un 404: el cliente
    * afirmó algo que el ledger no respalda. */
   it("400 con una contraparte que no existe en el ledger", async () => {

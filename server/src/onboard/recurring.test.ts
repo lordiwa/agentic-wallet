@@ -276,6 +276,39 @@ describe("suggestRecurringExpenses — el día típico y el tamaño de la muestr
     expect(propuesta?.diaTipico).toBe(5);
   });
 
+  /**
+   * El wargaming del MVP (`docs/wargaming-mvp.md`, hallazgo W2). La mediana de
+   * unos días que no se parecen entre sí no es un día típico: es un número que
+   * cae en el medio de la dispersión. Con cargos el 2 y el 27 la mediana da
+   * ~15, y la pantalla dice *"suele caer el 15 de cada mes"* sobre un día en el
+   * que no pasó nada, nunca. Es una frase inventada con formato de lectura, y
+   * la regla 3 del CLAUDE.md la prohíbe tanto como a un valor precargado.
+   *
+   * Sobre el ledger real le pasa a 5 de las 10 propuestas: son contrapartes con
+   * 4 movimientos por mes repartidos por todo el calendario —transferencias a
+   * una persona, no un débito automático—, y ahí no hay día que decir.
+   */
+  it("no inventa un día típico cuando los días no se parecen entre sí", () => {
+    historialDeSeisMeses();
+    for (const [mes, dia] of [
+      [1, 2],
+      [2, 27],
+      [3, 3],
+      [4, 26],
+    ] as const) {
+      insertTransaction(db, gasto("SERVICIO FICTICIO DISPERSO", mes, dia, 30));
+    }
+
+    const propuesta = suggestRecurringExpenses(db).propuestas.find(
+      (p) => p.counterparty === "SERVICIO FICTICIO DISPERSO"
+    );
+
+    // Sigue siendo una propuesta —la plata es real y el usuario puede
+    // clasificarla— pero sin un día que prometer.
+    expect(propuesta).toBeDefined();
+    expect(propuesta?.diaTipico).toBeNull();
+  });
+
   it("muestra la grafía del movimiento más reciente y su fecha", () => {
     historialDeSeisMeses();
     insertTransaction(db, gasto("SERVICIO FICTICIO SEIS", 1, 4, 40));

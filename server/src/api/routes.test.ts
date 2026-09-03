@@ -45,6 +45,52 @@ describe("GET /api/transactions", () => {
       });
   });
 
+  /**
+   * Wargaming del MVP (W4). Un reverso se persiste como DOS filas: el consumo
+   * original con `is_reversed = 1`, y una fila de auditoría `type = 'reverso'`,
+   * `direction = 'in'`, con el mismo monto. La lista escondía la primera y
+   * dibujaba la segunda **en verde, como un ingreso**, debajo de un cartel que
+   * dice que los reversos no se listan (`panel/src/views/Movimientos.vue`).
+   *
+   * Es plata que ningún total del motor cuenta (`EXCLUDE_FROM_TOTALS_SQL` la
+   * excluye con `type != 'reverso'`). Sobre el ledger real son 138 de las 172
+   * filas del filtro "Entrada": el 80 % de esa pantalla era un ingreso que
+   * nunca existió.
+   *
+   * Las dos filas son un solo hecho, así que las tapa y las destapa el mismo
+   * interruptor.
+   */
+  it("tampoco lista la fila de auditoría del reverso, que es la otra mitad del mismo hecho", () => {
+    insertTransaction(
+      db,
+      baseTx({ gmail_msg_id: "e", ts: "2026-07-11T00:00:00Z", type: "reverso", direction: "in", counterparty: "Amazon", amount: 30 })
+    );
+
+    return request(app)
+      .get("/api/transactions")
+      .expect(200)
+      .then((res) => {
+        expect(res.body.transactions.map((t: any) => t.gmail_msg_id)).toEqual(["b", "a"]);
+      });
+  });
+
+  it("con include_reversed=true aparecen las DOS filas del reverso", () => {
+    insertTransaction(
+      db,
+      baseTx({ gmail_msg_id: "e", ts: "2026-07-11T00:00:00Z", type: "reverso", direction: "in", counterparty: "Amazon", amount: 30 })
+    );
+
+    return request(app)
+      .get("/api/transactions")
+      .query({ include_reversed: "true" })
+      .expect(200)
+      .then((res) => {
+        const ids = res.body.transactions.map((t: any) => t.gmail_msg_id);
+        expect(ids).toContain("c");
+        expect(ids).toContain("e");
+      });
+  });
+
   it("filters by date range", () => {
     return request(app)
       .get("/api/transactions")
@@ -327,6 +373,29 @@ describe("GET /api/overview", () => {
       .expect(200)
       .then((res) => {
         expect(res.body.balance).toEqual({ amount: 2409, currency: "USD", at: "2026-07-20" });
+      });
+  });
+
+  /**
+   * Wargaming del MVP (W7). La moneda del saldo estaba cableada en `"USD"`, y
+   * es la que el panel usa para decidir si una fila está "en otra moneda" y
+   * deshabilitar Confirmar (R14). El motor, en cambio, compara contra
+   * `strategy_config.moneda` (`review/resolve.ts`). Con un perfil en otra
+   * moneda los dos criterios quedaban invertidos: la UI bloqueaba las filas que
+   * el motor acepta y ofrecía las que rechaza, con un motivo falso escrito al
+   * lado.
+   */
+  it("la moneda del saldo es la del perfil, no una constante", () => {
+    db.prepare("INSERT INTO strategy_config (key, value) VALUES ('balanceSnapshot', ?)").run(
+      JSON.stringify({ amount: 2409, at: "2026-07-20" })
+    );
+    db.prepare("INSERT OR REPLACE INTO strategy_config (key, value) VALUES ('moneda', ?)").run(JSON.stringify("EUR"));
+
+    return request(app)
+      .get("/api/overview")
+      .expect(200)
+      .then((res) => {
+        expect(res.body.balance.currency).toBe("EUR");
       });
   });
 });

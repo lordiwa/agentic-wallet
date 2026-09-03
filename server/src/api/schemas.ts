@@ -4,7 +4,8 @@
  * 400 JSON response in the route handler, not a broken query.
  */
 import { z } from "zod";
-import { CATEGORIES } from "../category/categorize.js";
+import { CATEGORIES, type Category } from "../category/categorize.js";
+import { UNCLASSIFIED_CATEGORIES } from "../classify/queue.js";
 import { REVIEW_ACTIONS } from "../review/resolve.js";
 
 // Mirrors parser/types.ts TransactionType (spec catalog 5.1). Duplicated
@@ -55,6 +56,20 @@ export const transactionsQuerySchema = z.object({
 export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
 
 /**
+ * Las categorías que se pueden responder: el glosario **menos los dos
+ * fallbacks**. `otros` y `transferencia_persona` son lo que `categorize`
+ * devuelve cuando no sabe, o sea la definición misma de la cola
+ * (`classify/queue.ts`): una regla que los escribe se guarda bien, devuelve
+ * `ok: true` con su conteo, y deja el grupo en la cola para siempre, porque su
+ * categoría recalculada sigue siendo un fallback. Es un 200 que no hace nada, y
+ * por la API o la tool MCP era un bucle infinito de preguntas. El selector del
+ * panel ya los excluía; ahora el borde también (wargaming del MVP, W8).
+ */
+const RESPONDABLE_CATEGORIES = CATEGORIES.filter(
+  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
+) as [Category, ...Category[]];
+
+/**
  * POST /classify — la respuesta a "qué es esto".
  *
  * `counterparty` se valida acá sólo en forma. **Que tenga que existir en el
@@ -64,7 +79,7 @@ export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
  */
 export const classifyBodySchema = z.object({
   counterparty: z.string().min(1),
-  category: z.enum(CATEGORIES),
+  category: z.enum(RESPONDABLE_CATEGORIES),
 });
 
 /**

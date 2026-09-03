@@ -456,3 +456,35 @@ describe("M4 — acá no hay editor de reglas", () => {
     expect(w.text()).not.toContain("Patrón");
   });
 });
+
+/**
+ * Wargaming del MVP (W5). AC6 pide que el estado vacío "siga siendo
+ * confiable". Con el backend caído —server apagado, llave vencida, CORS— el
+ * `catch` dejaba las listas vacías y el `finally` apagaba `cargando`, así que
+ * los dos estados vacíos se dibujaban **al lado del cartel de error**,
+ * afirmando un hecho sobre un ledger que nunca se leyó. Y como no había filas
+ * de monto, la pestaña por defecto era justamente la celebratoria.
+ */
+describe("el estado vacío no puede afirmar nada sobre un ledger que no se leyó (AC6)", () => {
+  beforeEach(() => {
+    endpoints.fetchClassifyQueue.mockRejectedValue(new Error("Failed to fetch"));
+    endpoints.fetchClassifyProgress.mockRejectedValue(new Error("Failed to fetch"));
+    endpoints.fetchReview.mockRejectedValue(new Error("Failed to fetch"));
+    endpoints.fetchOverview.mockRejectedValue(new Error("Failed to fetch"));
+  });
+
+  it("con el backend caído no dice 'no queda nada por clasificar'", async () => {
+    const w = await montar({ pestanaPedida: "que-es" });
+
+    expect(w.find('[data-testid="preguntas-error"]').exists()).toBe(true);
+    expect(w.find('[data-testid="que-es-vacio"]').exists()).toBe(false);
+    expect(w.text()).not.toContain("No queda nada por clasificar");
+  });
+
+  it("con el backend caído tampoco dice 'nada esperando confirmación'", async () => {
+    const w = await montar({ pestanaPedida: "monto" });
+
+    expect(w.find('[data-testid="preguntas-error"]').exists()).toBe(true);
+    expect(w.find('[data-testid="monto-vacio"]').exists()).toBe(false);
+  });
+});

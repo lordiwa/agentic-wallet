@@ -254,6 +254,60 @@ describe("los dos campos del perfil (criterio 6)", () => {
 
     expect(endpoints.postProfile).toHaveBeenCalledWith({ colchonObjetivo: 500.5 });
   });
+
+  /**
+   * Wargaming del MVP (W3). El panel imprime la plata con `formatoPlata`, o
+   * sea punto de miles y coma decimal: "1.234,00". Copiar esa cifra al campo
+   * —que es lo más natural del mundo, está impresa dos bloques más abajo— tiene
+   * que guardar 1234, no perderse.
+   */
+  it("acepta la cifra tal como el propio panel la imprime, con punto de miles", async () => {
+    const w = await montar();
+    await w.get('[data-testid="campo-colchon"]').setValue("1.234,00");
+    await w.get('[data-testid="alta-guardar-y-seguir"]').trigger("click");
+    await flushPromises();
+
+    expect(endpoints.postProfile).toHaveBeenCalledWith({ colchonObjetivo: 1234 });
+  });
+
+  /**
+   * Wargaming del MVP (W3), la mitad grave. Un texto que no es una cifra se
+   * caía del patch **sin decir nada** y el botón navegaba igual: el usuario
+   * escribía su colchón, pulsaba "Guardar y seguir" y aterrizaba en la cola
+   * creyendo que lo había guardado. Un campo que no se entiende se dice; no se
+   * tira.
+   */
+  it("no tira en silencio un colchón que no se entiende, y no navega", async () => {
+    const w = await montar();
+    await w.get('[data-testid="campo-colchon"]').setValue("no me acuerdo");
+    await w.get('[data-testid="alta-guardar-y-seguir"]').trigger("click");
+    await flushPromises();
+
+    expect(endpoints.postProfile).not.toHaveBeenCalled();
+    expect(w.get('[data-testid="alta-error-perfil"]').text()).toContain("colchón");
+    expect(window.location.hash).not.toContain("preguntas");
+  });
+
+  /** Un día de pago válido no se guarda a medias porque el otro campo falló. */
+  it("tampoco guarda a medias: si un campo no se entiende, no se manda ninguno", async () => {
+    const w = await montar();
+    await w.get('[data-testid="campo-dias-pago"]').setValue("15");
+    await w.get('[data-testid="campo-colchon"]').setValue("abc");
+    await w.get('[data-testid="alta-guardar-y-seguir"]').trigger("click");
+    await flushPromises();
+
+    expect(endpoints.postProfile).not.toHaveBeenCalled();
+  });
+
+  /** `Number()` acepta literales que nadie escribiría como plata. */
+  it("no acepta literales de programador como cifra de plata", async () => {
+    const w = await montar();
+    await w.get('[data-testid="campo-colchon"]').setValue("0x10");
+    await w.get('[data-testid="alta-guardar-y-seguir"]').trigger("click");
+    await flushPromises();
+
+    expect(endpoints.postProfile).not.toHaveBeenCalled();
+  });
 });
 
 describe("el flujo termina en la cola (criterio 8)", () => {

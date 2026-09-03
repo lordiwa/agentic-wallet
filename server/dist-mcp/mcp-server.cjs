@@ -49511,7 +49511,9 @@ function resolveLedgerCounterparty(db, raw) {
 }
 function rowsMatching(db, pattern) {
   const rows = db.prepare(
-    `SELECT id, ts, type, counterparty, is_internal, category FROM transactions
+    `SELECT id, ts, type, counterparty, is_internal, category,
+              (direction = 'out' AND ${EXCLUDE_FROM_TOTALS_SQL}) AS visible
+         FROM transactions
         WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''`
   ).all();
   return rows.filter((row) => toRulePattern(row.counterparty).includes(pattern));
@@ -49540,6 +49542,7 @@ function classifyCounterparty(db, request, now = /* @__PURE__ */ new Date()) {
         const next = recategorize(row, after);
         if (next === previous.get(row.id)) continue;
         updateCategory.run({ id: row.id, category: next });
+        if (row.visible !== 1) continue;
         reclassified += 1;
         const ts = new Date(row.ts).getTime();
         if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;
@@ -49977,7 +49980,7 @@ function queryTransactions(db, filter = {}) {
     params.counterparty = filter.counterparty;
   }
   if (!filter.includeReversed) {
-    clauses.push("is_reversed = 0");
+    clauses.push("is_reversed = 0 AND type != 'reverso'");
   }
   if (!filter.includeInternal) {
     clauses.push("is_internal = 0");
@@ -50009,7 +50012,7 @@ function getBalanceSnapshot(db) {
     if (typeof parsed.amount !== "number") return null;
     return {
       amount: parsed.amount,
-      currency: "USD",
+      currency: getStrategyConfig(db).moneda,
       at: typeof parsed.at === "string" ? parsed.at : null
     };
   } catch {
@@ -50284,9 +50287,12 @@ var transactionsQuerySchema = external_exports.object({
    */
   category: external_exports.enum(CATEGORIES).optional()
 });
+var RESPONDABLE_CATEGORIES = CATEGORIES.filter(
+  (category) => !UNCLASSIFIED_CATEGORIES.has(category)
+);
 var classifyBodySchema = external_exports.object({
   counterparty: external_exports.string().min(1),
-  category: external_exports.enum(CATEGORIES)
+  category: external_exports.enum(RESPONDABLE_CATEGORIES)
 });
 var syncBodySchema = external_exports.object({
   batch_size: external_exports.coerce.number().int().positive().max(500).optional()

@@ -8,6 +8,7 @@
  */
 import type Database from "better-sqlite3";
 import type { StatementRow, TransactionRow } from "../db/repository.js";
+import { getStrategyConfig } from "../db/strategy-config.js";
 
 export interface TransactionsListFilter {
   from?: string;
@@ -60,7 +61,14 @@ export function queryTransactions(db: Database.Database, filter: TransactionsLis
     params.counterparty = filter.counterparty;
   }
   if (!filter.includeReversed) {
-    clauses.push("is_reversed = 0");
+    // Las DOS filas del reverso, no una. El consumo original lleva
+    // `is_reversed = 1` y su corrección se persiste como una fila de auditoría
+    // aparte (`type = 'reverso'`, `direction = 'in'`, ver `rules/reconcile.ts`).
+    // Filtrar sólo la primera escondía el cargo y dibujaba la corrección como
+    // un ingreso verde: plata que `EXCLUDE_FROM_TOTALS_SQL` nunca cuenta,
+    // listada como si entrara. Sobre el ledger real eran 138 de las 172 filas
+    // del filtro "Entrada" (wargaming del MVP, W4).
+    clauses.push("is_reversed = 0 AND type != 'reverso'");
   }
   if (!filter.includeInternal) {
     clauses.push("is_internal = 0");
@@ -114,11 +122,18 @@ export interface BalanceSnapshot {
  * Reads the bank balance snapshot from strategy_config (key
  * "balanceSnapshot" — camelCase, matching the F1-10 seed loader's other keys
  * like colchonObjetivo/topeTransferenciasMensual/zonaHoraria), JSON-encoded
- * as {amount, at}. The seed contract has no per-snapshot currency (the app
- * is USD-only via strategy_config.moneda), so currency always defaults to
- * "USD" here. If the key is missing or the JSON is malformed, this
+ * as {amount, at}. If the key is missing or the JSON is malformed, this
  * gracefully returns null rather than inventing a figure (ticket AC: "no
  * inventar cifras").
+ *
+ * La moneda sale de `strategy_config.moneda`, no de una constante. Estaba
+ * cableada en `"USD"` de cuando la app era de una sola moneda, y desde que
+ * `npm run onboard` la deja configurar eso dejó de ser cierto: el panel usa
+ * este campo para decidir si una fila está "en otra moneda" y deshabilitar
+ * Confirmar (R14), mientras el motor compara contra la config
+ * (`review/resolve.ts`). Con un perfil en EUR los dos criterios se daban
+ * vuelta: la UI bloqueaba las filas que el motor acepta y ofrecía las que
+ * rechaza (wargaming del MVP, W7).
  */
 export function getBalanceSnapshot(db: Database.Database): BalanceSnapshot | null {
   const row = db.prepare("SELECT value FROM strategy_config WHERE key = 'balanceSnapshot'").get() as
@@ -131,7 +146,7 @@ export function getBalanceSnapshot(db: Database.Database): BalanceSnapshot | nul
     if (typeof parsed.amount !== "number") return null;
     return {
       amount: parsed.amount,
-      currency: "USD",
+      currency: getStrategyConfig(db).moneda,
       at: typeof parsed.at === "string" ? parsed.at : null,
     };
   } catch {

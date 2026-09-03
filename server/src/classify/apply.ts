@@ -31,6 +31,7 @@ import { categorize, toRulePattern, type Category, type EstablishmentRule } from
 import { listCategoryRules, upsertCategoryRule } from "../category/rules-repository.js";
 import { emitMetric, withSpanSync } from "../db/telemetry.js";
 import { localMonthRange } from "../strategy/dates.js";
+import { EXCLUDE_FROM_TOTALS_SQL } from "../strategy/totals.js";
 
 export interface ClassifyRequest {
   /** La contraparte tal como la devuelve la cola. Se valida contra el ledger. */
@@ -45,7 +46,17 @@ export interface ClassifySuccess {
   /** La contraparte real del ledger contra la que se resolvió. */
   counterparty: string;
   category: Category;
-  /** Cuántos movimientos cambiaron de categoría por esta regla. */
+  /**
+   * Cuántos movimientos **de los que el usuario puede ver** cambiaron de
+   * categoría por esta regla: gasto, dentro de las exclusiones de todos los
+   * totales. Son exactamente los que la tarjeta de la cola contó.
+   *
+   * No cuenta las filas que ningún total cuenta —un reverso, una interna, una
+   * descartada, una que todavía espera confirmación de monto, un ingreso—
+   * aunque la regla también les escriba la columna `category`. Contarlas hacía
+   * que la tarjeta dijera "2 movimientos" y la respuesta "reclasificaste 6", en
+   * la misma pantalla y con un segundo de diferencia (wargaming del MVP, W1).
+   */
   reclassified: number;
   /**
    * Cuántos de ellos caen en el mes local en curso. La pantalla lo necesita para
@@ -53,6 +64,10 @@ export interface ClassifySuccess {
    * (`api/routes.ts`), así que reclasificar 14 movimientos de los cuales 0 son
    * de este mes no mueve una sola barra — y la pantalla tiene que poder decirlo
    * en vez de prometer un efecto que no va a verse.
+   *
+   * Por eso mismo hereda el filtro de `reclassified`: este número **es** la
+   * promesa "el gráfico se va a mover", y una fila que el gráfico no suma no
+   * puede entrar en ella.
    */
   reclassified_this_month: number;
 }
@@ -68,6 +83,8 @@ interface ClassifiedRow {
   counterparty: string;
   is_internal: number;
   category: string | null;
+  /** 1 si es una fila que la cola contó y el gráfico suma. Ver `rowsMatching`. */
+  visible: number;
 }
 
 /**
@@ -100,12 +117,21 @@ function resolveLedgerCounterparty(db: Database.Database, raw: string): string |
   return null;
 }
 
-/** Las filas que una regla con este patrón podría mover: cualquiera cuya
- * contraparte normalizada lo contenga, que es como matchea `categorize`. */
+/**
+ * Las filas que una regla con este patrón podría mover: cualquiera cuya
+ * contraparte normalizada lo contenga, que es como matchea `categorize`.
+ *
+ * `visible` marca las que la cola contó y el gráfico suma —gasto, dentro de las
+ * exclusiones de todos los totales (`EXCLUDE_FROM_TOTALS_SQL`)—, que son las
+ * únicas que pueden entrar en un número que se le dice al usuario. Ver
+ * `classifyCounterparty`.
+ */
 function rowsMatching(db: Database.Database, pattern: string): ClassifiedRow[] {
   const rows = db
     .prepare(
-      `SELECT id, ts, type, counterparty, is_internal, category FROM transactions
+      `SELECT id, ts, type, counterparty, is_internal, category,
+              (direction = 'out' AND ${EXCLUDE_FROM_TOTALS_SQL}) AS visible
+         FROM transactions
         WHERE counterparty IS NOT NULL AND TRIM(counterparty) != ''`
     )
     .all() as ClassifiedRow[];
@@ -154,7 +180,11 @@ export function classifyCounterparty(
         const next = recategorize(row, after);
         if (next === previous.get(row.id)) continue;
 
+        // La columna se escribe en TODAS: dejar el ledger a medias sería peor
+        // que el problema. Los conteos, en cambio, sólo miran las visibles.
         updateCategory.run({ id: row.id, category: next });
+        if (row.visible !== 1) continue;
+
         reclassified += 1;
         const ts = new Date(row.ts).getTime();
         if (ts >= from.getTime() && ts < to.getTime()) reclassifiedThisMonth += 1;

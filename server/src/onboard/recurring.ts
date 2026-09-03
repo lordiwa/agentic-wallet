@@ -47,6 +47,14 @@
  * Sobre el ledger real sólo 2 contrapartes aparecen en 6 meses o más (riesgo 3
  * del plan): prometer un patrón sin decir sobre cuánto se apoya sería prometer
  * de más.
+ *
+ * 5. **El día típico puede no existir, y entonces no se dice** (`diaTipicoDe`,
+ *    wargaming del MVP). Aparecer en tres meses distintos no vuelve mensual a
+ *    un gasto: la mitad de las propuestas del ledger real son transferencias a
+ *    una persona cuatro veces por mes, repartidas por todo el calendario, y ahí
+ *    la mediana de los días es el centro de la dispersión, no una fecha. La
+ *    propuesta sigue en pie —la plata es real— pero `diaTipico` viene en `null`
+ *    y la pantalla no promete un día.
  */
 import type Database from "better-sqlite3";
 import { categorize, toRulePattern } from "../category/categorize.js";
@@ -75,8 +83,11 @@ export interface RecurringExpenseProposal {
   counterparty: string;
   /** Mediana de los totales mensuales: cuánto sale por mes, típicamente. */
   montoEstimado: number;
-  /** Día del mes en que suele caer — la mediana de los días observados. */
-  diaTipico: number;
+  /**
+   * Día del mes en que suele caer — la mediana de los días observados, **o
+   * `null` cuando los días no se parecen entre sí**. Ver `diaTipicoDe`.
+   */
+  diaTipico: number | null;
   /** **En cuántos meses distintos apareció.** Es el tamaño de la muestra, y
    * se dice en voz alta: no se promete más de lo que hay. */
   sampleSize: number;
@@ -182,17 +193,45 @@ function agruparCandidatas(db: Database.Database): Acumulador[] {
   return [...grupos.values()].filter((grupo) => grupo.porMes.size >= MESES_PARA_SER_FIJO);
 }
 
+/**
+ * Cuánto se puede alejar un día observado de la mediana para que la mediana
+ * siga siendo una lectura. Tres días es el margen de un débito automático que
+ * cae en fin de semana y se procesa el lunes.
+ */
+export const DISPERSION_MAXIMA_DEL_DIA = 3;
+
+/**
+ * El día del mes que la pantalla puede prometer, o `null` si no hay ninguno.
+ *
+ * La mediana sola no alcanza. Con cargos el 2 y el 27 la mediana da 15, y decir
+ * *"suele caer el 15"* sobre un día en el que no pasó nada nunca es inventar un
+ * dato, no leerlo — y da igual que el número venga de una cuenta: lo que el
+ * usuario lee es una afirmación sobre su calendario. Le pasa a la mitad de las
+ * propuestas del ledger real, que no son débitos automáticos sino
+ * transferencias a una persona varias veces por mes.
+ *
+ * El criterio es la **desviación absoluta mediana**: si la mitad de los días
+ * observados cae a más de `DISPERSION_MAXIMA_DEL_DIA` de la mediana, no hay día
+ * típico que decir. Mediana y no promedio, por lo mismo de siempre: un solo mes
+ * corrido no puede tapar un patrón que los demás sostienen.
+ */
+export function diaTipicoDe(dias: readonly number[]): number | null {
+  if (dias.length === 0) return null;
+  const centro = median([...dias]);
+  const dispersion = median(dias.map((dia) => Math.abs(dia - centro)));
+  if (dispersion > DISPERSION_MAXIMA_DEL_DIA) return null;
+  // Con un número par de días la mediana cae entre dos y se redondea — un día
+  // del mes es un entero o no es un día.
+  return Math.round(centro);
+}
+
 function aPropuesta(grupo: Acumulador): RecurringExpenseProposal {
   const totalesMensuales = [...grupo.porMes.values()];
   return {
     pattern: grupo.pattern,
     counterparty: grupo.counterparty,
     montoEstimado: fromCents(Math.round(median(totalesMensuales))),
-    // Mediana también acá, y por lo mismo: un mes en que el débito salió el 28
-    // en vez del 5 no puede mover el día que la pantalla dice. Con un número
-    // par de días la mediana cae entre dos y se redondea — un día del mes es un
-    // entero o no es un día.
-    diaTipico: Math.round(median(grupo.dias)),
+    diaTipico: diaTipicoDe(grupo.dias),
     sampleSize: grupo.porMes.size,
     count: grupo.count,
     total: fromCents(grupo.cents),

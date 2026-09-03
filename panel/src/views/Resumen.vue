@@ -165,8 +165,28 @@ const moneda = computed(() => overview.value?.balance?.currency ?? "");
 const hayDiaDePago = computed(() => (overview.value?.next_payday ?? null) !== null);
 const safeToSpend = computed(() => (hayDiaDePago.value ? overview.value?.safe_to_spend_hoy : undefined));
 
-const tarjeta = computed(() => overview.value?.card_status ?? null);
 const colchon = computed(() => overview.value?.buffer_status ?? null);
+
+/**
+ * El saldo de la tarjeta sale del **resumen crudo**, no de `card_status`.
+ *
+ * `tarjetaStatus` rellena con cero lo que no pudo leer
+ * (`server/src/strategy/card.ts`: `statement.balance ?? 0`), así que un resumen
+ * cuyo saldo no se pudo parsear —persistible: el ingestor sólo rechaza el
+ * resumen si los tres campos vienen nulos— llegaba acá como un `0` y se
+ * dibujaba con el peso de una cifra: indistinguible de una tarjeta pagada. Es
+ * literalmente lo que `ROTULO_SIN_LEER` existe para impedir (R6/X8/X11), y el
+ * dato honesto ya viene en la respuesta, que el calendario de más abajo usa
+ * bien (wargaming del MVP, W6).
+ */
+const saldoDeTarjeta = computed(() => overview.value?.card?.balance ?? null);
+
+const notaDeTarjeta = computed(() => {
+  const resumen = overview.value?.card;
+  if (!resumen) return "no hay resumen de tarjeta leído";
+  const minimo = resumen.min_payment === null ? ROTULO_SIN_LEER : formatoPlata(resumen.min_payment);
+  return `mínimo ${minimo} · fecha máxima ${formatoFecha(resumen.due_date ?? null) ?? ROTULO_SIN_LEER}`;
+});
 
 /**
  * **R25.** El motor manda `financiado: true` cuando el objetivo es cero, porque
@@ -289,13 +309,9 @@ const destinoCategoria = computed(() =>
       <!-- Tarjeta y Colchón muestran su cifra y no navegan (R4). -->
       <OverviewCard
         etiqueta="Tarjeta"
-        :valor="tarjeta?.saldoCorte"
+        :valor="saldoDeTarjeta ?? undefined"
         :sin-dato="ROTULO_SIN_LEER"
-        :nota="
-          tarjeta
-            ? `mínimo ${formatoPlata(tarjeta.minimo)} · fecha máxima ${formatoFecha(tarjeta.fechaMaxima) ?? ROTULO_SIN_LEER}`
-            : 'no hay resumen de tarjeta leído'
-        "
+        :nota="notaDeTarjeta"
         :cargando="cargando"
       />
       <OverviewCard

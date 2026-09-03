@@ -140,6 +140,17 @@ function irA(destino: Pestana): void {
 
 /* ---- Carga ---- */
 
+/**
+ * El ledger se leyó de verdad en esta corrida. Es la condición de los dos
+ * estados vacíos, y no un detalle: sin ella, un backend caído —server apagado,
+ * llave vencida, CORS— dejaba las listas vacías y la pantalla dibujaba
+ * *"No queda nada por clasificar"* al lado del cartel de error, afirmando un
+ * hecho sobre un ledger que nunca leyó (wargaming del MVP, W5). AC6 pide que el
+ * estado vacío sea confiable, y confiable quiere decir exactamente esto: que
+ * sólo se dibuje cuando hubo una respuesta.
+ */
+const ledgerLeido = computed(() => !cargando.value && errorCarga.value === null);
+
 async function cargar(): Promise<void> {
   try {
     const [cola, avance, filas, datos] = await Promise.all([
@@ -350,7 +361,7 @@ const sinConfirmar = computed(() => filasDeMonto.value.length);
       </template>
 
       <!-- El estado vacío sigue existiendo y sigue siendo confiable. -->
-      <div v-else class="card vacio" data-testid="monto-vacio">
+      <div v-else-if="ledgerLeido" class="card vacio" data-testid="monto-vacio">
         <div class="tilde">✓</div>
         <b>Nada esperando confirmación</b>
         <p class="small">
@@ -436,7 +447,7 @@ const sinConfirmar = computed(() => filasDeMonto.value.length);
         </div>
       </template>
 
-      <div v-else class="card vacio" data-testid="que-es-vacio">
+      <div v-else-if="ledgerLeido" class="card vacio" data-testid="que-es-vacio">
         <div class="tilde">✓</div>
         <b>No queda nada por clasificar</b>
         <p class="small">

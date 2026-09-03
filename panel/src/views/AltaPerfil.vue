@@ -45,7 +45,7 @@ import RecurringCard from "../components/RecurringCard.vue";
 import { ErrorDelMotor, fetchProfile, fetchRecurring, postClassify, postProfile } from "../api/endpoints";
 import type { Category, ProfileResponse, RecurringProposalRow, RecurringResponse } from "../api/types";
 import { efectoDeClasificar, efectoDeRechazo, type Efecto } from "../lib/efecto";
-import { formatoEntero, formatoPlata, plural } from "../lib/formato";
+import { formatoEntero, formatoPlata, parsePlata, plural } from "../lib/formato";
 import { toHash } from "../router/ruta";
 
 const perfil = ref<ProfileResponse | null>(null);
@@ -152,14 +152,20 @@ const patch = computed(() => {
     .filter((parte) => parte !== "");
   if (dias.length > 0) salida.diasPago = dias;
 
-  const texto = colchon.value.trim().replace(",", ".");
-  if (texto !== "") {
-    const numero = Number(texto);
-    if (Number.isFinite(numero)) salida.colchonObjetivo = numero;
-  }
+  const numero = parsePlata(colchon.value);
+  if (numero !== null) salida.colchonObjetivo = numero;
 
   return salida;
 });
+
+/**
+ * El campo tiene algo escrito y no se entiende como cifra. Es un estado
+ * propio, y no "no lo tocó": el wargaming del MVP (W3) encontró que un
+ * colchón que no parseaba se caía del patch **en silencio** y la pantalla
+ * navegaba igual, dejando al usuario en la cola creyendo que lo había
+ * guardado. Vacío sigue siendo "no lo toqué"; ilegible es un error que se dice.
+ */
+const colchonIlegible = computed(() => colchon.value.trim() !== "" && parsePlata(colchon.value) === null);
 
 const hayQueGuardar = computed(() => Object.keys(patch.value).length > 0);
 
@@ -171,6 +177,19 @@ const hayQueGuardar = computed(() => Object.keys(patch.value).length > 0);
 async function guardarYSeguir(): Promise<void> {
   if (escribiendo.value) return;
   errorPerfil.value = null;
+
+  // Antes de mandar nada: un campo escrito que no se entiende frena el guardado
+  // ENTERO. Mandar sólo el otro sería un guardado a medias que el usuario no
+  // pidió, y navegar sería prometerle que guardó las dos cosas.
+  if (colchonIlegible.value) {
+    errorPerfil.value = "colchon_ilegible";
+    efecto.value = {
+      tono: "bad",
+      titulo: "No entendí el colchón.",
+      detalle: `Escribí el colchón como una cifra —${formatoPlata(1234.5)}, o 1234.5—. Lo demás quedó sin guardar.`,
+    };
+    return;
+  }
 
   if (hayQueGuardar.value) {
     escribiendo.value = true;

@@ -73,7 +73,17 @@ const muestra = computed(() => {
   return partes.join(" · ");
 });
 
-const diaTipico = computed(() => `suele caer el ${formatoEntero(props.propuesta.dia_tipico)} de cada mes`);
+/**
+ * El día sólo se dice cuando el motor encontró uno (`diaTipicoDe` en
+ * `server/src/onboard/recurring.ts`). Con los días repartidos por todo el
+ * calendario no hay fecha que prometer, y decir "el 15" porque la mediana dio
+ * 15 sería inventar un dato con formato de lectura.
+ */
+const diaTipico = computed(() =>
+  props.propuesta.dia_tipico === null
+    ? "no cae siempre el mismo día"
+    : `suele caer el ${formatoEntero(props.propuesta.dia_tipico)} de cada mes`
+);
 
 function confirmar(): void {
   if (elegida.value === "") return;

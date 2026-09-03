@@ -43,6 +43,18 @@ describe("RecurringCard — una propuesta de gasto fijo", () => {
     expect(montar().get('[data-testid="recurring-dia"]').text()).toContain("8 de cada mes");
   });
 
+  /**
+   * Wargaming del MVP (W2). Cuando el motor no encuentra un día —los cargos
+   * están repartidos por todo el mes— la tarjeta lo dice, no rellena con un
+   * número. Sobre el ledger real le toca a la mitad de las propuestas.
+   */
+  it("sin día típico no inventa uno", () => {
+    const dia = montar({ propuesta: propuesta({ dia_tipico: null }) }).get('[data-testid="recurring-dia"]').text();
+
+    expect(dia).toBe("no cae siempre el mismo día");
+    expect(dia).not.toMatch(/\d/);
+  });
+
   it("con un solo mes de muestra no dice 'meses'", () => {
     const w = montar({ propuesta: propuesta({ sample_size: 1, count: 1 }) });
     const muestra = w.get('[data-testid="recurring-muestra"]').text();
