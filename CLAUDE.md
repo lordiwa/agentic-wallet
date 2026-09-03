@@ -35,7 +35,10 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 | Las tools MCP | `server/src/mcp/` — ver `docs/mcp.md` |
 | Esquema de la base | `server/src/db/schema.ts` |
 | Rutas HTTP | `server/src/api/` |
-| Dashboard | `web/src/` |
+| La llave del server (`WALLET_ACCESS_TOKEN`) | `server/src/api/auth.ts` |
+| Panel (Vue 3, el frontend del MVP) | `panel/src/` — ver `docs/plan-final-mvp.md` |
+| Tokens del design system | `panel/src/styles/tokens.css` — el único lugar con un hex |
+| Dashboard viejo (React) | `web/src/` |
 
 ## Comandos
 
@@ -56,8 +59,17 @@ verde**. No hay excepción.
 - **TypeScript ESM.** Los imports relativos llevan extensión `.js` (aunque el
   archivo sea `.ts`) — es requisito de ESM en Node.
 - **Tests junto al código:** `foo.ts` → `foo.test.ts`. Vitest sólo corre
-  `server/src/**/*.test.ts`, `server/scripts/**/*.test.ts` y
-  `web/src/**/*.test.{ts,tsx}`.
+  `server/src/**/*.test.ts`, `server/scripts/**/*.test.ts`,
+  `web/src/**/*.test.{ts,tsx}` y `panel/src/**/*.test.ts`. En `web/` y
+  `panel/` el entorno se pide por archivo con
+  `/** @vitest-environment jsdom */`; el default global es `node`.
+- **En `panel/` y `web/` los imports relativos NO llevan extensión** — los
+  resuelve Vite, no Node. La regla del `.js` es de `server/`.
+- **El panel es Vue 3 y sólo Vue 3.** `web/` es React y es el dashboard viejo:
+  no se mezclan, y el panel no se escribe en React.
+- **Ningún componente escribe un color.** Los hex viven una sola vez en
+  `panel/src/styles/tokens.css`; `panel/src/styles/tokens.test.ts` falla si
+  aparece uno afuera.
 - **Los comentarios explican el porqué, no el qué.** El código ya dice qué
   hace; el comentario existe para la decisión que no es obvia (por qué mediana
   y no promedio, por qué se resta un día en la query de Gmail). Seguí ese tono.

@@ -1,0 +1,98 @@
+/*
+ * Los tokens del design system `Agentic Wallet Panel - Design System`
+ * (Claude Design, proyecto d509acfb-b4ad-480d-aa67-1b09b16a13c2), tomados de
+ * la tarjeta `00-fundamentos.html` y transcritos en docs/plan-final-mvp.md
+ * §2.1.
+ *
+ * Este archivo es el UNICO lugar del panel donde se escribe un color. La
+ * regla es verificable y esta testeada (styles/tokens.test.ts): un `grep` de
+ * `#[0-9a-fA-F]{6}` en `panel/src/` fuera de este archivo devuelve cero. Es
+ * lo que hace que "replica exactamente" sea un criterio objetivo y no una
+ * impresion — si un componente escribe un hex a mano, el sistema y el panel
+ * empiezan a divergir sin que nadie se entere.
+ */
+
+:root {
+  /* ---- Color (§2.1, la tabla de roles) ---- */
+  --nav: #101A26; /* fondo de la barra lateral */
+  --tinta: #17202A; /* texto principal */
+  --apagado: #5B6B7C; /* texto secundario, etiquetas, notas */
+  --fondo: #F6F7F9; /* fondo de la aplicacion */
+  --panel: #FFFFFF; /* fondo de tarjeta */
+  --linea: #DDE3EA; /* bordes */
+  --accion: #2B5FD9; /* boton primario, enlaces, barras del grafico */
+  --al-dia: #1C7A45; /* estado correcto */
+  --atencion: #E0B73A; /* estado a medias / pendiente */
+  --falla: #B3261E; /* error */
+
+  /* ---- Tipografia (§2.1) ---- */
+  --fuente: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --cifra-size: 26px;
+  --cifra-weight: 640;
+  --h1-size: 20px;
+  --h1-weight: 640;
+  --h1-tracking: -0.015em;
+  --h2-size: 14px;
+  --h2-weight: 650;
+  --label-size: 11px;
+  --label-weight: 650;
+  --label-tracking: 0.05em;
+  --body-size: 15px;
+  --small-size: 12.5px;
+
+  /* ---- Forma (§2.1): radio 6 control, 8 boton, 10 tarjeta, 20 etiqueta ---- */
+  --radio-control: 6px;
+  --radio-boton: 8px;
+  --radio-tarjeta: 10px;
+  --radio-etiqueta: 20px;
+
+  /* ---- Etiquetas de estado `.tag` (§2.1): fondo / borde / texto ---- */
+  --tag-ok-bg: #E8F6EE;
+  --tag-ok-borde: #B8E0C8;
+  --tag-ok-texto: #1C7A45;
+  --tag-warn-bg: #FFF4D6;
+  --tag-warn-borde: #E0B73A;
+  --tag-warn-texto: #8A6200;
+  --tag-bad-bg: #FDECEB;
+  --tag-bad-borde: #F2C0BC;
+  --tag-bad-texto: #B3261E;
+  --tag-neu-bg: #F0F3F7;
+  --tag-neu-borde: #DDE3EA;
+  --tag-neu-texto: #5B6B7C;
+  --tag-acc-bg: #EAF0FF;
+  --tag-acc-borde: #C3D4FB;
+  --tag-acc-texto: #2B5FD9;
+
+  /* ---- Botones (§2.1) ---- */
+  --boton-primario-bg: #2B5FD9;
+  --boton-primario-texto: #FFFFFF;
+  --boton-secundario-bg: #FFFFFF;
+  --boton-secundario-borde: #DDE3EA;
+  --boton-terciario-texto: #2B5FD9;
+  --boton-off-bg: #F0F3F7;
+  --boton-off-texto: #9AA8B6;
+
+  /* ---- Shell (§2.1) ---- */
+  --shell-columnas: 236px 1fr;
+  --shell-padding: 20px 26px 40px;
+  --nav-enlace-size: 13.5px;
+  --nav-enlace-texto: #A9B8C8;
+  --nav-activo-bg: #1D2D3F;
+  --nav-separador: #1D2D3F;
+
+  /*
+   * ---- Del lienzo de las tarjetas, no listados en la tabla de §2.1 ----
+   * Salen igual de `00-fundamentos.html` / `p0-acceso.html` /
+   * `p10-configuracion.html`. Viven aca por la misma razon que el resto: para
+   * que ningun componente escriba un hex.
+   */
+  --marca-punto: #38B06D; /* el punto verde del logotipo */
+  --nav-tagline: #8497A8;
+  --nav-texto-claro: #C7D3E0;
+  --nav-pie: #6D8093;
+  --texto-nota: #3D4A57; /* el cuerpo de `.note` y `.scopes` */
+  --nota-bg: #FFFAF0; /* el amarillo palido del aviso */
+  --superficie-suave: #F0F3F7; /* separadores internos, `code`, chips neutros */
+  --sombra-control: 0 1px 2px rgba(16, 26, 38, 0.06);
+}

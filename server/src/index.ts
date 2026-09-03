@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type Database from "better-sqlite3";
 import express from "express";
+import { classifyRequestAuth, createAuthMiddleware, normalizeAccessToken } from "./api/auth.js";
 import { createCorsMiddleware, parseAllowedOrigins } from "./api/cors.js";
 import { createApiRouter } from "./api/routes.js";
 import { createChatRouter } from "./api/chat-route.js";
@@ -81,9 +82,38 @@ export function createApp(db?: Database.Database, options: CreateAppOptions = {}
       ? Boolean(options.chatCredential)
       : classifyClaudeCredential(loadConfig()).usable;
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
+  // Se lee una sola vez, al construir la app: cambiar la llave es reiniciar
+  // el server, no una condicion que se re-evalue por request.
+  const accessToken = normalizeAccessToken(loadConfig().WALLET_ACCESS_TOKEN);
+
+  /**
+   * El unico endpoint sin llave, y a proposito (R27). Desde un navegador un
+   * server caido, un origen que CORS no permite y una credencial rechazada
+   * dan el mismo error de red; esta respuesta separa los tres:
+   *
+   * - no responde        -> server caido, o el origen no esta en la lista blanca
+   * - `auth_required`    -> si este server pide llave
+   * - `authenticated`    -> si la llave que trajo ESTA peticion sirve
+   *
+   * No dice nada del ledger ni de la configuracion: solo si la puerta existe
+   * y si la llave presentada abre.
+   */
+  app.get("/api/health", (req, res) => {
+    const auth = classifyRequestAuth(accessToken, req.headers.authorization);
+    res.json({
+      status: "ok",
+      auth_required: accessToken !== null,
+      // `disabled` cuenta como autenticado: sin llave configurada, cualquier
+      // peticion pasa — decir `false` haria que el chip acuse una credencial
+      // rota donde no hay ninguna credencial que romper.
+      authenticated: auth === "ok" || auth === "disabled",
+    });
   });
+
+  // Despues de /api/health (que queda abierto) y antes de todo router: a
+  // partir de aca `/api/*` exige `Authorization: Bearer`. Sin
+  // WALLET_ACCESS_TOKEN es un no-op y el server se comporta como siempre.
+  app.use("/api", createAuthMiddleware(accessToken));
 
   // Mounted before the SPA catch-all so /api/* is fully handled here.
   app.use("/api", createApiRouter(getDb));
@@ -160,11 +190,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = createApp();
   app.listen(config.PORT, config.WALLET_BIND_HOST, () => {
     console.log(`Agentic Wallet escuchando en http://${config.WALLET_BIND_HOST}:${config.PORT}`);
-    if (config.WALLET_BIND_HOST === "0.0.0.0") {
+    if (config.WALLET_BIND_HOST === "0.0.0.0" && normalizeAccessToken(config.WALLET_ACCESS_TOKEN) === null) {
       console.warn(
         "AVISO: WALLET_BIND_HOST=0.0.0.0 expone la API en todas las interfaces " +
-          "y la API no tiene autenticacion. En una maquina con IP publica usa " +
-          "127.0.0.1 + `tailscale serve`."
+          "y no hay WALLET_ACCESS_TOKEN, asi que la API no pide llave. En una " +
+          "maquina con IP publica usa 127.0.0.1 + `tailscale serve`."
       );
     }
   });

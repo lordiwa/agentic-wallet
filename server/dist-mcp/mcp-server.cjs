@@ -48731,6 +48731,19 @@ var envSchema = external_exports.object({
    * Hosting, ver docs/frontend-desplegado.md).
    */
   WALLET_ALLOWED_ORIGINS: external_exports.string().optional(),
+  /**
+   * La llave del server (fase N0 del plan final). Sin valor la API queda como
+   * hasta hoy: sin autenticacion, protegida solo por `WALLET_BIND_HOST`. Con
+   * valor, todo `/api/*` exige `Authorization: Bearer <token>` — menos
+   * `GET /api/health`, que queda abierto a proposito porque es el unico
+   * diagnostico posible desde un navegador (ver api/auth.ts).
+   *
+   * Opcional y sin default a proposito: inventar una llave aca seria una
+   * credencial precargada que el usuario no eligio, y ademas romperia el uso
+   * local de siempre. El valor lo genera el usuario (32 bytes al azar) y vive
+   * en `.env`, nunca en el repo.
+   */
+  WALLET_ACCESS_TOKEN: external_exports.string().optional(),
   /** Sin `.default()` a proposito: el default se aplica en `loadConfig` recien
    * despues de mirar `BOLSILLO_DB_PATH`. Un default aca ganaria siempre y el
    * nombre viejo no se leeria nunca. */

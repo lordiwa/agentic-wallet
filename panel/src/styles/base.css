@@ -1,0 +1,22 @@
+/*
+ * El reset y el lienzo, con los mismos valores que abren todas las tarjetas
+ * del design system. Ningún color acá: sólo variables de tokens.css.
+ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--tinta);
+  font: var(--body-size) / 1.5 var(--fuente);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Toda cifra de plata es tabular, sin excepción (§2.1). */
+.cifra {
+  font-size: var(--cifra-size);
+  font-weight: var(--cifra-weight);
+  font-variant-numeric: tabular-nums;
+}

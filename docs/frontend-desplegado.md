@@ -41,9 +41,9 @@ apuntarse a otro backend sin recompilar.
 
 `web/src/api/base.ts`, en orden de mas explicito a menos:
 
-1. **`?api=<url>` en la URL** — se guarda en el `localStorage` de ese
-   navegador y queda. Es lo que permite reapuntar el sitio ya desplegado sin
-   redeployar nada.
+1. **`?api=<url>` en la URL** — **previa confirmacion explicita**, y recien
+   ahi se guarda en el `localStorage` de ese navegador. Es lo que permite
+   reapuntar el sitio ya desplegado sin redeployar nada.
 2. Lo guardado por una visita anterior.
 3. `VITE_API_BASE_URL` del build (el sitio publicado trae `demo`, ver
    `web/.env.demo`).
@@ -54,6 +54,23 @@ de `web/src/demo/demoFetch.ts`.
 
 **La configuracion vive en el navegador de quien mira, no en el bundle.** El
 artefacto publicado no contiene ninguna URL privada.
+
+### Por que `?api=` ahora pregunta (fase N0, TASK-054)
+
+Hasta la fase N0, `?api=` se guardaba solo. Con `WALLET_ACCESS_TOKEN` la llave
+del server viaja en la cabecera de cada llamada, y entonces un enlace
+`https://<sitio>/?api=https://host-ajeno` alcanzaba para que el dashboard le
+entregara esa llave a quien mando el enlace, con un solo click (riesgo **R1**).
+
+Ahora son dos decisiones separadas, y ninguna es automatica:
+
+- **a que backend le hablo** — `?api=` pide confirmacion antes de guardarse;
+- **a que backend le doy la llave** — solo a los de la lista blanca
+  (`web/src/api/origins.ts`, copiada en `panel/src/api/origins.ts`): el mismo
+  origen, el loopback, lo que fije `VITE_WALLET_TRUSTED_API_ORIGINS` en el
+  build, y lo que el usuario confirme a mano. A un backend fuera de la lista
+  **se le habla igual, pero sin credencial** — un 401 que se explica es mejor
+  que un 200 conseguido regalando la llave.
 
 ## Acceso: sin login, y por que esta bien
 
@@ -100,8 +117,14 @@ El camino que no rompe nada:
    https://agentic-wallet-71314.web.app/?api=https://<maquina>.<tailnet>.ts.net
    ```
 
-   Queda guardado. El cartel de arriba pasa de "MODO DEMOSTRACION" a
-   "Datos de: <tu url> - conectado". Para volver a la demo: `?api=demo`.
+   El navegador pregunta si guardar ese backend; al aceptar queda guardado y
+   el cartel de arriba pasa de "MODO DEMOSTRACION" a "Datos de: <tu url> -
+   conectado". Para volver a la demo: `?api=demo`.
+
+   Si el server tiene `WALLET_ACCESS_TOKEN`, ademas hay que agregar ese origen
+   a la lista blanca del build (`VITE_WALLET_TRUSTED_API_ORIGINS`) para que la
+   llave pueda viajar hacia el. Sin eso el sitio le habla igual, pero sin
+   credencial, y la API responde 401.
 
 Alternativa sin Tailscale, si el server corriera en la misma maquina desde la
 que mirás: `?api=http://127.0.0.1:3000`. Los navegadores tratan `localhost` /

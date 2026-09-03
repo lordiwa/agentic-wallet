@@ -5,11 +5,12 @@
   "description": "Agentic Wallet - copiloto financiero personal local-first",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "panel"
   ],
   "scripts": {
     "dev": "concurrently -n server,web \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
-    "build": "npm run build --workspace=web && npm run build --workspace=server",
+    "build": "npm run build --workspace=web && npm run build --workspace=panel && npm run build --workspace=server",
     "build:mcp": "npm run build:mcp --workspace=server",
     "build:hosting": "npm run build:hosting --workspace=web",
     "build:docs": "npm --prefix docs-site install --no-audit --no-fund && node docs-site/build.mjs",

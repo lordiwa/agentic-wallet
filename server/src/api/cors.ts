@@ -12,10 +12,11 @@
  * Nunca manda `Access-Control-Allow-Credentials` ni acepta `*`. Lo primero
  * porque la API no usa cookies ni sesiones — no hay nada que mandar, y
  * pedirlo solo ampliaria la superficie. Lo segundo porque un comodin aca es
- * indistinguible de no tener lista blanca, y esta API sigue sin
- * autenticacion: el limite real de acceso lo pone `WALLET_BIND_HOST` (quien
- * llega al puerto), no esta cabecera (quien puede leer la respuesta desde un
- * navegador). CORS no es autenticacion y no se usa como tal.
+ * indistinguible de no tener lista blanca. El limite real de acceso lo ponen
+ * `WALLET_BIND_HOST` (quien llega al puerto) y `WALLET_ACCESS_TOKEN` (quien
+ * trae la llave, ver api/auth.ts), no esta cabecera — que solo decide quien
+ * puede LEER la respuesta desde un navegador. CORS no es autenticacion y no
+ * se usa como tal.
  */
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
@@ -47,8 +48,12 @@ export function createCorsMiddleware(allowedOrigins: readonly string[]): Request
     // La respuesta cambia segun el origen: sin esto un cache intermedio
     // podria servirle a un origen la cabecera emitida para otro.
     res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    // `DELETE` y `Authorization` entran con la fase N0 (TASK-054): la API ya
+    // tiene rutas que borran y ahora lleva llave. Sin declararlos aca el
+    // navegador mata la peticion en el preflight y el panel publicado no
+    // carga — un fallo que se ve como "el server no responde".
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (req.method === "OPTIONS") {
       res.status(204).end();

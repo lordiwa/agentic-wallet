@@ -1,0 +1,96 @@
+<!-- @dsCard group="Páginas" name="P0-b — Acceso por llave" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>P0-b Acceso por llave — Agentic Wallet Panel</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101a26;color:#17202a;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;min-height:820px;display:flex;align-items:center;justify-content:center;padding:40px}
+.box{width:430px}
+.brand{color:#fff;font-weight:650;font-size:16px;display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:#38b06d}
+.tagline{color:#8497a8;font-size:13px;margin:0 0 20px}
+.card{background:#fff;border-radius:12px;padding:26px 22px 22px;text-align:center}
+.mark{width:44px;height:44px;border-radius:11px;background:#101a26;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px}
+.mark span{width:12px;height:12px;border-radius:50%;background:#38b06d}
+h1{font-size:19px;margin:0 0 4px;letter-spacing:-.015em}
+.sub{color:#5b6b7c;font-size:13px;margin:0 0 22px;line-height:1.55}
+.field{text-align:left;margin-bottom:14px}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#5b6b7c;font-weight:650;margin:0 0 5px}
+.inp{width:100%;border:1px solid #dde3ea;border-radius:8px;padding:10px 11px;font:inherit;font-size:14px;background:#fff;color:#17202a}
+.hint{font-size:12px;color:#5b6b7c;margin:5px 0 0}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;border:1px solid #dde3ea;background:#fff;color:#17202a;border-radius:9px;padding:12px 16px;font:inherit;font-size:14.5px;font-weight:600;box-shadow:0 1px 2px rgba(16,26,38,.06)}
+.btn.pri{background:#2b5fd9;border-color:#2b5fd9;color:#fff}
+.btn.off{background:#f0f3f7;border-color:#f0f3f7;color:#9aa8b6;box-shadow:none}
+.err{border-left:3px solid #b3261e;background:#fdeceb;color:#b3261e;padding:10px 12px;border-radius:0 8px 8px 0;font-size:12.5px;text-align:left;margin:14px 0 0}
+.note{border-left:3px solid #e0b73a;background:#fffaf0;padding:10px 12px;border-radius:0 8px 8px 0;font-size:12.5px;margin-top:16px;color:#3d4a57;text-align:left}
+.foot{color:#5b6b7c;font-size:11.5px;text-align:center;margin-top:14px;line-height:1.55}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:#f0f3f7;border-radius:4px;padding:1px 5px}
+.estados{display:flex;flex-direction:column;gap:9px;margin-top:18px}
+.estado{background:#fff;border:1px solid #dde3ea;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:11px}
+.estado .t{flex:1;font-size:12.5px;color:#5b6b7c}
+.estado .t b{display:block;font-size:13.5px;font-weight:600;color:#17202a}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;border-radius:20px;padding:1px 8px;border:1px solid;white-space:nowrap}
+.tag.ok{background:#e8f6ee;border-color:#b8e0c8;color:#1c7a45}
+.tag.warn{background:#fff4d6;border-color:#e0b73a;color:#8a6200}
+.tag.bad{background:#fdeceb;border-color:#f2c0bc;color:#b3261e}
+.tag.neu{background:#f0f3f7;border-color:#dde3ea;color:#5b6b7c}
+.leyenda{color:#8497a8;font-size:11.5px;margin:22px 0 6px;text-transform:uppercase;letter-spacing:.05em;font-weight:650}
+</style>
+</head>
+<body>
+<div class="box">
+
+  <div class="brand"><span class="dot"></span> Agentic Wallet</div>
+  <p class="tagline">Consola de manejo — un solo usuario, sin registro público.</p>
+
+  <div class="card">
+    <div class="mark"><span></span></div>
+    <h1>Entrar</h1>
+    <p class="sub">El acceso es la llave del server.<br>No hay usuario ni contraseña que recordar.</p>
+
+    <div class="field">
+      <label for="llave">Llave del server</label>
+      <input class="inp" id="llave" type="password" value="••••••••••••••••••••" placeholder="WALLET_ACCESS_TOKEN">
+      <p class="hint">Se guarda en este navegador y sólo viaja hacia <code>maquina.tail-ejemplo.ts.net</code>, que está en la lista de servidores autorizados.</p>
+    </div>
+
+    <button class="btn pri">Entrar</button>
+
+    <div class="note"><b>Una sola acción, a propósito.</b> El límite real lo pone el server, no esta pantalla: la llave es <code>WALLET_ACCESS_TOKEN</code> del <code>.env</code>, y el server sólo escucha en <code>127.0.0.1</code> — al tailnet llega por <code>tailscale serve</code>, sin abrir ningún puerto público.</div>
+
+    <p class="foot">Nada de lo que ocurre acá sale de este navegador salvo la llave, y sólo hacia ese server.</p>
+  </div>
+
+  <p class="leyenda">Los otros dos estados de la misma tarjeta</p>
+
+  <div class="card" style="padding:18px 22px">
+    <div class="field" style="margin-bottom:10px">
+      <label for="vacio">Llave del server</label>
+      <input class="inp" id="vacio" type="password" placeholder="WALLET_ACCESS_TOKEN">
+    </div>
+    <button class="btn off">Entrar</button>
+    <p class="hint" style="text-align:left">Deshabilitado hasta que haya algo escrito. Nada se guarda ni se envía antes.</p>
+    <div class="err">El server pide llave y rechazó la que tenés cargada.</div>
+  </div>
+
+  <p class="leyenda">El chip de backend, que acompaña a esta pantalla</p>
+
+  <div class="estados">
+    <div class="estado"><span class="tag ok">Conectado</span><span class="t"><b>maquina.tail-ejemplo.ts.net</b>Responde y la llave sirve.</span></div>
+    <div class="estado"><span class="tag warn">Sin llave</span><span class="t"><b>maquina.tail-ejemplo.ts.net</b>El server pide llave y este navegador no tiene ninguna cargada.</span></div>
+    <div class="estado"><span class="tag bad">No autorizado</span><span class="t"><b>host-ajeno.example</b>Ese servidor no está autorizado: se le habla sin credencial, por eso responde 401.</span></div>
+    <div class="estado"><span class="tag neu">Demostración</span><span class="t"><b>sin servidor</b>Modo demostración — datos inventados, ninguna llamada real.</span></div>
+  </div>
+
+  <p class="foot" style="text-align:left;margin-top:18px">
+    <b>Qué cambia respecto de P0 — Acceso.</b> Mismo lienzo, misma tipografía, mismos radios.
+    Se saca el botón <i>Continuar con Google</i> y el bloque de permisos de la cuenta: la decisión M3
+    deja Firebase fuera del MVP, así que la única identidad es <code>WALLET_ACCESS_TOKEN</code>.
+    En su lugar va un campo, el botón primario <code>#2B5FD9</code> y el texto de ayuda.
+  </p>
+
+</div>
+</body>
+</html>

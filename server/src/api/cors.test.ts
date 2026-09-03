@@ -62,6 +62,24 @@ describe("createCorsMiddleware", () => {
     expect(res.headers["access-control-allow-headers"]).toContain("Content-Type");
   });
 
+  it("permite Authorization: sin esto el panel con llave no pasa el preflight", async () => {
+    const res = await request(appWith(["https://a.web.app"]))
+      .options("/api/ping")
+      .set("Origin", "https://a.web.app")
+      .set("Access-Control-Request-Method", "GET")
+      .set("Access-Control-Request-Headers", "authorization");
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-headers"]).toContain("Authorization");
+  });
+
+  it("permite DELETE: la API ya tiene rutas que borran", async () => {
+    const res = await request(appWith(["https://a.web.app"]))
+      .options("/api/ping")
+      .set("Origin", "https://a.web.app")
+      .set("Access-Control-Request-Method", "DELETE");
+    expect(res.headers["access-control-allow-methods"]).toContain("DELETE");
+  });
+
   it("nunca habilita credenciales: la API no usa cookies", async () => {
     const res = await request(appWith(["https://a.web.app"])).get("/api/ping").set("Origin", "https://a.web.app");
     expect(res.headers["access-control-allow-credentials"]).toBeUndefined();

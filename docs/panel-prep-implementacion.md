@@ -410,29 +410,51 @@ Antes de escribir la primera línea del panel. Nada de esto es código de panel.
 
 **Credenciales y configuración (Mato, en su máquina — nada de esto va al repo):**
 
-- [ ] Del proyecto de Firebase: el **project id** y la **configuración web**
-      (apiKey, authDomain, appId). Van al build del panel, no al repo — son
-      públicos por diseño, pero se manejan por variable igual.
-- [ ] Una **cuenta de servicio** de Firebase Admin para el server (JSON), fuera
-      del repo, referenciada por variable de entorno.
-- [ ] El **uid** de la cuenta de Mato, para la lista de permitidos de uno.
-- [ ] Decidir el valor de `WALLET_ACCESS_TOKEN` (32 bytes al azar) — es el
-      camino de terminal/curl, que sobrevive a Firebase.
-- [ ] `WALLET_ALLOWED_ORIGINS` con el origen del panel publicado.
-- [ ] `tailscale serve` hacia `localhost:3000` probado y funcionando **antes**
-      de que exista el panel. Es media hora y se puede probar con `curl`.
-- [ ] Confirmar que `firebase-admin` se puede instalar en el server (es una
-      dependencia grande; si molesta, la verificación de un JWT de Google contra
-      su JWKS también se hace a mano).
+> **Estado tras la fase N0 (`TASK-054`, 2026-09-02).** La decisión **M3** saca
+> Firebase del MVP, así que los tres primeros puntos quedan **fuera de alcance**
+> (no descartados: diferidos, ver `docs/plan-final-mvp.md` §5). Lo que el
+> repo ya soporta está marcado; lo que sigue siendo tarea de Mato en su
+> máquina, no.
+
+- [—] ~~Del proyecto de Firebase: el **project id** y la **configuración web**~~
+      — **fuera del MVP por M3.** Se difiere junto con el login de Google.
+- [—] ~~Una **cuenta de servicio** de Firebase Admin para el server~~ —
+      **fuera del MVP por M3.** `firebase-admin` no se instala.
+- [—] ~~El **uid** de la cuenta de Mato~~ — **fuera del MVP por M3.** No hay
+      lista de permitidos de uno; la identidad es la llave estática.
+- [x] **`WALLET_ACCESS_TOKEN` soportado por el server.** Middleware Bearer
+      sobre todo `/api/*`, `GET /api/health` sin llave con `auth_required` y
+      `authenticated` (`server/src/api/auth.ts`). Vacío = sin llave, el
+      comportamiento local de siempre. Documentado en `.env.example` con el
+      comando que genera los 32 bytes.
+      → **Falta (Mato):** generar el valor y ponerlo en su `.env`.
+- [x] **`WALLET_ALLOWED_ORIGINS` acepta lo que el panel necesita.**
+      `api/cors.ts` suma `Authorization` a los encabezados y `DELETE` a los
+      métodos; sin eso el panel publicado no pasaba el preflight.
+      → **Falta (Mato):** poner el origen del panel publicado en su `.env`.
+- [x] **El camino de `tailscale serve` verificado con `curl` contra el server
+      real** — `tools/n0-puerta-check.mjs`, 12/12 en verde: directo a
+      `127.0.0.1` y a través de un salto de proxy que reproduce lo que hace
+      `tailscale serve` (termina afuera, reenvía a localhost con
+      `X-Forwarded-*`).
+      → **Falta (Mato):** correr `tailscale serve --bg 3000` de verdad en su
+      máquina; el binario no está instalado en la del agente.
+- [—] ~~Confirmar que `firebase-admin` se puede instalar en el server~~ —
+      **fuera del MVP por M3.**
 
 **Verificaciones técnicas (se hacen sin escribir panel):**
 
-- [ ] Correr `npm run build` y `npm test` — línea de base, hoy verde.
-- [ ] Probar `POST /api/chat` con Bearer detrás de tailscale, antes de que haya
-      panel: es el endpoint que gasta la credencial de Claude.
+- [x] Correr `npm run build` y `npm test` — verde: **1067 tests**, 87 archivos
+      (la línea de base eran 909; N0 agrega 158).
+- [x] Probar la API con `Bearer` detrás del salto de proxy, antes de que haya
+      panel: `tools/n0-puerta-check.mjs` cubre `GET /api/overview` (401 sin
+      llave, 401 con la equivocada, 200 con la correcta) por el mismo camino.
+      → **Falta (Mato):** el `POST /api/chat` real, que gasta la credencial de
+      Claude, contra su tailnet.
 - [ ] **Confirmar por escrito** el estado de la verificación de Google para
-      scopes restringidos (§3.2, Modelo A). Es la única incógnita externa del
-      plan y decide si D es "recomendado" o "obligatorio".
+      scopes restringidos (§3.2, Modelo A). Sigue sin confirmar, pero con M3
+      ya **no bloquea el MVP**: sin login de Google, el panel no depende de
+      esa verificación.
 
 **Lo que NO va en el checklist, a propósito:** crear el workspace `panel/`,
 elegir librería de gráficos, definir el esquema multi-tenant, tocar `web/`.
