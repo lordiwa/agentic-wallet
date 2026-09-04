@@ -96,4 +96,94 @@
   --aviso-texto: #6B5714; /* el cuerpo del `.alert` amarillo de `p2-resumen` */
   --superficie-suave: #F0F3F7; /* separadores internos, `code`, chips neutros */
   --sombra-control: 0 1px 2px rgba(16, 26, 38, 0.06);
+
+  /*
+   * ---- La pagina institucional (`home.html` del design system) ----
+   *
+   * Su paleta es **otra** y a proposito: `home.html` es la tarjeta
+   * `group="Páginas" name="Home — página institucional"`, la portada publica
+   * que en el propio sistema enlaza a `p0-acceso.html` ("Entrar al panel").
+   * O sea que va DELANTE del panel, no adentro: es lo que alguien ve antes de
+   * entrar, y el panel es lo que ve despues.
+   *
+   * Por eso no comparte un solo hex con la tabla de arriba — ni uno de los
+   * nueve del panel aparece en `home.html`. Mezclarlas seria romper las dos:
+   * el panel es claro y sobrio para leer cifras todos los dias; la portada es
+   * oscura y de alto contraste para que se lea una vez. El prefijo `--home-`
+   * las mantiene separadas, y hace visible la colision que si existe: en
+   * `home.html` `--panel` es #1C1533 y en el panel es #FFFFFF.
+   */
+  --home-ink: #ECEBFA;
+  --home-mut: #9A9EC2;
+  --home-dim: #7D82A8;
+  --home-line: #2C2148;
+  --home-line2: #3B2D63;
+  --home-bg: #140F22;
+  --home-bg2: #170F28;
+  --home-panel: #1C1533;
+  --home-acc: #9A63F5;
+  --home-acc2: #B98FF8;
+  --home-ok: #3FD6B3;
+  --home-warn: #F2A65A;
+  --home-bad: #FF8FA3;
+
+  /* Los que `home.html` escribe sueltos, sin pasar por una variable propia. */
+  --home-blanco: #FFFFFF;
+  --home-negro: #0E0A1A;
+  --home-tinta-clara: #1C1528; /* el texto de las secciones claras */
+  --home-mut-claro: #6B6486;
+  --home-tenue: #6B6096;
+  --home-gris-mono: #565073;
+  --home-lead: #C0C3E0;
+  --home-texto-boton: #CFD2EC;
+  --home-menta: #9CE8D9;
+  --home-menta-clara: #8EE8DF;
+  --home-menta-oscura: #35A893;
+  --home-acc-hover: #A875F7;
+  --home-msg-q-fin: #7E46E8;
+  --home-msg-a: #221A3D;
+  --home-rejilla: #251C42;
+  --home-celda-hover: #2A2050;
+  --home-ic-a: #241A44;
+  --home-ic-b: #181230;
+  --home-linea-plist: #241B40;
+  --home-band-a: #0A1522;
+  --home-seccion-clara: #F6F4FA;
+  --home-linea-clara: #E0DBEA;
+  --home-linea-suave: #F0EDF6;
+  --home-guia: #C3BCD4;
+  --home-rule-bg: #FDF6EE;
+  --home-tag-bg: #FBEED2;
+  --home-mask: #000000; /* el `#000` de las mascaras `radial-gradient` */
+
+  /*
+   * Los `rgba()` de la portada, enteros y con nombre.
+   *
+   * Un color con transparencia sigue siendo un color: `tokens.test.ts` prohibe
+   * `rgb()/rgba()` en un componente igual que prohibe un hex, y tiene razon
+   * — un `rgba(154,99,245,.35)` suelto en una vista es exactamente la misma
+   * deriva que un `#9A63F5` suelto. Por eso cada combinacion de color y alfa
+   * que usa la portada esta aca, y no la tripleta: pasarle el alfa a una
+   * tripleta desde el componente seguiria escribiendo `rgba(` alla.
+   */
+  --home-nav-bg: rgba(11, 20, 32, 0.88); /* la barra superior, translucida */
+  --home-pipe-bg: rgba(6, 13, 22, 0.85);
+  --home-scan: rgba(255, 255, 255, 0.014); /* la trama de barrido */
+  --home-sombra: rgba(0, 0, 0, 0.55);
+  --home-ok-09: rgba(63, 214, 179, 0.9);
+  --home-ok-08: rgba(63, 214, 179, 0.8);
+  --home-ok-05: rgba(63, 214, 179, 0.5);
+  --home-ok-04: rgba(63, 214, 179, 0.4);
+  --home-ok-025: rgba(63, 214, 179, 0.25);
+  --home-ok-007: rgba(63, 214, 179, 0.07);
+  --home-ok-006: rgba(63, 214, 179, 0.06);
+  --home-acc-035: rgba(154, 99, 245, 0.35);
+  --home-acc-025: rgba(154, 99, 245, 0.25);
+  --home-acc-02: rgba(154, 99, 245, 0.2);
+  --home-acc-012: rgba(154, 99, 245, 0.12);
+  --home-acc-008: rgba(154, 99, 245, 0.08);
+  --home-acc2-04: rgba(185, 143, 248, 0.4);
+  --home-acc2-006: rgba(185, 143, 248, 0.06);
+  --home-bad-07: rgba(255, 110, 134, 0.7);
+  --home-bad-006: rgba(255, 110, 134, 0.06);
 }

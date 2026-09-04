@@ -25,7 +25,7 @@ import { onScopeDispose, ref, type Ref } from "vue";
  * antes del hogar. Un cuarto enlace en la barra la volvería un paso obligado de
  * la navegación, que es exactamente lo que el plan decidió no hacer.
  */
-export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta" | "conectado";
+export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta" | "conectado" | "inicio";
 
 /** Las que dibuja la barra lateral. No es la lista de rutas válidas. */
 export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimientos"];
@@ -41,7 +41,18 @@ export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimien
  * en la lista, `parseHash` la trataría como desconocida y mandaría al Resumen,
  * y el usuario volvería de autorizar su correo sin que nada se lo confirme.
  */
-export const RUTAS: readonly Pantalla[] = [...PANTALLAS, "alta", "conectado"];
+/**
+ * `inicio` es la portada institucional (`home.html` del design system).
+ *
+ * Tampoco va en la barra, y por una tercera razon: **no esta adentro del
+ * panel**. Es la pagina que en el sistema va DELANTE de la puerta —sus botones
+ * apuntan a `p0-acceso.html`— asi que un enlace a ella desde la barra lateral
+ * seria un enlace hacia afuera desde adentro. Se llega escribiendo la
+ * direccion, o desde donde se decida enlazarla el dia que reemplace a la
+ * puerta como primera pantalla; hoy no lo hace, y ese es el unico motivo por
+ * el que la portada no cambio el arranque de nadie.
+ */
+export const RUTAS: readonly Pantalla[] = [...PANTALLAS, "alta", "conectado", "inicio"];
 
 export interface Ruta {
   pantalla: Pantalla;

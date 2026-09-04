@@ -29,6 +29,7 @@ import SesionChip from "./components/SesionChip.vue";
 import { useSesion } from "./composables/useSesion";
 import AltaPerfil from "./views/AltaPerfil.vue";
 import Conectado from "./views/Conectado.vue";
+import Inicio from "./views/Inicio.vue";
 import Movimientos from "./views/Movimientos.vue";
 import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
@@ -72,7 +73,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="esperandoSesion" class="puerta espera" data-testid="app-esperando-sesion">
+  <!-- La portada institucional va ANTES que las dos puertas y fuera del shell:
+       es la pagina publica, la unica que se mira sin haber entrado. Ver
+       `views/Inicio.vue`. -->
+  <Inicio v-if="ruta.pantalla === 'inicio'" />
+
+  <div v-else-if="esperandoSesion" class="puerta espera" data-testid="app-esperando-sesion">
     <p>Entrando…</p>
   </div>
 
