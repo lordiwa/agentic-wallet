@@ -4,6 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agentic Wallet — Panel</title>
+    <!--
+      Las dos fuentes del sistema. Van acá y no en un `onMounted` porque desde
+      el tema oscuro TODA pantalla las usa —`Space Grotesk` titula y `IBM Plex
+      Mono` dibuja etiquetas y cifras—, no sólo la portada. Pedirlas en el
+      documento evita el salto de fuente que se ve cuando el `<link>` lo
+      inyecta el componente ya montado.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="app"></div>

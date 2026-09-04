@@ -13,21 +13,37 @@
  */
 
 :root {
-  /* ---- Color (§2.1, la tabla de roles) ---- */
-  --nav: #101A26; /* fondo de la barra lateral */
-  --tinta: #17202A; /* texto principal */
-  --apagado: #5B6B7C; /* texto secundario, etiquetas, notas */
-  --fondo: #F6F7F9; /* fondo de la aplicacion */
-  --panel: #FFFFFF; /* fondo de tarjeta */
-  --linea: #DDE3EA; /* bordes */
-  --accion: #2B5FD9; /* boton primario, enlaces, barras del grafico */
-  --al-dia: #1C7A45; /* estado correcto */
-  --atencion: #E0B73A; /* estado a medias / pendiente */
-  --falla: #B3261E; /* error */
+  /*
+   * ---- Color (§2.1, la tabla de roles) ----
+   *
+   * El sistema paso a un tema oscuro violeta. No es un retoque de paleta: los
+   * diez roles cambiaron de valor a la vez, y varios invirtieron su claro y su
+   * oscuro (`--tinta` era casi negra y ahora es casi blanca, `--fondo` al
+   * reves). Por eso se cambian los VALORES y no los NOMBRES — todo el panel ya
+   * pide el rol, no el color, asi que el tema entra por aca y no hay que tocar
+   * una vista para que el fondo deje de ser blanco.
+   */
+  --nav: #170F28; /* fondo de la barra lateral */
+  --tinta: #ECEBFA; /* texto principal */
+  --apagado: #9A9EC2; /* texto secundario, etiquetas, notas */
+  --fondo: #140F22; /* fondo de la aplicacion */
+  --panel: #1C1533; /* fondo de tarjeta */
+  --linea: #372A5C; /* bordes */
+  --accion: #9A63F5; /* boton primario, enlaces, barras del grafico */
+  --al-dia: #3FD6B3; /* estado correcto */
+  --atencion: #F2A65A; /* estado a medias / pendiente */
+  --falla: #FF8FA3; /* error */
 
   /* ---- Tipografia (§2.1) ---- */
   --fuente: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --fuente-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /*
+   * El tema futurista pone dos fuentes con un trabajo cada una: `Space
+   * Grotesk` para lo que titula (h1/h2) y `IBM Plex Mono` para lo que hay que
+   * leer como un dato y no como una frase (etiquetas, pildoras, `code`). El
+   * cuerpo sigue en `system-ui`: es el que se lee todo el dia.
+   */
+  --fuente-titulo: "Space Grotesk", system-ui, sans-serif;
+  --fuente-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --cifra-size: 26px;
   --cifra-weight: 640;
   --h1-size: 20px;
@@ -41,45 +57,67 @@
   --body-size: 15px;
   --small-size: 12.5px;
 
-  /* ---- Forma (§2.1): radio 6 control, 8 boton, 10 tarjeta, 20 etiqueta ---- */
-  --radio-control: 6px;
-  --radio-boton: 8px;
-  --radio-tarjeta: 10px;
-  --radio-etiqueta: 20px;
+  /*
+   * ---- Forma (§2.1): radio 2 control, 3 boton, 4 tarjeta, 3 etiqueta ----
+   *
+   * La esquina se cerro. Antes el sistema iba de 6 a 20 y la etiqueta era una
+   * pildora redonda; ahora ninguna pasa de 4 px. Es lo que hace que el tema se
+   * lea como una consola y no como una tarjeta de banca en linea, y va junto
+   * con el bisel del boton (`--boton-bisel`).
+   */
+  --radio-control: 2px;
+  --radio-boton: 3px;
+  --radio-tarjeta: 4px;
+  --radio-etiqueta: 3px;
 
-  /* ---- Etiquetas de estado `.tag` (§2.1): fondo / borde / texto ---- */
-  --tag-ok-bg: #E8F6EE;
-  --tag-ok-borde: #B8E0C8;
-  --tag-ok-texto: #1C7A45;
-  --tag-warn-bg: #FFF4D6;
-  --tag-warn-borde: #E0B73A;
-  --tag-warn-texto: #8A6200;
-  --tag-bad-bg: #FDECEB;
-  --tag-bad-borde: #F2C0BC;
-  --tag-bad-texto: #B3261E;
-  --tag-neu-bg: #F0F3F7;
-  --tag-neu-borde: #DDE3EA;
-  --tag-neu-texto: #5B6B7C;
-  --tag-acc-bg: #EAF0FF;
-  --tag-acc-borde: #C3D4FB;
-  --tag-acc-texto: #2B5FD9;
+  /*
+   * ---- Etiquetas de estado `.tag` (§2.1): fondo / borde / texto ----
+   *
+   * Sobre fondo oscuro el fondo del estado es el color a baja opacidad, no un
+   * pastel opaco: un `#E8F6EE` solido encima de `#1C1533` seria un parche
+   * blanco. `warn` es la excepcion y va en solido (`#2B2015`), tal cual la
+   * tarjeta.
+   */
+  --tag-ok-bg: rgba(63, 214, 179, 0.12);
+  --tag-ok-borde: rgba(63, 214, 179, 0.45);
+  --tag-ok-texto: #8EE8DF;
+  --tag-warn-bg: #2B2015;
+  --tag-warn-borde: #F2A65A;
+  --tag-warn-texto: #FFC38A;
+  --tag-bad-bg: rgba(255, 110, 134, 0.14);
+  --tag-bad-borde: rgba(255, 110, 134, 0.45);
+  --tag-bad-texto: #FF8FA3;
+  --tag-neu-bg: #241B40;
+  --tag-neu-borde: #372A5C;
+  --tag-neu-texto: #9A9EC2;
+  --tag-acc-bg: rgba(154, 99, 245, 0.16);
+  --tag-acc-borde: rgba(185, 143, 248, 0.5);
+  --tag-acc-texto: #B98FF8;
 
   /* ---- Botones (§2.1) ---- */
-  --boton-primario-bg: #2B5FD9;
+  --boton-primario-bg: #9A63F5;
+  --boton-primario-borde: #B98FF8; /* el primario si lleva borde propio, mas claro que el fondo */
   --boton-primario-texto: #FFFFFF;
-  --boton-secundario-bg: #FFFFFF;
-  --boton-secundario-borde: #DDE3EA;
-  --boton-terciario-texto: #2B5FD9;
-  --boton-off-bg: #F0F3F7;
-  --boton-off-texto: #9AA8B6;
+  --boton-secundario-bg: #1C1533;
+  --boton-secundario-borde: #372A5C;
+  --boton-terciario-texto: #B98FF8;
+  --boton-off-bg: #241B40;
+  --boton-off-borde: #2C2148;
+  --boton-off-texto: #6B7096;
+  /*
+   * El bisel: la esquina superior derecha y la inferior izquierda cortadas a
+   * 8 px. Es un token y no un `clip-path` suelto en `base.css` porque es la
+   * decision de forma del sistema, del mismo rango que un radio.
+   */
+  --boton-bisel: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
 
   /* ---- Shell (§2.1) ---- */
   --shell-columnas: 236px 1fr;
   --shell-padding: 20px 26px 40px;
   --nav-enlace-size: 13.5px;
-  --nav-enlace-texto: #A9B8C8;
-  --nav-activo-bg: #1D2D3F;
-  --nav-separador: #1D2D3F;
+  --nav-enlace-texto: #AAB0D6;
+  --nav-activo-bg: #2C2148;
+  --nav-separador: #2C2148;
 
   /*
    * ---- Del lienzo de las tarjetas, no listados en la tabla de §2.1 ----
@@ -87,23 +125,24 @@
    * `p10-configuracion.html`. Viven aca por la misma razon que el resto: para
    * que ningun componente escriba un hex.
    */
-  --marca-punto: #38B06D; /* el punto verde del logotipo */
-  --nav-tagline: #8497A8;
-  --nav-texto-claro: #C7D3E0;
-  --nav-pie: #6D8093;
-  --texto-nota: #3D4A57; /* el cuerpo de `.note` y `.scopes` */
-  --nota-bg: #FFFAF0; /* el amarillo palido del aviso */
-  --nota-acc-bg: #F5F8FF; /* el azul palido de `.note` informativa (`p3`, `p9`) */
-  --aviso-texto: #6B5714; /* el cuerpo del `.alert` amarillo de `p2-resumen` */
-  --superficie-suave: #F0F3F7; /* separadores internos, `code`, chips neutros */
+  --marca-punto: #3FD6B3; /* el punto del logotipo, ahora en el verde de "al dia" */
+  --nav-tagline: #7D82A8;
+  --nav-texto-claro: #CFD2EC; /* el texto corriente de la barra lateral */
+  --nav-pie: #7D82A8;
+  --texto-nota: #C0C3E0; /* el cuerpo de `.note` y `.scopes` */
+  --nota-bg: #261C12; /* el marron del aviso ambar */
+  --nota-acc-bg: rgba(154, 99, 245, 0.08); /* el violeta tenue de `.note` informativa (`p3`, `p9`) */
+  --aviso-texto: #FFC38A; /* el cuerpo del `.alert` ambar de `p2-resumen` */
+  --superficie-suave: #241B40; /* separadores internos, `code`, `.track`, chips neutros */
   --placeholder: #B6C1CC; /* el texto de ejemplo de un campo vacio */
-  --superficie-tenue: #FBFCFD; /* el gris casi blanco de `.pane` y de una fila atenuada */
-  --texto-atenuado: #8A97A5; /* el texto de una fila que el motor ya excluyo */
-  --accion-oscura: #1D47A8; /* el azul de accion sobre su propio fondo claro */
-  --radio-chip: 7px; /* el control de filtro de `c6`/`p4`, entre el 6 y el 8 */
-  --why-borde: #F0E0B8; /* el borde del `.why` de `c2-tarjeta-revision.html` */
-  --pane-truth-bg: #F4FBF7; /* el verde palidisimo de `.pane.truth`, en `c2` */
-  --sombra-control: 0 1px 2px rgba(16, 26, 38, 0.06);
+  --superficie-tenue: #181230; /* el violeta mas hondo que el panel: `.pane` y una fila atenuada */
+  --texto-atenuado: #6B7096; /* el texto de una fila que el motor ya excluyo */
+  --accion-oscura: #9DB8F5; /* el texto de accion sobre su propio fondo, en `.sel.act` */
+  --radio-chip: 2px; /* el control de filtro de `c6`/`p4` */
+  --why-borde: rgba(242, 166, 90, 0.4); /* el borde del `.why` de `c2-tarjeta-revision.html` */
+  --pane-truth-bg: rgba(63, 214, 179, 0.08); /* el verde tenue de `.pane.truth`, en `c2` */
+  --pane-claude-bg: rgba(154, 99, 245, 0.08); /* y el violeta de `.pane.claude`, al lado */
+  --sombra-control: 0 1px 2px rgba(0, 0, 0, 0.35);
 
   /*
    * ---- El logotipo de Google, de `p0-acceso.html` ----
@@ -128,12 +167,14 @@
    * O sea que va DELANTE del panel, no adentro: es lo que alguien ve antes de
    * entrar, y el panel es lo que ve despues.
    *
-   * Por eso no comparte un solo hex con la tabla de arriba — ni uno de los
-   * nueve del panel aparece en `home.html`. Mezclarlas seria romper las dos:
-   * el panel es claro y sobrio para leer cifras todos los dias; la portada es
-   * oscura y de alto contraste para que se lea una vez. El prefijo `--home-`
-   * las mantiene separadas, y hace visible la colision que si existe: en
-   * `home.html` `--panel` es #1C1533 y en el panel es #FFFFFF.
+   * Con el tema oscuro las dos paletas se acercaron: la portada y el panel
+   * comparten hoy el violeta de accion (#9A63F5), el verde (#3FD6B3), el
+   * ambar (#F2A65A) y el rosa (#FF8FA3), y `--home-panel` vale lo mismo que
+   * `--panel`. Pero siguen siendo dos y el prefijo `--home-` se queda: la
+   * portada tiene secciones CLARAS que el panel no tiene (`--home-seccion-clara`,
+   * `--home-tinta-clara`) y una escala de grises propia. Fundirlas seria atar
+   * la portada a los roles del panel, y el dia que uno de los dos cambie se
+   * llevaria puesto al otro — que es exactamente lo que acaba de pasar aca.
    */
   --home-ink: #ECEBFA;
   --home-mut: #9A9EC2;

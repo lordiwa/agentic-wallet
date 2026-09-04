@@ -17,27 +17,41 @@ import { describe, expect, it } from "vitest";
 const PANEL_SRC = path.resolve(import.meta.dirname, "..");
 const TOKENS_CSS = path.join(PANEL_SRC, "styles/tokens.css");
 
-/** Los valores exactos de la tabla de §2.1, con su rol. */
+/**
+ * Los valores exactos de la tabla de §2.1, con su rol.
+ *
+ * Son los del tema OSCURO. La tabla anterior (`#101A26` nav, `#2B5FD9`
+ * acción, fondo `#F6F7F9`) era la del sistema claro y quedó atrás cuando el
+ * design system se rehízo entero: los diez roles cambiaron de valor a la vez.
+ * Sostener acá los hex viejos para no tocar el test habría dejado el test en
+ * verde midiendo un sistema que ya no existe — que es justo lo contrario de
+ * para lo que está.
+ */
 const TOKENS_21: [string, string][] = [
-  ["Nav", "#101A26"],
-  ["Tinta", "#17202A"],
-  ["Apagado", "#5B6B7C"],
-  ["Fondo", "#F6F7F9"],
-  ["Panel", "#FFFFFF"],
-  ["Línea", "#DDE3EA"],
-  ["Acción", "#2B5FD9"],
-  ["Al día", "#1C7A45"],
-  ["Atención", "#E0B73A"],
-  ["Falla", "#B3261E"],
+  ["Nav", "#170F28"],
+  ["Tinta", "#ECEBFA"],
+  ["Apagado", "#9A9EC2"],
+  ["Fondo", "#140F22"],
+  ["Panel", "#1C1533"],
+  ["Línea", "#372A5C"],
+  ["Acción", "#9A63F5"],
+  ["Al día", "#3FD6B3"],
+  ["Atención", "#F2A65A"],
+  ["Falla", "#FF8FA3"],
 ];
 
-/** Las etiquetas `.tag` de §2.1: fondo / borde / texto. */
+/**
+ * Las etiquetas `.tag` de §2.1: fondo / borde / texto.
+ *
+ * Sobre fondo oscuro el fondo y el borde de tres de las cinco son el color a
+ * baja opacidad, no un hex — por eso acá hay `rgba(...)` y no sólo `#`.
+ */
 const TAGS_21: [string, string[]][] = [
-  ["ok", ["#E8F6EE", "#B8E0C8", "#1C7A45"]],
-  ["warn", ["#FFF4D6", "#E0B73A", "#8A6200"]],
-  ["bad", ["#FDECEB", "#F2C0BC", "#B3261E"]],
-  ["neu", ["#F0F3F7", "#DDE3EA", "#5B6B7C"]],
-  ["acc", ["#EAF0FF", "#C3D4FB", "#2B5FD9"]],
+  ["ok", ["rgba(63, 214, 179, 0.12)", "rgba(63, 214, 179, 0.45)", "#8EE8DF"]],
+  ["warn", ["#2B2015", "#F2A65A", "#FFC38A"]],
+  ["bad", ["rgba(255, 110, 134, 0.14)", "rgba(255, 110, 134, 0.45)", "#FF8FA3"]],
+  ["neu", ["#241B40", "#372A5C", "#9A9EC2"]],
+  ["acc", ["rgba(154, 99, 245, 0.16)", "rgba(185, 143, 248, 0.5)", "#B98FF8"]],
 ];
 
 function archivosDe(dir: string): string[] {
@@ -61,14 +75,15 @@ describe("tokens.css lleva los valores de §2.1 textualmente", () => {
     for (const hex of hexes) expect(css).toContain(hex);
   });
 
-  it("los botones: primario, deshabilitado y el borde del secundario", () => {
-    for (const hex of ["#2B5FD9", "#DDE3EA", "#F0F3F7", "#9AA8B6"]) expect(css).toContain(hex);
+  it("los botones: primario con su borde, deshabilitado y el borde del secundario", () => {
+    for (const hex of ["#9A63F5", "#B98FF8", "#372A5C", "#241B40", "#6B7096", "#2C2148"])
+      expect(css).toContain(hex);
   });
 
   it("el shell: columnas, barra lateral, activo y padding del contenido", () => {
     expect(css).toContain("236px 1fr");
-    expect(css).toContain("#A9B8C8");
-    expect(css).toContain("#1D2D3F");
+    expect(css).toContain("#AAB0D6");
+    expect(css).toContain("#2C2148");
     expect(css).toContain("20px 26px 40px");
   });
 
@@ -81,11 +96,25 @@ describe("tokens.css lleva los valores de §2.1 textualmente", () => {
     expect(css).toContain("12.5px");
   });
 
-  it("los cuatro radios: 6 control, 8 botón, 10 tarjeta, 20 etiqueta", () => {
-    expect(css).toMatch(/--radio-control:\s*6px/);
-    expect(css).toMatch(/--radio-boton:\s*8px/);
-    expect(css).toMatch(/--radio-tarjeta:\s*10px/);
-    expect(css).toMatch(/--radio-etiqueta:\s*20px/);
+  it("las dos fuentes del tema: la que titula y la que dibuja un dato", () => {
+    expect(css).toContain('"Space Grotesk"');
+    expect(css).toContain('"IBM Plex Mono"');
+  });
+
+  it("los cuatro radios: 2 control, 3 botón, 4 tarjeta, 3 etiqueta", () => {
+    expect(css).toMatch(/--radio-control:\s*2px/);
+    expect(css).toMatch(/--radio-boton:\s*3px/);
+    expect(css).toMatch(/--radio-tarjeta:\s*4px/);
+    expect(css).toMatch(/--radio-etiqueta:\s*3px/);
+  });
+
+  /* El bisel es una decisión de forma del sistema, del mismo rango que un
+     radio: si se pierde, el botón deja de ser el del sistema. */
+  it("el bisel del botón vive en el sistema, no en un componente", () => {
+    expect(css).toMatch(/--boton-bisel:\s*polygon\(/);
+    expect(readFileSync(path.join(PANEL_SRC, "styles/base.css"), "utf8")).toContain(
+      "clip-path: var(--boton-bisel)"
+    );
   });
 
   it("toda cifra de plata es tabular: la regla vive en el sistema, no en un componente", () => {
