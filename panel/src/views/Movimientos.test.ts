@@ -19,6 +19,15 @@ const { endpoints } = vi.hoisted(() => ({
         this.name = "ErrorDelMotor";
       }
     },
+    // La vista pregunta si el fallo es "esta ruta todavía no está en este
+    // backend" (`501 no_portado`), que no es lo mismo que una caída.
+    ErrorNoPortado: class ErrorNoPortado extends Error {
+      constructor(readonly ruta: string) {
+        super(`no_portado: ${ruta}`);
+        this.name = "ErrorNoPortado";
+      }
+    },
+    esNoPortado: (err: unknown) => err instanceof Error && err.name === "ErrorNoPortado",
   },
 }));
 
@@ -336,5 +345,32 @@ describe("el rótulo de frescura (W31)", () => {
     expect(w.get('[data-testid="movimientos-actualizado"]').text()).toContain("hace 10 minutos");
 
     vi.useRealTimers();
+  });
+});
+
+/**
+ * El `501 no_portado` no es una caída.
+ *
+ * En el panel publicado, con sesión de Google, `api/client.ts` contesta 501 a
+ * toda ruta que las Cloud Functions todavía no exponen — y `/api/transactions`
+ * es una de ellas. Dibujarlo con el cartel rojo de desconexión hacía que un
+ * servicio sano se viera roto, y encima dejaba arriba una barra de filtros que
+ * no podía filtrar nada.
+ */
+describe("una ruta que este backend todavía no sirve se dice distinto que una caída", () => {
+  it("no enciende el cartel de desconexión: dice que todavía no lee esa parte", async () => {
+    endpoints.fetchTransactions.mockRejectedValue(new endpoints.ErrorNoPortado("/api/transactions"));
+    const w = await montar();
+
+    expect(w.find('[data-testid="movimientos-error"]').exists()).toBe(false);
+    expect(w.get('[data-testid="pendiente-movimientos"]').text()).toContain("No es un error");
+  });
+
+  it("no deja filtros ni tabla: no hay nada que filtrar", async () => {
+    endpoints.fetchTransactions.mockRejectedValue(new endpoints.ErrorNoPortado("/api/transactions"));
+    const w = await montar();
+
+    expect(w.find('[data-testid="filtro-desde"]').exists()).toBe(false);
+    expect(w.find('[data-testid="tabla-movimientos"]').exists()).toBe(false);
   });
 });

@@ -54,10 +54,36 @@ function logOutcome(op: string, startedAt: number, outcome: "ok" | "error", extr
   }
 }
 
+/**
+ * La ruta existe en el motor pero **este backend todavía no la sirve**.
+ *
+ * Es un caso distinto de "el backend no respondió", y confundirlos es lo que
+ * hacía que el panel publicado se viera roto: con sesión, `client.ts` contesta
+ * `501 no_portado` a toda ruta que las funciones no exponen, y las cuatro
+ * pantallas dibujaban el cartel rojo de desconexión sobre un servicio que
+ * estaba perfectamente vivo. Una cosa es "se cayó" y la otra es "esto todavía
+ * no lo leo de tu cuenta"; se dicen distinto porque el usuario no puede hacer
+ * lo mismo con las dos.
+ */
+export class ErrorNoPortado extends Error {
+  constructor(readonly ruta: string) {
+    super(`no_portado: ${ruta}`);
+    this.name = "ErrorNoPortado";
+  }
+}
+
+/** `true` si el fallo es "esta ruta todavía no está en este backend". */
+export function esNoPortado(err: unknown): boolean {
+  return err instanceof ErrorNoPortado;
+}
+
 async function getJSON<T>(op: string, path: string): Promise<T> {
   const startedAt = performance.now();
   try {
     const res = await apiFetch(path);
+    if (res.status === 501) {
+      throw new ErrorNoPortado(path);
+    }
     if (!res.ok) {
       throw new Error(`${op} failed: ${res.status} ${res.statusText}`);
     }

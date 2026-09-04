@@ -38,8 +38,9 @@
  * viven en `lib/efecto.ts`, compartidos con la cola.
  */
 import { computed, onMounted, ref, watch } from "vue";
+import PendienteCard from "../components/PendienteCard.vue";
 import TransactionsTable from "../components/TransactionsTable.vue";
-import { ErrorDelMotor, fetchTransactions, postClassify } from "../api/endpoints";
+import { ErrorDelMotor, esNoPortado, fetchTransactions, postClassify } from "../api/endpoints";
 import type { Category, TransactionRow } from "../api/types";
 import { useRefresh } from "../composables/useRefresh";
 import { nombreCategoria } from "../lib/categorias";
@@ -70,6 +71,9 @@ const plataDeLaBarra = ref<number | null>(null);
 const cargando = ref(true);
 const cargandoMas = ref(false);
 const errorCarga = ref<string | null>(null);
+/** Este backend todavía no sirve `/api/transactions` (`501 no_portado`). No es
+ * un error: ver `components/PendienteCard.vue`. */
+const pendiente = ref(false);
 /** La hora de la última lectura que salió bien — lo único que el rótulo de
  * frescura puede decir con verdad (W31). */
 const ultimaLecturaOk = ref<Date | null>(null);
@@ -114,12 +118,22 @@ async function traer(offset: number, acumular: boolean, limite = TAMANO_MOVIMIEN
     totalDeLaBarra.value = respuesta.total ?? null;
     plataDeLaBarra.value = respuesta.amount ?? null;
     errorCarga.value = null;
+    pendiente.value = false;
     ultimaLecturaOk.value = new Date();
   } catch (err) {
     // No se dejan filas viejas con cara de actuales (`c4`, estado *Sin
     // conexión*): si el backend no responde, la tabla se vacía y se dice.
     if (!acumular) filas.value = [];
-    errorCarga.value = err instanceof Error ? err.message : String(err);
+    // Y "todavía no leo esto de tu cuenta" no es "se cayó": un `501
+    // no_portado` con el cartel rojo encima hace que un servicio sano se vea
+    // roto, que es exactamente lo que pasaba en el panel publicado.
+    if (esNoPortado(err)) {
+      pendiente.value = true;
+      errorCarga.value = null;
+    } else {
+      pendiente.value = false;
+      errorCarga.value = err instanceof Error ? err.message : String(err);
+    }
   }
 }
 
@@ -256,9 +270,17 @@ function abrirFila(id: number | null): void {
       <span v-if="actualizado" class="small" data-testid="movimientos-actualizado">actualizado {{ actualizado }}</span>
     </div>
 
+    <PendienteCard
+      v-if="pendiente"
+      titulo="Tu lista de movimientos"
+      nota="El ledger existe: lo que falta es que esta pantalla lo lea desde tu cuenta."
+      data-testid="pendiente-movimientos"
+    />
+
     <!-- Los dos filtros, con el estilo de `c6-selector-filtros.html` y SIN la
-         barra: radio de control, borde de línea, tipografía 13px. -->
-    <div class="card filtros">
+         barra: radio de control, borde de línea, tipografía 13px. Sin lista que
+         filtrar no se dibujan: un control que no puede cambiar nada miente. -->
+    <div v-if="!pendiente" class="card filtros">
       <div class="controles">
         <!-- Cuando se llega desde una barra, la categoría se dibuja como el
              control activo de `c6` y se puede soltar. -->
@@ -332,6 +354,7 @@ function abrirFila(id: number | null): void {
     </div>
 
     <TransactionsTable
+      v-if="!pendiente"
       :filas="filas"
       :categoria="categoria"
       :abierta="abierta"

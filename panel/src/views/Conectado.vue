@@ -21,44 +21,45 @@ const gmail = useGmail({ returnTo: `/${toHash("conectado")}` });
 </script>
 
 <template>
-  <section class="pantalla" data-testid="vista-conectado">
-    <h2 class="tit">Tu correo</h2>
-    <p class="bajada">
-      Bolsillo lee sólo los avisos de tu banco para armar tu historial. No manda correos ni los borra.
-    </p>
+  <div class="pantalla" data-testid="vista-conectado">
+    <!-- La cabecera del sistema, la misma de `p2` y `p4`: `.top` con `h1` y
+         `.sub`. Era un `h2` suelto con una bajada propia, o sea la única
+         pantalla del panel que no empezaba como las otras. -->
+    <div class="top">
+      <div>
+        <h1 class="h1">Tu correo</h1>
+        <p class="sub">La vuelta de Google. Acá se dice si quedó conectado — y si no, por qué.</p>
+      </div>
+    </div>
 
     <ConectarGmail :gmail="gmail" />
 
-    <p class="volver">
-      <a :href="toHash('resumen')" data-testid="conectado-volver">Volver al resumen</a>
+    <!-- Qué permiso es, en el bloque `.note` del sistema. No es decoración: es
+         lo único de esta pantalla que responde "¿qué le acabo de dar a esto?",
+         y va después de la tarjeta porque primero se lee el resultado. -->
+    <p class="note alcance">
+      <b>Es un permiso de sólo lectura.</b>
+      Agentic Wallet lee los avisos de tu banco para armar tu historial: no manda correos, no los
+      borra y no toca el resto de tu bandeja. Lo revocás cuando quieras desde tu cuenta de Google.
     </p>
-  </section>
+
+    <p class="volver">
+      <a class="btn" :href="toHash('resumen')" data-testid="conectado-volver">Volver al resumen</a>
+    </p>
+  </div>
 </template>
 
 <style scoped>
 .pantalla {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 560px;
+  max-width: 620px;
 }
-.tit {
-  margin: 0;
-  font-size: var(--h1-size);
-  font-weight: var(--h1-weight);
-  letter-spacing: var(--h1-tracking);
-  color: var(--tinta);
+.top {
+  margin-bottom: 14px;
 }
-.bajada {
-  margin: 0;
-  font-size: var(--small-size);
-  color: var(--apagado);
+.alcance {
+  margin-top: 12px;
 }
 .volver {
-  margin: 0;
-  font-size: var(--small-size);
-}
-.volver a {
-  color: var(--accion);
+  margin: 14px 0 0;
 }
 </style>

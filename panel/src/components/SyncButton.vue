@@ -68,6 +68,17 @@ const vista = computed(() => vistaSync(props.entrada, props.ahora ?? new Date())
   gap: 11px;
   flex-wrap: wrap;
 }
+/*
+ * `c1` dibuja su botón un punto más grande que el `.btn` general del sistema
+ * (8px/15px, 13.5px, peso 600 contra 7px/13px, 13px). No es un capricho de la
+ * tarjeta: es el control más visible del panel y el único que dispara trabajo
+ * de verdad, así que en el sistema pesa más que un "Ver los 3 pendientes".
+ */
+.btn {
+  padding: 8px 15px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
 .meta-col {
   flex: 1;
   min-width: 150px;

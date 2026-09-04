@@ -37,7 +37,9 @@ describe("TransactionsTable — las columnas del sistema", () => {
     const cabeceras = w.findAll("th").map((th) => th.text());
 
     expect(cabeceras).toEqual([
-      "Fecha",
+      // La flecha de orden de `c4`. Es fija: el motor devuelve los más
+      // recientes primero y esta pantalla no ordena por otra columna.
+      "Fecha ↓",
       "Contraparte",
       "Tipo",
       "Dirección",

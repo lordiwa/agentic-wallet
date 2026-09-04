@@ -148,7 +148,7 @@ function confirmar(): void {
         </button>
       </div>
 
-      <p class="small pie">
+      <p class="small pie-nota">
         Confirmar escribe una regla sobre este nombre y vale para
         {{ plural(propuesta.count, "el movimiento", "los movimientos") }} de esta contraparte, los de antes y los que
         vengan. Descartar no guarda nada.
@@ -236,7 +236,7 @@ function confirmar(): void {
   background: var(--boton-off-bg);
   color: var(--boton-off-texto);
 }
-.pie {
+.pie-nota {
   margin: 10px 0 0;
 }
 .sr {

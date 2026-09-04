@@ -39,9 +39,11 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import ClassifyCard from "../components/ClassifyCard.vue";
+import PendienteCard from "../components/PendienteCard.vue";
 import ReviewCard from "../components/ReviewCard.vue";
 import {
   ErrorDelMotor,
+  esNoPortado,
   fetchClassifyProgress,
   fetchClassifyQueue,
   fetchOverview,
@@ -82,6 +84,8 @@ const progreso = ref<ClassifyProgressResponse | null>(null);
 const overview = ref<OverviewResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
+/** Este backend todavía no sirve la cola (`501 no_portado`). No es un error. */
+const pendiente = ref(false);
 
 /** El resultado de la última acción: qué cambió, con el número (F13/R19). */
 const efecto = ref<Efecto | null>(null);
@@ -149,7 +153,7 @@ function irA(destino: Pestana): void {
  * estado vacío sea confiable, y confiable quiere decir exactamente esto: que
  * sólo se dibuje cuando hubo una respuesta.
  */
-const ledgerLeido = computed(() => !cargando.value && errorCarga.value === null);
+const ledgerLeido = computed(() => !cargando.value && errorCarga.value === null && !pendiente.value);
 
 async function cargar(): Promise<void> {
   try {
@@ -164,8 +168,18 @@ async function cargar(): Promise<void> {
     filasDeMonto.value = filas.transactions;
     overview.value = datos;
     errorCarga.value = null;
+    pendiente.value = false;
   } catch (err) {
-    errorCarga.value = err instanceof Error ? err.message : String(err);
+    // Un `501 no_portado` no es una caída: este backend todavía no sirve la
+    // cola. Se dice distinto porque el usuario no puede hacer lo mismo con las
+    // dos cosas (ver `components/PendienteCard.vue`).
+    if (esNoPortado(err)) {
+      pendiente.value = true;
+      errorCarga.value = null;
+    } else {
+      pendiente.value = false;
+      errorCarga.value = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     cargando.value = false;
   }
@@ -323,6 +337,13 @@ const sinConfirmar = computed(() => filasDeMonto.value.length);
       </button>
     </div>
 
+    <PendienteCard
+      v-if="pendiente"
+      titulo="Tu cola de preguntas"
+      nota="Las preguntas se arman del ledger: mientras no se lea, no hay ninguna que hacerte."
+      data-testid="pendiente-preguntas"
+    />
+
     <div v-if="errorCarga" class="card error" data-testid="preguntas-error">
       <b>El backend no respondió.</b>
       <p class="small">{{ errorCarga }}</p>
@@ -338,7 +359,7 @@ const sinConfirmar = computed(() => filasDeMonto.value.length);
     </div>
 
     <!-- ================= Pestaña MONTO ================= -->
-    <section v-if="pestana === 'monto'" data-testid="panel-monto">
+    <section v-if="!pendiente && pestana === 'monto'" data-testid="panel-monto">
       <p class="sub intro">
         Estos movimientos tienen monto, pero nadie lo confirmó todavía, así que
         <b>están fuera de todos los totales</b>: no suman en el saldo ni en el gasto por categoría. Por eso esta
@@ -375,7 +396,7 @@ const sinConfirmar = computed(() => filasDeMonto.value.length);
     </section>
 
     <!-- ================= Pestaña QUÉ ES ESTO ================= -->
-    <section v-else data-testid="panel-que-es">
+    <section v-else-if="!pendiente" data-testid="panel-que-es">
       <!-- El progreso por plata, SIEMPRE visible (M1). -->
       <div v-if="avance" class="card avance" :class="{ celebra: avance.celebra }" data-testid="avance">
         <div class="avance-txt">

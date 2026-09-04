@@ -150,6 +150,12 @@ body {
   font-weight: 600;
 }
 
+/* La secundaria de `c1-boton-sync.html`: el mismo botón, sin el peso de una
+ * acción principal. */
+.btn.sec {
+  font-weight: 500;
+}
+
 .btn.qui {
   border-color: transparent;
   background: none;
@@ -260,6 +266,44 @@ body {
   margin: 1px 0 0;
   font-size: var(--small-size);
   color: var(--aviso-texto);
+}
+
+/* ----
+ * La nota del sistema: el bloque con borde izquierdo de 3px que aparece en
+ * `c1`, `c3`, `c4` y `p4`. Es para una explicación de dos renglones, y por eso
+ * no es una `.tag`: una píldora de 20px de radio con texto largo se lee como un
+ * botón que no se puede pulsar.
+ *
+ * El ámbar es el default porque es el caso del sistema (una advertencia sobre
+ * cómo leer lo de al lado); `ok` y `bad` existen para la vuelta de un flujo,
+ * donde la nota informa el resultado.
+ * ---- */
+
+.note {
+  border-left: 3px solid var(--atencion);
+  background: var(--nota-bg);
+  padding: 11px 13px;
+  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  font-size: var(--small-size);
+  color: var(--texto-nota);
+  margin: 0;
+}
+
+.note b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.note.ok {
+  border-left-color: var(--al-dia);
+  background: var(--tag-ok-bg);
+  color: var(--tag-ok-texto);
+}
+
+.note.bad {
+  border-left-color: var(--falla);
+  background: var(--tag-bad-bg);
+  color: var(--tag-bad-texto);
 }
 
 /* ---- Enlace que envuelve una tarjeta o una fila, sin verse como enlace ---- */

@@ -9,7 +9,7 @@ describe("Inicio (la portada institucional)", () => {
     const wrapper = mount(Inicio);
     // Los ids son los que enlaza el indice del nav: si uno se renombra, el
     // enlace deja de hacer scroll y no lo nota nadie.
-    for (const id of ["que-es", "como-funciona", "privacidad", "instalacion", "faq"]) {
+    for (const id of ["que-es", "como-funciona", "privacidad", "empezar", "faq"]) {
       expect(wrapper.find(`#${id}`).exists()).toBe(true);
     }
     expect(wrapper.find(".cta").exists()).toBe(true);

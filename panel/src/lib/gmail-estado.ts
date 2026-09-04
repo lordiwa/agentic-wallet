@@ -124,7 +124,7 @@ export interface VistaGmail {
   detalle: string;
   /** `null` cuando no hay acción que ofrecer. */
   boton: string | null;
-  botonClase: "primario" | "secundario";
+  botonClase: "pri" | "sec";
   habilitado: boolean;
   aviso: Aviso | null;
 }
@@ -156,7 +156,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
       titulo: "Gmail no está configurado",
       detalle: "A este panel le falta la dirección del backend para conectar el correo.",
       boton: null,
-      botonClase: "secundario",
+      botonClase: "sec",
       habilitado: false,
       aviso,
     };
@@ -168,7 +168,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
       titulo: "Entrá para conectar tu correo",
       detalle: "Conectar Gmail necesita una sesión iniciada.",
       boton: null,
-      botonClase: "secundario",
+      botonClase: "sec",
       habilitado: false,
       aviso,
     };
@@ -180,7 +180,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
       titulo: "Viendo si tenés Gmail conectado…",
       detalle: "",
       boton: null,
-      botonClase: "secundario",
+      botonClase: "sec",
       habilitado: false,
       aviso,
     };
@@ -192,7 +192,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
       titulo: "No se pudo consultar el estado",
       detalle: entrada.error ?? "Probá de nuevo.",
       boton: "Reintentar",
-      botonClase: "secundario",
+      botonClase: "sec",
       habilitado: !entrada.cargando,
       aviso,
     };
@@ -204,7 +204,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
       titulo: "Hay que reconectar Gmail",
       detalle: "Google dejó de aceptar el permiso. Tus datos siguen acá; falta renovar el acceso.",
       boton: "Reconectar",
-      botonClase: "primario",
+      botonClase: "pri",
       habilitado: !entrada.cargando,
       aviso,
     };
@@ -219,7 +219,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
         .filter((parte) => parte !== null && parte !== "")
         .join(" · "),
       boton: "Reconectar",
-      botonClase: "secundario",
+      botonClase: "sec",
       habilitado: !entrada.cargando,
       aviso,
     };
@@ -230,7 +230,7 @@ export function vistaGmail(entrada: EntradaGmail): VistaGmail {
     titulo: "Conectá tu Gmail",
     detalle: "Sólo se leen los correos de aviso de tu banco. Podés revocarlo cuando quieras.",
     boton: "Conectar Gmail",
-    botonClase: "primario",
+    botonClase: "pri",
     habilitado: !entrada.cargando,
     aviso,
   };

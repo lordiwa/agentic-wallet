@@ -58,53 +58,52 @@ function irA(id: string): void {
         <a class="lnk" href="" @click.prevent="irA('que-es')">Qué es</a>
         <a class="lnk" href="" @click.prevent="irA('como-funciona')">Cómo funciona</a>
         <a class="lnk" href="" @click.prevent="irA('privacidad')">Privacidad</a>
-        <a class="lnk" href="" @click.prevent="irA('instalacion')">Instalación</a>
+        <a class="lnk" href="" @click.prevent="irA('empezar')">Empezar</a>
         <a class="lnk" href="" @click.prevent="irA('faq')">FAQ</a>
         <a class="btn grn" :href="alPanel" data-testid="inicio-entrar">Entrar al panel</a>
       </div>
     </nav>
 
     <header class="hero">
-      <div class="coords">LAT −0.1807 / LON −78.4678<br />BUILD local · RED ninguna</div>
+      <div class="coords">LAT −0.1807 / LON −78.4678<br />BUILD nube · REGIÓN us-central1</div>
       <div class="wrap">
         <div>
-          <span class="pill rise"><i></i> TODO CORRE EN TU COMPUTADORA</span>
+          <span class="pill rise"><i></i> ENTRÁS Y YA ESTÁ — NADA QUE INSTALAR</span>
           <h1 class="rise d1">Tu plata, en <em>tus</em> propias manos.</h1>
           <p class="lead rise d2">
             Agentic Wallet lee los correos que <b>tu banco ya te manda</b>, arma tu historial de
-            gastos <b>en tu computadora</b>, y te deja preguntarle lo que quieras en lenguaje
+            gastos <b>en tu espacio privado</b>, y te deja preguntarle lo que quieras en lenguaje
             natural.
           </p>
           <p class="hard rise d3">
-            No hay servidor en la nube. No hay cuenta que crear. No se conecta a tu banco. Nadie
-            más ve tus movimientos — ni siquiera nosotros, porque no hay un "nosotros" del otro
-            lado.
+            No hay nada que descargar. No se conecta a tu banco ni te pide su clave. Tu historial
+            es tuyo y de nadie más: un ledger por persona, sin nada compartido entre cuentas.
           </p>
           <div class="ctas rise d4">
-            <a class="btn pri" href="" @click.prevent="irA('instalacion')">Cómo empezar</a>
-            <a class="btn" :href="alPanel">Ya lo tengo — entrar</a>
+            <a class="btn pri" href="" @click.prevent="irA('empezar')">Cómo empezar</a>
+            <a class="btn" :href="alPanel">Entrar con Google</a>
           </div>
         </div>
         <div class="demo hud">
           <div class="bar">
             <i></i><i></i><i></i> agentic-wallet · chat
-            <span class="url"><b>●</b> localhost:3000</span>
+            <span class="url"><b>●</b> tu panel</span>
           </div>
           <div class="body">
             <div class="msg q">¿Cuánto gasté en comida este mes?</div>
             <div class="msg a">
               Llevás 18 consumos en comida este mes. La mayoría son de supermercado; el resto,
-              delivery.<span class="src">fuente: <b>wallet.sqlite</b> · 18 filas · 0 en revisión</span>
+              delivery.<span class="src">fuente: <b>tu ledger</b> · 18 filas · 0 en revisión</span>
             </div>
             <div class="msg q">¿Me alcanza para la cuota de la moto?</div>
             <div class="msg a">
               Sí. Después de reservar tu colchón te queda margen, y tu próximo sueldo entra en 6
-              días.<span class="src">fuente: <b>wallet.sqlite</b> · saldo + colchón + ciclo de sueldo</span>
+              días.<span class="src">fuente: <b>tu ledger</b> · saldo + colchón + ciclo de sueldo</span>
             </div>
             <div class="msg a escribiendo">escribí tu pregunta <span class="caret"></span></div>
           </div>
           <p class="cap">
-            <span>// ejemplo ilustrativo con datos de demostración</span><span>latencia: local</span>
+            <span>// ejemplo ilustrativo con datos de demostración</span><span>en tu navegador</span>
           </p>
         </div>
       </div>
@@ -113,7 +112,7 @@ function irA(id: string): void {
         <div class="head">
           <div class="wrap">
             <span>ARQUITECTURA / RECORRIDO DEL DATO</span>
-            <span>NINGÚN TRAMO SALE DE TU EQUIPO</span>
+            <span>NINGÚN TRAMO SALE DE TU CUENTA</span>
           </div>
         </div>
         <div class="wrap sin-padding">
@@ -129,13 +128,13 @@ function irA(id: string): void {
               <div class="lane"></div>
             </div>
             <div class="pnode">
-              <span class="k">STORAGE <em>local</em></span><b>wallet.sqlite</b>
-              <span class="d">Un archivo en tu carpeta. Tuyo, como un documento.</span>
+              <span class="k">LEDGER <em>privado</em></span><b>Sólo tuyo</b>
+              <span class="d">Un historial por persona. Ninguna cuenta ve la de otra.</span>
               <div class="lane"></div>
             </div>
             <div class="pnode">
-              <span class="k">INTERFAZ <em>127.0.0.1</em></span><b>Tablero + chat</b>
-              <span class="d">Lo mirás y le preguntás en tu navegador.</span>
+              <span class="k">INTERFAZ <em>tu navegador</em></span><b>Tablero + chat</b>
+              <span class="d">Lo abrís donde estés. No hay nada que instalar.</span>
               <div class="lane"></div>
             </div>
           </div>
@@ -146,13 +145,13 @@ function irA(id: string): void {
     <section id="que-es">
       <div class="wrap">
         <div class="shead">
-          <h2>Un copiloto financiero que vive en tu computadora</h2>
+          <h2>Un copiloto financiero que entiende tus correos del banco</h2>
           <span class="side">QUÉ ES<br />/QUE-ES</span>
         </div>
         <p class="lede">
           Tu banco ya te avisa por correo cada vez que pagás algo, transferís o te entra el sueldo.
           Esa información es tuya y está ahí, desordenada, entre miles de mails. Agentic Wallet la
-          ordena — y la deja donde debe estar: en tu máquina.
+          ordena — y la deja donde debe estar: atada a tu cuenta, y a ninguna otra.
         </p>
         <div class="grid3 hud">
           <div class="cell">
@@ -176,7 +175,7 @@ function irA(id: string): void {
             <h3>Te da la foto completa</h3>
             <p>
               Saldo, gasto por categoría, cuántos días faltan para tu próximo sueldo, tus deudas y
-              el colchón que querés mantener. Todo en un tablero en tu navegador.
+              el colchón que querés mantener. Todo en un tablero, desde cualquier navegador.
             </p>
           </div>
           <div class="cell">
@@ -192,15 +191,15 @@ function irA(id: string): void {
             <h3>Tu asistente de IA lo puede usar</h3>
             <p>
               El wallet se expone como herramientas MCP: tu agente puede consultar tu saldo o
-              sincronizar por vos — siempre contra la misma base local.
+              sincronizar por vos — siempre contra tu mismo ledger.
             </p>
           </div>
           <div class="cell">
             <div class="ic">∅</div>
-            <h3>Sin cuenta, sin suscripción</h3>
+            <h3>Sin formularios, sin contraseñas</h3>
             <p>
-              No hay registro, no hay plan mensual, no hay base de datos de usuarios. Es un programa
-              que corrés vos, con tus datos, en tu equipo.
+              No hay usuario ni clave que recordar: entrás con tu cuenta de Google y listo. Tampoco
+              hay tarjeta que cargar para empezar a usarlo.
             </p>
           </div>
         </div>
@@ -210,19 +209,19 @@ function irA(id: string): void {
     <div class="band">
       <div class="wrap">
         <div class="stat">
-          <b><em>0</em></b><span>SERVIDORES EN LA NUBE</span>
+          <b><em>0</em></b><span>CLAVES DE BANCO QUE DAR</span>
           <div class="g"><i class="g2"></i></div>
         </div>
         <div class="stat">
-          <b><em>0</em></b><span>CUENTAS QUE CREAR</span>
+          <b><em>0</em></b><span>ARCHIVOS QUE INSTALAR</span>
           <div class="g"><i class="g2"></i></div>
         </div>
         <div class="stat">
-          <b>1</b><span>ARCHIVO: WALLET.SQLITE</span>
+          <b>1</b><span>LEDGER POR PERSONA</span>
           <div class="g"><i class="g14"></i></div>
         </div>
         <div class="stat">
-          <b>100<em>%</em></b><span>DE TUS DATOS EN TU MÁQUINA</span>
+          <b>100<em>%</em></b><span>DEL PERMISO, SÓLO LECTURA</span>
           <div class="g"><i class="g100"></i></div>
         </div>
       </div>
@@ -231,7 +230,7 @@ function irA(id: string): void {
     <section id="como-funciona" class="lt">
       <div class="wrap">
         <div class="shead">
-          <h2>Cuatro pasos, y ninguno sale de tu equipo</h2>
+          <h2>Cuatro pasos, y ninguno toca tu banco</h2>
           <span class="side">CÓMO FUNCIONA<br />/PIPELINE</span>
         </div>
         <p class="lede">
@@ -259,12 +258,12 @@ function irA(id: string): void {
           </div>
           <div class="step">
             <div class="n">›</div>
-            <h3>Guarda en tu máquina</h3>
+            <h3>Guarda en tu ledger</h3>
             <p>
-              Cada movimiento queda en un archivo en tu carpeta. Ese archivo es tuyo: lo copiás, lo
-              respaldás o lo borrás cuando quieras.
+              Cada movimiento queda en tu historial, atado a tu cuenta. Podés exportarlo o borrarlo
+              entero cuando quieras.
             </p>
-            <span class="f">./wallet.sqlite</span>
+            <span class="f">un ledger por persona</span>
           </div>
           <div class="step">
             <div class="n">›</div>
@@ -273,7 +272,7 @@ function irA(id: string): void {
               Abrís el tablero o le preguntás por chat. Reconoce reversos, duplicados y
               transferencias entre tus propias cuentas.
             </p>
-            <span class="f">http://localhost:3000</span>
+            <span class="f">desde cualquier navegador</span>
           </div>
         </div>
         <div class="rule">
@@ -295,7 +294,7 @@ function irA(id: string): void {
     <section id="privacidad">
       <div class="wrap">
         <div class="shead">
-          <h2>Lo que sale de tu computadora, y lo que no</h2>
+          <h2>Lo que hacemos con tus datos, y lo que no</h2>
           <span class="side">PRIVACIDAD<br />/AUDITABLE</span>
         </div>
         <p class="lede">
@@ -308,8 +307,8 @@ function irA(id: string): void {
               <div>
                 <span class="m">[✓]</span>
                 <p>
-                  <b>Tu historial vive en un archivo tuyo.</b> Una base local, en tu carpeta. No se
-                  sube ni se sincroniza con nadie.
+                  <b>Tu historial es sólo tuyo.</b> Un ledger por persona, atado a tu cuenta. Nadie
+                  más lo consulta, y no se cruza con el de nadie.
                 </p>
               </div>
               <div>
@@ -341,8 +340,8 @@ function irA(id: string): void {
               <div>
                 <span class="m">[✕]</span>
                 <p>
-                  <b>No hay cuenta ni registro.</b> Nadie tiene una lista de usuarios porque no hay
-                  servicio del otro lado.
+                  <b>No hay formulario de registro.</b> No te pedimos nombre, teléfono ni tarjeta:
+                  tu identidad es tu cuenta de Google y nada más.
                 </p>
               </div>
               <div>
@@ -355,14 +354,15 @@ function irA(id: string): void {
               <div>
                 <span class="m">[✕]</span>
                 <p>
-                  <b>No hay publicidad ni venta de datos.</b> No hay modelo de negocio: es un
-                  proyecto personal, con el código abierto para que lo revises.
+                  <b>No hay publicidad ni venta de datos.</b> Tus movimientos no alimentan a nadie:
+                  el código es abierto para que lo revises.
                 </p>
               </div>
               <div>
                 <span class="m">[✕]</span>
                 <p>
-                  <b>No queda copia en ningún servidor.</b> Borrar todo es borrar la carpeta. Listo.
+                  <b>No quedás atado.</b> Desconectás el correo y borrás tu historial completo desde
+                  el panel, sin pedirle permiso a nadie.
                 </p>
               </div>
             </div>
@@ -371,56 +371,54 @@ function irA(id: string): void {
       </div>
     </section>
 
-    <section id="instalacion" class="lt">
+    <section id="empezar" class="lt">
       <div class="wrap">
         <div class="shead">
-          <h2>Tres dobles clics, en orden</h2>
-          <span class="side">INSTALACIÓN<br />/WINDOWS</span>
+          <h2>Tres pasos, y el tercero ya es tu tablero</h2>
+          <span class="side">EMPEZAR<br />/EN-EL-NAVEGADOR</span>
         </div>
         <p class="lede">
-          No hay que escribir comandos ni saber programar. Descargás una carpeta y hacés doble clic
-          en tres archivos, uno después del otro. Se hace una sola vez; de ahí en más usás solo el
-          tercero.
+          No hay que descargar nada ni escribir comandos. Abrís el panel, entrás con tu cuenta y le
+          das permiso de lectura a tu correo. Se hace una sola vez; de ahí en más sólo entrás.
         </p>
         <div class="inst">
           <div class="icard">
-            <div class="th">setup.bat <em>5–20 MIN</em></div>
+            <div class="th">Entrar <em>~10 SEG</em></div>
             <div class="tb">
-              <h3>Instala todo solo</h3>
+              <h3>Con tu cuenta de Google</h3>
               <p>
-                Se abre una ventana negra que va contando en qué paso va. No requiere que hagas
-                nada. Si falla, doble clic de nuevo: retoma donde quedó.
+                Sin usuario ni contraseña que recordar. Entrar es sólo identidad: todavía no toca tu
+                correo, y podés entrar y no conectarlo nunca.
               </p>
-              <div class="ok">✓ "La instalación terminó bien"</div>
+              <div class="ok">✓ ya estás adentro</div>
             </div>
           </div>
           <div class="icard">
-            <div class="th">configurar.bat <em>30–40 MIN</em></div>
+            <div class="th">Conectar Gmail <em>~1 MIN</em></div>
             <div class="tb">
-              <h3>El wallet aprende de vos</h3>
+              <h3>Permiso de sólo lectura</h3>
               <p>
-                Un asistente pregunta y vos contestás: conectar Claude, el permiso de solo lectura a
-                tu Gmail, cada cuánto cobrás, tus categorías. Podés cortar y seguir otro día.
+                Google te lo pide en su propia pantalla y te dice exactamente qué se le da. Lo
+                revocás cuando quieras, desde tu cuenta y en dos clics.
               </p>
-              <div class="ok">✓ historial inicial ya cargado</div>
+              <div class="ok">✓ scope: gmail.readonly</div>
             </div>
           </div>
           <div class="icard">
-            <div class="th">iniciar.bat <em>~10 SEG</em></div>
+            <div class="th">Sincronizar <em>5–20 MIN</em></div>
             <div class="tb">
               <h3>Y ya está</h3>
               <p>
-                Se abre solo tu navegador con el tablero. Este es el único archivo que vas a usar de
-                ahí en más: doble clic cada vez que quieras mirar tu plata.
+                La primera lectura arma tu historial con los avisos que tu banco ya te mandó. Podés
+                cerrar la pestaña: sigue del lado del servicio y lo encontrás hecho.
               </p>
-              <div class="ok">✓ tablero en localhost:3000</div>
+              <div class="ok">✓ tu tablero, con tus movimientos</div>
             </div>
           </div>
         </div>
         <p class="req">
-          <b>Necesitás:</b> Windows 10 u 11 · internet · tu cuenta de Gmail · un banco que te avise
-          cada movimiento por correo · una cuenta de Claude (Pro o Max — con la suscripción que ya
-          pagás alcanza, no se paga nada aparte).
+          <b>Necesitás:</b> un navegador · tu cuenta de Gmail · un banco que te avise cada
+          movimiento por correo. Nada más: ni instalar, ni configurar, ni poner una tarjeta.
         </p>
       </div>
     </section>
@@ -435,25 +433,24 @@ function irA(id: string): void {
           <div class="qa">
             <h3>¿Necesito saber programar?</h3>
             <p>
-              No. Son tres dobles clics. Lo único que hacés vos es contestar preguntas — tu nombre,
-              cada cuánto cobrás, a qué categoría va cada comercio — y dar el permiso a tu Gmail
-              siguiendo una guía con capturas.
+              No. Entrás con tu cuenta de Google y le das permiso de lectura a tu correo. Lo único
+              que hacés vos es contestar preguntas — cada cuánto cobrás, a qué categoría va cada
+              comercio — dentro del mismo panel.
             </p>
           </div>
           <div class="qa">
             <h3>¿Cuánto cuesta?</h3>
             <p>
-              El wallet es gratis y de código abierto. Solo necesitás una cuenta de Claude Pro o
-              Max: el wallet usa esa suscripción y no se cobra nada aparte, ni por movimiento ni por
-              pregunta.
+              Hoy no se cobra nada: no hay plan mensual ni tarjeta que cargar para empezar, ni se
+              cobra por movimiento o por pregunta. El código es abierto y podés revisarlo.
             </p>
           </div>
           <div class="qa">
             <h3>¿Es seguro? ¿Alguien más ve mis datos?</h3>
             <p>
-              Nadie, y no es una promesa: no hay a dónde mandarlos. Tu historial es un archivo en tu
-              computadora, como un documento. Ni quien hizo el programa puede verlo — no tiene por
-              dónde.
+              Cada persona tiene su propio ledger, atado a su cuenta, y ninguna cuenta puede leer la
+              de otra. El permiso a tu correo es de sólo lectura y lo revocás vos, cuando quieras,
+              desde tu cuenta de Google.
             </p>
           </div>
           <div class="qa">
@@ -474,8 +471,8 @@ function irA(id: string): void {
           <div class="qa">
             <h3>¿Funciona en Mac o en el celular?</h3>
             <p>
-              Por ahora la instalación de doble clic es solo Windows 10/11. En Mac y Linux funciona
-              por línea de comandos (camino técnico). En el celular no se instala.
+              Sí: es una página, no un programa. Funciona igual en Windows, Mac, Linux y en el
+              navegador del teléfono — no hay nada que instalar en ningún lado.
             </p>
           </div>
         </div>
@@ -488,14 +485,12 @@ function irA(id: string): void {
         <span class="kicker">SOBERANÍA DE DATOS</span>
         <h2>Tu historial financiero debería ser tuyo</h2>
         <p>
-          No hace falta subir tus movimientos a una aplicación que no conocés para saber en qué se
-          te va la plata. Ya tenés los datos en tu correo — esto solo los ordena, y los deja donde
-          estaban: con vos.
+          No hace falta darle la clave de tu banco a una aplicación que no conocés para saber en qué
+          se te va la plata. Ya tenés los datos en tu correo — esto sólo los ordena, y los deja
+          donde estaban: con vos.
         </p>
         <div class="ctas">
-          <a class="btn pri" href="" @click.prevent="irA('instalacion')"
-            >Instalarlo — son tres dobles clics</a
-          >
+          <a class="btn pri" href="" @click.prevent="irA('empezar')">Empezar — son tres pasos</a>
           <a class="btn" :href="alPanel">Entrar al panel</a>
         </div>
       </div>
@@ -504,12 +499,12 @@ function irA(id: string): void {
     <footer>
       <div class="wrap">
         <span
-          ><b>Agentic Wallet</b> — tu plata, tu historial y tus credenciales no salen de tu
-          computadora.</span
+          ><b>Agentic Wallet</b> — un ledger por persona, permiso de sólo lectura y la clave de tu
+          banco nunca en el medio.</span
         >
         <a href="https://github.com/lordiwa/agentic-wallet">Código en GitHub</a>
         <a :href="alPanel">Entrar al panel</a>
-        <span class="m">v. personal · base vacía por defecto · sin datos de nadie</span>
+        <span class="m">tu historial empieza vacío · sin datos de nadie más</span>
       </div>
     </footer>
   </div>
@@ -1426,7 +1421,7 @@ section.lt h2 {
   color: var(--home-menta);
 }
 
-/* ---- instalacion ---- */
+/* ---- empezar ---- */
 .inst {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

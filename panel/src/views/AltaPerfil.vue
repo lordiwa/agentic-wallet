@@ -41,8 +41,16 @@
  * perfil se siguen pudiendo escribir: no dependen del historial.
  */
 import { computed, onMounted, ref } from "vue";
+import PendienteCard from "../components/PendienteCard.vue";
 import RecurringCard from "../components/RecurringCard.vue";
-import { ErrorDelMotor, fetchProfile, fetchRecurring, postClassify, postProfile } from "../api/endpoints";
+import {
+  ErrorDelMotor,
+  esNoPortado,
+  fetchProfile,
+  fetchRecurring,
+  postClassify,
+  postProfile,
+} from "../api/endpoints";
 import type { Category, ProfileResponse, RecurringProposalRow, RecurringResponse } from "../api/types";
 import { efectoDeClasificar, efectoDeRechazo, type Efecto } from "../lib/efecto";
 import { formatoEntero, formatoPlata, parsePlata, plural } from "../lib/formato";
@@ -52,6 +60,8 @@ const perfil = ref<ProfileResponse | null>(null);
 const analisis = ref<RecurringResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
+/** Este backend todavía no sirve el perfil ni el análisis (`501 no_portado`). */
+const pendiente = ref(false);
 
 /** Las propuestas que quedan en pantalla. Confirmar y descartar las sacan. */
 const propuestas = ref<RecurringProposalRow[]>([]);
@@ -86,8 +96,17 @@ async function cargar(): Promise<void> {
     diasPago.value = datosPerfil.dias_pago.join(", ");
     colchon.value = datosPerfil.colchon_fijado ? formatoPlata(datosPerfil.colchon_objetivo) : "";
     errorCarga.value = null;
+    pendiente.value = false;
   } catch (err) {
-    errorCarga.value = err instanceof Error ? err.message : String(err);
+    // "Todavía no leo esto de tu cuenta" no es "el backend se cayó": ver
+    // `components/PendienteCard.vue`.
+    if (esNoPortado(err)) {
+      pendiente.value = true;
+      errorCarga.value = null;
+    } else {
+      pendiente.value = false;
+      errorCarga.value = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     cargando.value = false;
   }
@@ -227,6 +246,13 @@ async function guardarYSeguir(): Promise<void> {
       <a class="btn qui" :href="toHash('resumen')" data-testid="alta-saltar">Saltar por ahora</a>
     </div>
 
+    <PendienteCard
+      v-if="pendiente"
+      titulo="Tu perfil y tus gastos fijos"
+      nota="El análisis sale de tu historial: sin leerlo no hay nada que proponerte."
+      data-testid="pendiente-alta"
+    />
+
     <div v-if="errorCarga" class="card error" data-testid="alta-error">
       <b>El backend no respondió.</b>
       <p class="small">{{ errorCarga }}</p>
@@ -237,7 +263,7 @@ async function guardarYSeguir(): Promise<void> {
       <p class="small">{{ efecto.detalle }}</p>
     </div>
 
-    <div class="cols">
+    <div v-if="!pendiente" class="cols">
       <!-- La columna del checklist de `p1`, ocupada por el perfil. -->
       <div class="card" data-testid="alta-perfil">
         <h2 class="h2">Perfil</h2>

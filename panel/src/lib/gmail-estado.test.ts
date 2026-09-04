@@ -93,7 +93,7 @@ describe("vistaGmail", () => {
     const vista = vistaGmail(entrada({ estado: DESCONECTADO }));
     expect(vista.estado).toBe("desconectado");
     expect(vista.boton).toBe("Conectar Gmail");
-    expect(vista.botonClase).toBe("primario");
+    expect(vista.botonClase).toBe("pri");
     expect(vista.habilitado).toBe(true);
   });
 
@@ -102,7 +102,7 @@ describe("vistaGmail", () => {
     expect(vista.estado).toBe("conectado");
     expect(vista.detalle).toContain("persona@ejemplo.test");
     expect(vista.boton).toBe("Reconectar");
-    expect(vista.botonClase).toBe("secundario");
+    expect(vista.botonClase).toBe("sec");
   });
 
   it("conectado sin fecha: el detalle no queda con un separador colgando", () => {
@@ -120,7 +120,7 @@ describe("vistaGmail", () => {
     expect(vista.estado).toBe("reconectar");
     expect(vista.boton).toBe("Reconectar");
     // Reparar algo que dejo de andar es la accion principal de esa pantalla.
-    expect(vista.botonClase).toBe("primario");
+    expect(vista.botonClase).toBe("pri");
   });
 
   it("sin estado y con error: ofrece reintentar", () => {

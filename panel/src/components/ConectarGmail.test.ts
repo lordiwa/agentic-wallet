@@ -57,7 +57,7 @@ describe("ConectarGmail", () => {
     expect(wrapper.get('[data-testid="conectar-gmail"]').attributes("data-estado")).toBe("desconectado");
     const boton = wrapper.get('[data-testid="conectar-gmail-accion"]');
     expect(boton.text()).toContain("Conectar Gmail");
-    expect(boton.classes()).toContain("primario");
+    expect(boton.classes()).toContain("pri");
     expect(boton.attributes("disabled")).toBeUndefined();
   });
 
@@ -76,14 +76,14 @@ describe("ConectarGmail", () => {
     expect(wrapper.get('[data-testid="conectar-gmail-detalle"]').text()).toContain("persona@ejemplo.test");
     const boton = wrapper.get('[data-testid="conectar-gmail-accion"]');
     expect(boton.text()).toContain("Reconectar");
-    expect(boton.classes()).toContain("secundario");
+    expect(boton.classes()).toContain("sec");
   });
 
   it("necesitaReconectar: la accion pasa a ser la principal", () => {
     const { wrapper } = montar({ estado: { ...CONECTADO, necesitaReconectar: true } });
 
     expect(wrapper.get('[data-testid="conectar-gmail"]').attributes("data-estado")).toBe("reconectar");
-    expect(wrapper.get('[data-testid="conectar-gmail-accion"]').classes()).toContain("primario");
+    expect(wrapper.get('[data-testid="conectar-gmail-accion"]').classes()).toContain("pri");
   });
 
   it("cargando: el boton queda deshabilitado", () => {

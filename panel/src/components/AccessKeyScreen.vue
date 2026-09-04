@@ -87,9 +87,8 @@ async function entrar(): Promise<void> {
 
         <div class="note">
           <b>Una sola acción, a propósito.</b> El límite real lo pone el server, no esta pantalla: la
-          llave es <code>WALLET_ACCESS_TOKEN</code> del <code>.env</code>, y el server sólo escucha en
-          <code>127.0.0.1</code> — al tailnet llega por <code>tailscale serve</code>, sin abrir ningún
-          puerto público.
+          llave es su <code>WALLET_ACCESS_TOKEN</code>, y quien decide qué server recibe esa llave
+          sos vos — esta pantalla sólo aparece cuando apuntaste el panel a un backend propio.
         </div>
 
         <p class="foot">Nada de lo que ocurre acá sale de este navegador salvo la llave, y sólo hacia ese server.</p>

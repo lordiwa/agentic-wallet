@@ -30,8 +30,16 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import OverviewCard from "../components/OverviewCard.vue";
+import PendienteCard from "../components/PendienteCard.vue";
 import SyncButton from "../components/SyncButton.vue";
-import { fetchClassifyProgress, fetchOverview, fetchRecurring, fetchSyncStatus, postSync } from "../api/endpoints";
+import {
+  esNoPortado,
+  fetchClassifyProgress,
+  fetchOverview,
+  fetchRecurring,
+  fetchSyncStatus,
+  postSync,
+} from "../api/endpoints";
 import type {
   ClassifyProgressResponse,
   OverviewResponse,
@@ -56,6 +64,11 @@ const cola = ref<ClassifyProgressResponse | null>(null);
 const gastosFijos = ref<RecurringResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
+/** Este backend todavía no sirve esa ruta (`501 no_portado`). Es otra cosa que
+ * un error, y se dibuja distinto: ver `components/PendienteCard.vue`. */
+const overviewPendiente = ref(false);
+const syncPendiente = ref(false);
+const colaPendiente = ref(false);
 /**
  * **Cuándo se leyó bien** (wargaming ronda 4, W31), que es lo único que el
  * rótulo *"actualizado hace X"* puede decir con verdad. El reloj compartido late
@@ -73,25 +86,55 @@ const ultimoLote = ref<number[]>([]);
 
 const reloj = useRefresh();
 
+/**
+ * El hogar se carga **pieza por pieza**, y esa es la corrección de fondo.
+ *
+ * Era un `Promise.all` de tres: la primera que rechazara tumbaba las otras dos.
+ * En el panel publicado eso significaba que el `501 no_portado` de
+ * `/api/sync/status` se llevaba puesto al `/api/overview` real —el único ya
+ * portado, el que trae las cifras de verdad— y el Resumen quedaba con el cartel
+ * de desconexión arriba de cuatro tarjetas vacías, sobre un backend sano.
+ *
+ * Ahora cada pedido falla solo. Lo que contesta, se dibuja; lo que todavía no
+ * está en este backend se dice con `PendienteCard`, que no es lo mismo que un
+ * error; y sólo un fallo de verdad del overview enciende el cartel rojo.
+ */
 async function cargar(): Promise<void> {
-  try {
-    const [datos, sync, progreso] = await Promise.all([fetchOverview(), fetchSyncStatus(), fetchClassifyProgress()]);
-    overview.value = datos;
-    estadoSync.value = sync;
-    cola.value = progreso;
+  const [datos, sync, progreso, recurrentes] = await Promise.allSettled([
+    fetchOverview(),
+    fetchSyncStatus(),
+    fetchClassifyProgress(),
+    fetchRecurring(),
+  ]);
+
+  if (datos.status === "fulfilled") {
+    overview.value = datos.value;
     errorCarga.value = null;
     ultimaLecturaOk.value = new Date();
-    // Aparte de las tres de arriba y con su propio catch: un server anterior a
-    // N4 devuelve 404 en esta ruta, y eso no puede tumbar el hogar entero. Sin
-    // respuesta, la tarjeta de entrada simplemente no se dibuja.
-    gastosFijos.value = await fetchRecurring().catch(() => null);
-  } catch (err) {
+    overviewPendiente.value = false;
+  } else if (esNoPortado(datos.reason)) {
+    // Ni cifras viejas ni un cero: se dice que esta parte todavía no se lee.
+    overview.value = null;
+    errorCarga.value = null;
+    overviewPendiente.value = true;
+  } else {
     // No se dibuja el último valor conocido con cara de actual (`c3`): si el
     // backend no responde, se dice.
-    errorCarga.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    cargando.value = false;
+    errorCarga.value = datos.reason instanceof Error ? datos.reason.message : String(datos.reason);
   }
+
+  estadoSync.value = sync.status === "fulfilled" ? sync.value : null;
+  syncPendiente.value = sync.status === "rejected" && esNoPortado(sync.reason);
+
+  cola.value = progreso.status === "fulfilled" ? progreso.value : null;
+  colaPendiente.value = progreso.status === "rejected" && esNoPortado(progreso.reason);
+
+  // Con su propio destino desde siempre: un server anterior a N4 devuelve 404
+  // en esta ruta, y eso nunca pudo tumbar el hogar. Sin respuesta, la tarjeta
+  // de entrada simplemente no se dibuja.
+  gastosFijos.value = recurrentes.status === "fulfilled" ? recurrentes.value : null;
+
+  cargando.value = false;
 }
 
 /** El mensaje que trae `postSync` es el `error` del cuerpo, tal cual; de ahí
@@ -256,9 +299,22 @@ const destinoCategoria = computed(() =>
 
     <!-- El chip del sync: disparar, la barra, Seguir, hasta Al día. La
          pantalla P3 no existe; esto es todo el ciclo. -->
-    <div class="card chip" data-testid="chip-sync">
+    <PendienteCard
+      v-if="syncPendiente"
+      titulo="El estado de tus sincronizaciones"
+      nota="Podés conectar tu correo igual: el permiso se pide desde “Tu correo”."
+      data-testid="pendiente-sync"
+    />
+    <div v-else class="card chip" data-testid="chip-sync">
       <SyncButton :entrada="entradaSync" @sincronizar="sincronizar" />
     </div>
+
+    <PendienteCard
+      v-if="overviewPendiente"
+      titulo="Tus cifras del mes"
+      nota="Saldo, gasto por categoría y calendario salen todos del mismo cálculo."
+      data-testid="pendiente-overview"
+    />
 
     <div v-if="errorCarga" class="card error" data-testid="resumen-error">
       <b>El backend no respondió.</b>
@@ -303,6 +359,9 @@ const destinoCategoria = computed(() =>
       />
     </div>
 
+    <!-- Sin overview no se dibujan las tarjetas ni el gráfico: serían ocho
+         "Sin leer" repitiendo lo que la `PendienteCard` ya dijo una vez. -->
+    <template v-if="!overviewPendiente">
     <div class="cards">
       <OverviewCard
         etiqueta="Saldo"
@@ -404,6 +463,7 @@ const destinoCategoria = computed(() =>
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 

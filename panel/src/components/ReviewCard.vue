@@ -111,9 +111,22 @@ function guardarCorreccion(): void {
     </div>
 
     <div class="rc-b">
+      <!-- El `.why` de `c2-tarjeta-revision.html`: por qué esta fila está acá,
+           antes de cualquier cifra. Faltaba, y es lo primero que la tarjeta
+           tiene que contestar. -->
+      <p class="why" data-testid="review-por-que">
+        Cayó en la cola porque las dos lecturas del correo no coincidieron. Mientras siga acá no entra
+        en el gasto por categoría, ni en el saldo, ni en el safe-to-spend.
+      </p>
+
       <div class="cmp">
-        <div class="pane">
-          <h3 class="label">Monto del ledger</h3>
+        <!-- `.pane.truth`: la columna de la fuente de verdad, con el verde del
+             sistema. Es donde la invariante del motor se vuelve visible — el
+             monto sale del parser determinista, nunca de Claude. -->
+        <div class="pane truth">
+          <h3 class="label">
+            Monto del ledger <span class="tag ok">fuente de verdad</span>
+          </h3>
           <span class="num" data-testid="review-monto">{{ formatoPlata(fila.amount) }}</span>
           <span class="small tabular">{{ fila.currency }} · {{ formatoFecha(fila.ts) ?? fila.ts }}</span>
         </div>
@@ -218,19 +231,52 @@ function guardarCorreccion(): void {
 .rc-b {
   padding: 14px 15px;
 }
-/* Dos columnas donde el sistema dibujaba tres: la de Claude no tiene dato
- * detrás (ver el encabezado). */
+/*
+ * Dos columnas donde el sistema dibujaba tres, y la razón es de datos, no de
+ * diseño: `c2` pone al lado la lectura del parser y la de Claude, pero
+ * `transactions` no guarda la segunda —tiene `amount`, `needs_review` y
+ * `source`, y ninguna columna con lo que leyó Claude (`db/schema.ts`)—. La
+ * tercera de `c2` ("En el ledger") tampoco: sería la misma cifra que la
+ * primera. Inventar una columna con un número plausible sería exactamente lo
+ * que la tarjeta existe para impedir.
+ *
+ * Lo que sí se conserva es lo que la pieza tiene que decir: cuál de las dos
+ * lecturas manda. Por eso la columna que queda lleva `.truth`.
+ */
 .cmp {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 11px;
   margin-bottom: 13px;
 }
+/* El `.why` de `c2`: por qué esta fila está en la cola, en el ámbar del
+ * sistema y antes de cualquier cifra. */
+.why {
+  font-size: 13px;
+  color: var(--aviso-texto);
+  background: var(--nota-bg);
+  border: 1px solid var(--why-borde);
+  border-radius: var(--radio-boton);
+  padding: 9px 12px;
+  margin: 0 0 13px;
+}
 .pane {
   border: 1px solid var(--linea);
   border-radius: 9px;
   padding: 11px 12px;
   background: var(--fondo);
+}
+/* La columna de la fuente de verdad. El verde no es decoración: es la
+ * invariante del motor dicha en el color del sistema para "esto está bien". */
+.pane.truth {
+  border-color: var(--tag-ok-borde);
+  background: var(--pane-truth-bg);
+}
+.pane .label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .pane .small {
   display: block;

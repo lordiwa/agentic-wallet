@@ -22,6 +22,16 @@ const { endpoints } = vi.hoisted(() => ({
     fetchClassifyProgress: vi.fn(),
     fetchRecurring: vi.fn(),
     postSync: vi.fn(),
+    // El mock devuelve el módulo entero, así que lo que el módulo exporta y la
+    // vista usa tiene que estar acá también. `ErrorNoPortado` es una clase de
+    // verdad y no un `vi.fn()`: la vista pregunta con `instanceof`.
+    ErrorNoPortado: class ErrorNoPortado extends Error {
+      constructor(readonly ruta: string) {
+        super(`no_portado: ${ruta}`);
+        this.name = "ErrorNoPortado";
+      }
+    },
+    esNoPortado: (err: unknown) => err instanceof Error && err.name === "ErrorNoPortado",
   },
 }));
 
@@ -292,6 +302,49 @@ describe("cuando el backend no responde", () => {
     const wrapper = await montar();
 
     expect(wrapper.get('[data-testid="resumen-error"]').text()).toContain("Failed to fetch");
+  });
+});
+
+/**
+ * El defecto que dejaba el panel publicado con cara de roto, y por qué es un
+ * test y no un comentario.
+ *
+ * Con sesión de Google, `api/client.ts` contesta `501 no_portado` a toda ruta
+ * que las Cloud Functions todavía no exponen. El hogar cargaba sus tres
+ * pedidos con un `Promise.all`, así que el 501 de `/api/sync/status` —una ruta
+ * secundaria— rechazaba también el `/api/overview`, que es el ÚNICO portado y
+ * el que trae las cifras de verdad. Resultado: el cartel rojo de desconexión
+ * arriba de cuatro tarjetas vacías, sobre un backend perfectamente sano.
+ */
+describe("una ruta que este backend todavía no sirve no tumba a las demás", () => {
+  const noPortado = () => new endpoints.ErrorNoPortado("/api/sync/status");
+
+  it("el overview real se sigue dibujando aunque el estado del sync conteste 501", async () => {
+    endpoints.fetchSyncStatus.mockRejectedValue(noPortado());
+    const wrapper = await montar();
+
+    // La cifra que vino de verdad, dibujada.
+    expect(wrapper.get('[data-testid="overview-card-cifra"]').text()).toBe("1840,25");
+    // Y ningún cartel de desconexión: el backend contestó.
+    expect(wrapper.find('[data-testid="resumen-error"]').exists()).toBe(false);
+  });
+
+  it("en lugar del chip del sync dice que todavía no lee esa parte", async () => {
+    endpoints.fetchSyncStatus.mockRejectedValue(noPortado());
+    const wrapper = await montar();
+
+    expect(wrapper.find('[data-testid="chip-sync"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="pendiente-sync"]').text()).toContain("No es un error");
+  });
+
+  it("sin overview no dibuja ocho 'Sin leer': lo dice una vez", async () => {
+    endpoints.fetchOverview.mockRejectedValue(new endpoints.ErrorNoPortado("/api/overview"));
+    const wrapper = await montar();
+
+    expect(wrapper.find('[data-testid="pendiente-overview"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="overview-card"]')).toHaveLength(0);
+    // Un 501 no es una caída: el cartel rojo miente sobre lo que pasó.
+    expect(wrapper.find('[data-testid="resumen-error"]').exists()).toBe(false);
   });
 });
 

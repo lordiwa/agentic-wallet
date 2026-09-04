@@ -96,7 +96,11 @@ function responder(fila: TransactionRow): void {
     <table data-testid="tabla-movimientos">
       <thead>
         <tr>
-          <th>Fecha</th>
+          <!-- La flecha de `c4-tabla-transacciones.html`. Es fija y no un
+               control: el motor devuelve los más recientes primero y esta
+               pantalla no ordena por otra columna. Dibujarla clickeable sería
+               ofrecer un orden que nadie sirve. -->
+          <th>Fecha <span class="sort" aria-hidden="true">↓</span></th>
           <th>Contraparte</th>
           <th>Tipo</th>
           <th>Dirección</th>
@@ -282,6 +286,10 @@ td.r,
 th.r {
   text-align: right;
   padding-right: 0;
+}
+/* La flecha de orden va en el azul de acción, como en `c4`. */
+th .sort {
+  color: var(--accion);
 }
 /* Toda cifra de plata es tabular, sin excepción (§2.1). */
 .amt {

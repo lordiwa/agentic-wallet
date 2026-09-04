@@ -170,3 +170,27 @@ describe("W16 — el monto corregido se lee con el mismo lector que el resto del
     }
   });
 });
+
+/**
+ * Las dos piezas de `c2-tarjeta-revision.html` que faltaban, y que son las que
+ * hacen visible la invariante 1 del proyecto: el monto sale del parser
+ * determinista, nunca de Claude.
+ */
+describe("la tarjeta dice por qué la fila está acá, y cuál lectura manda", () => {
+  it("abre con el `.why` del sistema: por qué cayó en la cola", () => {
+    const w = montar();
+    const why = w.get('[data-testid="review-por-que"]');
+
+    expect(why.classes()).toContain("why");
+    expect(why.text()).toContain("no coincidieron");
+    expect(why.text()).toContain("no entra");
+  });
+
+  it("la columna del monto lleva `.truth` y su etiqueta: es la fuente de verdad", () => {
+    const w = montar();
+    const pane = w.get('[data-testid="review-monto"]').element.parentElement!;
+
+    expect(pane.className).toContain("truth");
+    expect(pane.textContent).toContain("fuente de verdad");
+  });
+});
