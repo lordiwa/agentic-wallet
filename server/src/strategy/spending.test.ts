@@ -4,7 +4,8 @@ import { migrate } from "../db/schema.js";
 import { insertTransaction } from "../db/repository.js";
 import type { NewTransaction } from "../db/repository.js";
 import { upsertCategoryRule } from "../category/rules-repository.js";
-import { spendingByCategory } from "./spending.js";
+import { CATEGORIES } from "../category/categorize.js";
+import { categorizedSpendingRows, spendingByCategory } from "./spending.js";
 
 let db: Database.Database;
 
@@ -98,5 +99,61 @@ describe("spendingByCategory (spec §9.8)", () => {
     insertTransaction(db, tx({ gmail_msg_id: "r2", type: "retiro", amount: 30 }));
 
     expect(spendingByCategory(db, JULY)).toEqual({ efectivo: 50 });
+  });
+});
+
+/**
+ * La pregunta que dispara estos casos fue *"¿las categorías nuevas se
+ * contabilizan en el Resumen?"*, y merece una respuesta ejecutable y no una
+ * lectura del código: la sospecha razonable es que en algún lado hubiera una
+ * lista fija de "categorías que suman", y que sumar una al glosario la dejara
+ * visible en la cola de preguntas pero invisible en el gráfico.
+ *
+ * **No la hay, y esto lo fija.** `spendingByCategory` agrupa por lo que
+ * `categorize()` devuelva; su universo es el glosario entero. El test recorre
+ * `CATEGORIES` completo en vez de nombrar las nuevas a mano, así que la
+ * próxima categoría que alguien agregue queda cubierta el día que la agrega,
+ * sin tocar este archivo.
+ */
+describe("cualquier categoria del glosario se contabiliza, no solo las del MVP", () => {
+  /** Las que una regla de comercio puede alcanzar: el glosario menos los
+   * fallbacks —que no se responden— y menos las que `categorize()` decide por
+   * `type` antes de mirar las reglas (`efectivo`, `servicios`, `recarga`). */
+  const ALCANZABLES = CATEGORIES.filter(
+    (c) => !["otros", "transferencia_persona", "efectivo", "servicios", "recarga"].includes(c)
+  );
+
+  it("una regla a cualquiera de ellas mueve el gasto a esa barra del grafico", () => {
+    for (const [i, categoria] of ALCANZABLES.entries()) {
+      const patron = `comercio ficticio ${i}`;
+      upsertCategoryRule(db, patron, categoria);
+      insertTransaction(
+        db,
+        tx({ gmail_msg_id: `g-${categoria}`, type: "debito", counterparty: `Comercio Ficticio ${i}`, amount: 10 + i })
+      );
+    }
+
+    const gasto = spendingByCategory(db, JULY);
+    for (const [i, categoria] of ALCANZABLES.entries()) {
+      expect({ categoria, total: gasto[categoria] }).toEqual({ categoria, total: 10 + i });
+    }
+  });
+
+  /**
+   * La barra y la lista tienen que contar lo mismo: tocar "Implementos de
+   * trabajo 45" en el Resumen y aterrizar en una lista que suma otra cosa es
+   * exactamente la incoherencia que `categorizedSpendingRows` existe para
+   * hacer imposible (H21).
+   */
+  it("la lista de movimientos de la categoria nueva suma lo mismo que su barra", () => {
+    upsertCategoryRule(db, "libreria tecnica", "implementos_trabajo");
+    insertTransaction(db, tx({ gmail_msg_id: "h1", counterparty: "LIBRERIA TECNICA NORTE", amount: 30 }));
+    insertTransaction(db, tx({ gmail_msg_id: "h2", counterparty: "Librería Técnica Sur", amount: 15 }));
+
+    expect(spendingByCategory(db, JULY)).toEqual({ implementos_trabajo: 45 });
+
+    const enLaLista = categorizedSpendingRows(db, JULY).filter((r) => r.category === "implementos_trabajo");
+    expect(enLaLista).toHaveLength(2);
+    expect(enLaLista.reduce((suma, r) => suma + r.amount, 0)).toBe(45);
   });
 });

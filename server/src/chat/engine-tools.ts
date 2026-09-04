@@ -214,6 +214,13 @@ const KNOWN_CATEGORIES: readonly Category[] = [
   "efectivo",
   "transferencia_persona",
   "suscripcion",
+  "vivienda",
+  "entretenimiento",
+  "limpieza",
+  "deuda",
+  "prestamo",
+  "regalo",
+  "implementos_trabajo",
   "otros",
 ];
 

@@ -267,8 +267,15 @@ categorías válidas son fijas:
 
 ```
 comida  transporte  salud  mascota  servicios
-recarga  efectivo  transferencia_persona  suscripcion  otros
+recarga  efectivo  transferencia_persona  suscripcion
+vivienda  entretenimiento  limpieza  deuda  prestamo  regalo
+implementos_trabajo
+otros
 ```
+
+`salud` es también la de medicina y farmacia — el panel la muestra como
+*"Salud y medicina"*. La clave sigue siendo `salud`, así que las reglas ya
+escritas no se tocan.
 
 Y guardá cada respuesta:
 

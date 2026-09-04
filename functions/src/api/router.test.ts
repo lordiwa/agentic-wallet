@@ -261,6 +261,24 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
     expect((estado.body as { error: string }).error).toBe("invalid classify body");
   });
 
+  /**
+   * La contracara del caso de arriba: las seis categorías que se sumaron al
+   * glosario después del MVP entran por el borde. El panel las ofrece desde su
+   * propia lista (`panel/src/lib/categorias.ts`) — no hay ruta que se las
+   * dicte —, así que si el enum del server no las tuviera, la tarjeta mostraría
+   * el botón y la respuesta sería un 400 sin explicación.
+   */
+  it("las categorias nuevas del glosario se aceptan, no son un 400", async () => {
+    for (const category of ["vivienda", "entretenimiento", "limpieza", "deuda", "prestamo", "regalo"]) {
+      const estado = await llamar({
+        method: "POST",
+        path: "/api/classify",
+        body: { counterparty: "Tienda A", category },
+      });
+      expect(estado.status).toBe(200);
+    }
+  });
+
   /** Los dos fallbacks no se pueden responder: escribirían una regla y dejarían
    * al grupo en la cola para siempre. */
   it("responder con un fallback se rechaza en el borde", async () => {
@@ -349,5 +367,59 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
     const estado = await llamar({ path: "/api/classify/queue" });
     const grupos = (estado.body as { groups: { count_en_ledger?: number }[] }).groups;
     expect(grupos.every((g) => g.count_en_ledger === undefined)).toBe(true);
+  });
+
+  /**
+   * El circuito entero de una categoría nueva, en el orden en que lo recorre
+   * una persona: la contraparte está en la cola, se responde con la categoría,
+   * y **el Resumen se mueve**. Es el test que faltaba: los de arriba prueban
+   * que responder no da 400, y los de paridad prueban la aritmética, pero
+   * ninguno probaba que la respuesta llegara hasta el gráfico. Sin este, que
+   * una categoría del glosario quedara fuera de los totales sería un cambio
+   * silencioso.
+   *
+   * Corre en su propio tenant porque escribe una regla, y sobre el ledger
+   * compartido dejaría a los demás mirando una categoría que este test movió.
+   */
+  it("responder con una categoria nueva la hace aparecer en el Resumen y en la lista", async () => {
+    const solo = uidDePrueba("api-nueva");
+    await sembrarEnFirestore(handle!.db, solo, LEDGER);
+    try {
+      const antes = await llamar({ path: "/api/overview" }, solo);
+      const gastoAntes = (antes.body as { spending_by_category: Record<string, number> })
+        .spending_by_category;
+      expect(gastoAntes.implementos_trabajo).toBeUndefined();
+
+      const respuesta = await llamar(
+        {
+          method: "POST",
+          path: "/api/classify",
+          body: { counterparty: "Tienda A", category: "implementos_trabajo" },
+        },
+        solo
+      );
+      expect(respuesta.status).toBe(200);
+      // La tarjeta promete que el gráfico se va a mover; si prometiera cero, la
+      // asersión de abajo estaría midiendo otra cosa.
+      expect((respuesta.body as { reclassified_this_month: number }).reclassified_this_month).toBe(1);
+
+      const despues = await llamar({ path: "/api/overview" }, solo);
+      const gasto = (despues.body as { spending_by_category: Record<string, number> })
+        .spending_by_category;
+      // Los 40 de "Tienda A" (fila 1), que antes estaban en el bucket de 'otros'.
+      expect(gasto.implementos_trabajo).toBe(40);
+
+      // Y la barra lleva a una lista que cuenta lo mismo (H21).
+      const lista = await llamar(
+        { path: "/api/transactions", query: { category: "implementos_trabajo" } },
+        solo
+      );
+      const filas = (lista.body as { transactions: { counterparty: string | null; amount: number }[] })
+        .transactions;
+      expect(filas).toHaveLength(1);
+      expect(filas[0]!.amount).toBe(40);
+    } finally {
+      await limpiarTenant(handle!.db, solo);
+    }
   });
 });
