@@ -23,6 +23,7 @@ import {
   gmailStartHandler,
   gmailStatusHandler,
 } from "./api/gmail-oauth.js";
+import { ingestHandler } from "./api/ingest.js";
 import { cargarConfig } from "./oauth/config.js";
 
 const app = initializeApp();
@@ -146,4 +147,31 @@ export const gmailAuthCallback = onRequest(
 export const gmailAuthStatus = onRequest(
   { ...OAUTH_RUNTIME, concurrency: 20 },
   gmailStatusHandler({ auth, db })
+);
+
+/**
+ * `POST /ingest` — lee el Gmail del usuario y escribe en su ledger.
+ *
+ * `timeoutSeconds: 540` y `concurrency: 1`, que es lo contrario de `overview`.
+ * El timeout largo es LA razón por la que este proyecto usa 2a gen (ver el doc
+ * de arriba): el primer sync de un buzón real son miles de correos. La
+ * concurrencia 1 es por lo mismo que en el OAuth —este proceso tiene el refresh
+ * token descifrado en memoria— y además porque una corrida es pesada: dos en el
+ * mismo proceso se pelean el CPU y las dos tardan el doble.
+ *
+ * `maxInstances: 5` acota el gasto: es una función que habla con Gmail y
+ * escribe documentos, o sea la única acá que puede costar plata de verdad si se
+ * la llama en un bucle.
+ */
+export const ingest = onRequest(
+  {
+    region: "us-central1",
+    invoker: "public", // la autorizacion la hace el ID token, no IAM
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    concurrency: 1,
+    maxInstances: 5,
+    secrets: [TOKEN_KEK, GMAIL_CLIENT_SECRET],
+  },
+  (req, res) => ingestHandler({ auth, db, config: configOAuth() })(req, res)
 );

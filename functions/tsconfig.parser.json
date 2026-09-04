@@ -1,0 +1,26 @@
+{
+  "//": [
+    "El parser COPIADO del motor, compilado aparte.",
+    "",
+    "`functions/tsconfig.json` tiene `noUncheckedIndexedAccess` y el del motor",
+    "(`server/tsconfig.json`) no. Los archivos de `src/parser/` y",
+    "`src/ingest/mojibake.ts` son copias BYTE A BYTE — es lo que",
+    "`src/parser/parity.test.ts` exige, y es la unica garantia real de que la",
+    "gramatica de los correos no se bifurque en dos versiones.",
+    "",
+    "Las tres salidas posibles eran: relajar la bandera para todo `functions/`",
+    "(perder la verificacion en codigo nuevo por culpa de codigo importado),",
+    "retocar la copia (perder la paridad, que es justamente lo que se quiere",
+    "proteger), o compilar la copia con la rigurosidad de su origen. Esta es la",
+    "tercera. Se compila como proyecto referenciado para que el codigo propio",
+    "vea sus `.d.ts` y no vuelva a chequear sus fuentes."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "noUncheckedIndexedAccess": false,
+    "tsBuildInfoFile": "dist/.tsbuildinfo-parser"
+  },
+  "include": ["src/parser/**/*.ts", "src/ingest/mojibake.ts"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}

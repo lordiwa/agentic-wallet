@@ -108,6 +108,73 @@ export async function canjearCode(
   };
 }
 
+export interface RefrescoParams {
+  refreshToken: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * Canjea el refresh token por un access token fresco — el canje que hace la
+ * ingesta cada vez que corre.
+ *
+ * **No devuelve `refreshToken`.** Google no manda uno nuevo en este flujo, y
+ * que el tipo dijera que sí invitaría a que alguien lo guarde: escribir `null`
+ * sobre el blob cifrado dejaría al usuario desconectado sin que nadie revocara
+ * nada. Lo que hay que guardar de acá es exactamente nada.
+ *
+ * `invalid_grant` viaja tal cual en `GoogleOAuthError.code` porque es LA
+ * respuesta que el llamador tiene que distinguir: significa que el permiso ya
+ * no existe (el usuario revocó, cambió la contraseña, o el token de una app en
+ * modo *testing* cumplió sus 7 días) y que corresponde `marcarInvalido` y
+ * pedir reconexión — no reintentar.
+ */
+export async function refrescarAccessToken(
+  params: RefrescoParams,
+  fetchImpl: FetchLike
+): Promise<{ accessToken: string; expiresInSeconds: number; scopes: string[] }> {
+  const body = new URLSearchParams({
+    refresh_token: params.refreshToken,
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+    grant_type: "refresh_token",
+  });
+
+  let res: Response;
+  try {
+    res = await fetchImpl(TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: body.toString(),
+    });
+  } catch {
+    throw new GoogleOAuthError("red", "no se pudo hablar con el endpoint de tokens de Google");
+  }
+
+  if (!res.ok) {
+    let codigo = `http_${res.status}`;
+    try {
+      const detalle = (await res.json()) as { error?: unknown };
+      if (typeof detalle.error === "string") codigo = detalle.error;
+    } catch {
+      // Cuerpo no-JSON: nos quedamos con el status.
+    }
+    throw new GoogleOAuthError(codigo, "Google rechazó el refresh token");
+  }
+
+  const json = (await res.json()) as Record<string, unknown>;
+  const accessToken = json.access_token;
+  if (typeof accessToken !== "string" || accessToken === "") {
+    throw new GoogleOAuthError("respuesta_invalida", "la respuesta de Google no trae access_token");
+  }
+  const scope = typeof json.scope === "string" ? json.scope : "";
+  return {
+    accessToken,
+    expiresInSeconds: typeof json.expires_in === "number" ? json.expires_in : 0,
+    scopes: scope.split(" ").filter((s) => s !== ""),
+  };
+}
+
 /**
  * De qué cuenta de Gmail es el token que acabamos de recibir.
  *

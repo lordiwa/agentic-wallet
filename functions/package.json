@@ -9,10 +9,10 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "test": "vitest run",
     "test:emulator": "node scripts/with-emulator.mjs vitest run",
-    "migrate:tenant": "node --experimental-strip-types scripts/migrate-tenant.ts"
+    "migrate:tenant": "node --import ./scripts/ts-resolver.mjs scripts/migrate-tenant.ts"
   },
   "dependencies": {
     "firebase-admin": "^13.0.2",

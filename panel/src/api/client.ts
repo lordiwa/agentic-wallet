@@ -10,6 +10,7 @@
  */
 import { credentialAllowed, currentBackendVerdict, getAccessToken, getApiBase, isDemoMode } from "./base";
 import { demoFetch } from "../demo/demoFetch";
+import { getFunctionsBase, obtenerIdToken } from "./gmail";
 import { DEMO_BASE, mayReceiveCredential, normalizeBase } from "./origins";
 import type { OriginVerdict } from "./origins";
 
@@ -59,10 +60,73 @@ export function buildHeaders(init?: RequestInit): Headers {
   return headers;
 }
 
-export function panelFetch(path: string, init?: RequestInit): Promise<Response> {
+/**
+ * Los paths del panel que las Cloud Functions ya implementan, y con que nombre.
+ *
+ * Es una lista explicita y no un prefijo (`/api/*` -> `/*`) porque el pivot
+ * porto UNA ruta, no el API entero: un prefijo mandaria `/api/transactions` a
+ * una funcion que no existe y el panel leeria el 404 de Firebase como si fuera
+ * del backend. Lo que falta se contesta abajo, con su nombre.
+ */
+export const RUTAS_EN_FUNCIONES: Readonly<Record<string, string>> = {
+  "/api/overview": "/overview",
+};
+
+/** El path de la funcion, o `null` si esa ruta todavia no se porto. */
+export function rutaEnFunciones(path: string): string | null {
+  const sinQuery = path.split("?")[0] ?? path;
+  return RUTAS_EN_FUNCIONES[sinQuery] ?? null;
+}
+
+/** Hay identidad y hay a donde hablarle: el backend real del pivot. */
+async function backendDeFirebase(): Promise<string | null> {
+  if (getFunctionsBase() === "") return null;
+  return obtenerIdToken();
+}
+
+/**
+ * Lo que se contesta cuando hay sesion pero la ruta no esta portada.
+ *
+ * **No es un `demoFetch`**, y esa es toda la decision: quien entro con su
+ * cuenta esta mirando su propio dinero, y devolverle la ficcion del modo
+ * demostracion seria mostrarle movimientos que no son suyos como si lo fueran.
+ * Es la misma regla que `pendiente` en `functions/src/api/overview.ts`: "no lo
+ * tengo" y "es cero" no pueden contestar igual.
+ */
+function noPortadoTodavia(path: string): Response {
+  return new Response(JSON.stringify({ error: "no_portado", path }), {
+    status: 501,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * El unico punto por donde salen las llamadas al ledger.
+ *
+ * **El modo demostracion gobierna solo mientras no hay sesion**, igual que en
+ * `api/gmail.ts`. En el sitio publicado el build trae `demo` como backend del
+ * ledger para quien mira de afuera; en cuanto alguien entra con su cuenta hay
+ * datos de verdad que darle, y seguir inventandolos le mostraria el dinero de
+ * nadie con la etiqueta de propio.
+ *
+ * La toma de control se limita al modo demostracion a proposito: si el usuario
+ * configuro un server real (`?api=` confirmado, o un build con base propia),
+ * ese server es su eleccion explicita y una sesion de Firebase no se la pisa.
+ */
+export async function panelFetch(path: string, init?: RequestInit): Promise<Response> {
   // N2 (T4): el modo demo ya tiene sus respuestas. No sale a la red — ni
   // siquiera al mismo origen — y por eso se decide aca y no en cada endpoint.
-  if (isDemoMode()) return demoFetch(path, init);
+  if (isDemoMode()) {
+    const idToken = await backendDeFirebase();
+    if (idToken === null) return demoFetch(path, init);
+
+    const ruta = rutaEnFunciones(path);
+    if (ruta === null) return noPortadoTodavia(path);
+
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${idToken}`);
+    return fetch(`${getFunctionsBase()}${ruta}`, { ...init, headers });
+  }
   return fetch(apiUrl(path), { ...init, headers: buildHeaders(init) });
 }
 
@@ -78,7 +142,15 @@ function apiUrl(path: string): string {
 export async function probeHealth(fetchImpl: typeof fetch = fetch): Promise<DiagnosticoConexion> {
   const base = getApiBase();
   const verdict = currentBackendVerdict(base);
-  if (verdict === "demo") return { estado: "demo", base, verdict, authRequired: null };
+  if (verdict === "demo") {
+    // Con sesion el ledger ya NO sale del demo (ver `panelFetch`), asi que el
+    // chip tampoco puede seguir diciendo "datos inventados": es el rotulo que
+    // explica de donde salen los numeros de la pantalla, y mentiria sobre
+    // numeros reales. W25 otra vez, ahora del lado de la sesion.
+    const idToken = await backendDeFirebase();
+    if (idToken === null) return { estado: "demo", base, verdict, authRequired: null };
+    return probarFunciones(fetchImpl, idToken, base);
+  }
 
   const token = getAccessToken();
   const conCredencial = token !== null && credentialAllowed(base);
@@ -102,6 +174,31 @@ export async function probeHealth(fetchImpl: typeof fetch = fetch): Promise<Diag
   // cargar la llave, cambiar de backend, o autorizar este backend.
   if (!mayGetCredential(verdict)) return { estado: "no-autorizado", base, verdict, authRequired };
   return { estado: token === null ? "sin-llave" : "llave-rechazada", base, verdict, authRequired };
+}
+
+/**
+ * `GET /health` de las Cloud Functions.
+ *
+ * El veredicto sigue siendo `demo` —es lo que dice el build sobre el backend
+ * del ledger— pero el ESTADO es el real: quien entro esta conectado a las
+ * funciones, y el chip tiene que decir eso.
+ */
+async function probarFunciones(
+  fetchImpl: typeof fetch,
+  idToken: string,
+  base: string
+): Promise<DiagnosticoConexion> {
+  try {
+    const res = await fetchImpl(`${getFunctionsBase()}/health`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!res.ok) return { estado: "sin-respuesta", base, verdict: "demo", authRequired: true };
+  } catch {
+    return { estado: "sin-respuesta", base, verdict: "demo", authRequired: true };
+  }
+  // `authRequired: true` y no lo que diga `/health`: esa ruta es publica a
+  // proposito, pero el ledger detras de ella exige el ID token igual.
+  return { estado: "conectado", base, verdict: "demo", authRequired: true };
 }
 
 /**

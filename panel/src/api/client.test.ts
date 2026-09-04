@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { API_BASE_STORAGE_KEY, setAccessToken, setApiBase } from "./base";
+import { setProveedorIdToken } from "./gmail";
 import {
   apiUrlFor,
   buildHeaders,
@@ -8,6 +9,7 @@ import {
   explicarEstado,
   panelFetch,
   probeHealth,
+  rutaEnFunciones,
   tagDeEstado,
 } from "./client";
 import type { HealthResponse } from "./client";
@@ -86,6 +88,90 @@ describe("panelFetch", () => {
     expect(fake).not.toHaveBeenCalled();
     expect(res.ok).toBe(true);
     expect(await res.json()).toHaveProperty("safe_to_spend_hoy");
+  });
+});
+
+/**
+ * El modo demostracion gobierna SOLO mientras no hay sesion. Es la regla que ya
+ * regia para Gmail (`api/gmail.ts`) y que hasta ahora el ledger no cumplia: en
+ * el sitio publicado el build trae `VITE_API_BASE_URL=demo`, asi que quien
+ * entraba con su cuenta seguia viendo movimientos inventados.
+ */
+describe("panelFetch con sesion — el ledger sale de las funciones, no del demo", () => {
+  const FUNCIONES = "https://us-central1-proyecto-de-prueba.cloudfunctions.net";
+
+  beforeEach(() => {
+    vi.stubEnv("VITE_FUNCTIONS_BASE_URL", FUNCIONES);
+    setApiBase("demo");
+  });
+
+  afterEach(() => {
+    setProveedorIdToken(async () => null);
+    vi.unstubAllEnvs();
+  });
+
+  it("/api/overview va a la funcion real con el ID token", async () => {
+    setProveedorIdToken(async () => "id-token-de-prueba");
+    const fake = vi.fn(async () => new Response('{"counts":{"total":1159}}'));
+    vi.stubGlobal("fetch", fake);
+
+    const res = await panelFetch("/api/overview");
+
+    const [url, init] = fake.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${FUNCIONES}/overview`);
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer id-token-de-prueba");
+    expect((await res.json()).counts.total).toBe(1159);
+  });
+
+  it("sin sesion sigue contestando la demo", async () => {
+    const fake = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fake);
+
+    const res = await panelFetch("/api/overview");
+
+    expect(fake).not.toHaveBeenCalled();
+    expect(await res.json()).toHaveProperty("safe_to_spend_hoy");
+  });
+
+  it("una ruta sin portar contesta 501, NO la ficcion del demo", async () => {
+    setProveedorIdToken(async () => "id-token-de-prueba");
+    const fake = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fake);
+
+    const res = await panelFetch("/api/transactions?limit=50");
+
+    expect(fake).not.toHaveBeenCalled();
+    expect(res.status).toBe(501);
+    expect((await res.json()).error).toBe("no_portado");
+  });
+
+  it("un server propio le gana a la sesion: la eleccion explicita no se pisa", async () => {
+    setProveedorIdToken(async () => "id-token-de-prueba");
+    setApiBase(AJENO);
+    const fake = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fake);
+
+    await panelFetch("/api/overview");
+
+    const [url] = fake.mock.calls[0] as unknown as [string];
+    expect(url).toBe(`${AJENO}/api/overview`);
+  });
+
+  it("el chip deja de decir 'demostracion' cuando los numeros son reales", async () => {
+    setProveedorIdToken(async () => "id-token-de-prueba");
+    const fake = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
+
+    const diag = await probeHealth(fake);
+
+    expect(diag.estado).toBe("conectado");
+  });
+});
+
+describe("rutaEnFunciones", () => {
+  it("mapea solo lo portado y descarta la query", () => {
+    expect(rutaEnFunciones("/api/overview")).toBe("/overview");
+    expect(rutaEnFunciones("/api/overview?x=1")).toBe("/overview");
+    expect(rutaEnFunciones("/api/transactions")).toBeNull();
   });
 });
 
