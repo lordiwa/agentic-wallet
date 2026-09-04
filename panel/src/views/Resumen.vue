@@ -247,6 +247,24 @@ const saldo = computed(() => overview.value?.balance?.amount);
 const moneda = computed(() => overview.value?.balance?.currency ?? "");
 
 /**
+ * El "Saldo" es el **ancla** del perfil (`balanceSnapshot`), no una cifra que
+ * el sync recalcule: el motor la devuelve tal como se fijó, con su fecha
+ * (`server/src/api/queries.ts`, `getBalanceSnapshot`). La nota decía "al corte
+ * del último sync", que describe otra cosa —el sync no mueve esta cifra— y en
+ * un perfil cuya ancla es de hace un mes convierte una lectura vieja en una de
+ * hoy. Es exactamente el error que `ROTULO_SIN_LEER` existe para impedir
+ * (R6/X8/X11), sólo que sobre la fecha en vez de sobre el monto.
+ *
+ * `at` ya viene en la respuesta y puede ser `null` (perfil sin ancla): ahí la
+ * nota dice que no hay fecha en vez de inventar una.
+ */
+const notaDeSaldo = computed(() => {
+  const fecha = formatoFecha(overview.value?.balance?.at ?? null);
+  const cuando = fecha === null ? "sin fecha de corte" : `al ${fecha}`;
+  return moneda.value ? `${moneda.value} · ${cuando}` : cuando;
+});
+
+/**
  * R7. `safe_to_spend_hoy` viene `0` tanto cuando de verdad no queda nada como
  * cuando no hay día de pago conocido. `next_payday` es el que distingue: sin
  * él, la respuesta honesta es que todavía no se sabe.
@@ -393,7 +411,7 @@ const destinoCategoria = computed(() =>
         etiqueta="Saldo"
         :valor="saldo"
         :sin-dato="ROTULO_SIN_LEER"
-        :nota="moneda ? `${moneda} · al corte del último sync` : 'al corte del último sync'"
+        :nota="notaDeSaldo"
         :destino="toHash('movimientos')"
         :cargando="cargando"
       />

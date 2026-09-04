@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 import { provideRefresh } from "../composables/useRefresh";
 import Resumen from "./Resumen.vue";
-import { ROTULO_SIN_LEER } from "../lib/formato";
+import { ROTULO_SIN_LEER, formatoFecha } from "../lib/formato";
 import { CATEGORIAS_ELEGIBLES, nombreCategoria } from "../lib/categorias";
 import type {
   ClassifyProgressResponse,
@@ -650,5 +650,40 @@ describe("el rótulo de frescura no puede envejecer solo (W31)", () => {
     expect(wrapper.get(".topr").text()).not.toContain("recien");
 
     vi.useRealTimers();
+  });
+});
+
+/**
+ * El "Saldo" no es una cifra que el sync recalcule: es el `balanceSnapshot`
+ * del perfil, devuelto tal como se fijó y con su propia fecha. La nota decía
+ * "al corte del último sync" para cualquier ancla, así que una lectura de hace
+ * un mes se leía como la de hoy — el mismo error que R6/X8/X11 prohíben sobre
+ * el monto, cometido sobre la fecha. Es lo que hacía que el saldo del tenant
+ * piloto no se pudiera interpretar ni cuando estaba bien.
+ */
+describe("la nota del Saldo fecha el ancla, no el sync", () => {
+  function tarjetaDeSaldo(w: Awaited<ReturnType<typeof montar>>) {
+    return w.findAll('[data-testid="overview-card"]').find((c) => c.text().includes("Saldo"));
+  }
+
+  it("dice la fecha del ancla, no 'al corte del último sync'", async () => {
+    endpoints.fetchOverview.mockResolvedValue(
+      overview({ balance: { amount: 407.04, currency: "USD", at: "2026-08-06" } })
+    );
+    const w = await montar();
+    const tarjeta = tarjetaDeSaldo(w);
+
+    expect(tarjeta?.text()).toContain("USD");
+    expect(tarjeta?.text()).toContain(formatoFecha("2026-08-06") as string);
+    expect(tarjeta?.text()).not.toContain("al corte del último sync");
+  });
+
+  it("no inventa una fecha cuando el perfil no tiene ancla", async () => {
+    endpoints.fetchOverview.mockResolvedValue(
+      overview({ balance: { amount: 0, currency: "USD", at: null } })
+    );
+    const w = await montar();
+
+    expect(tarjetaDeSaldo(w)?.text()).toContain("sin fecha de corte");
   });
 });
