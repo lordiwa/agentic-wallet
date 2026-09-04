@@ -16,6 +16,13 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "dist", "src/parser/**/*.ts", "src/ingest/mojibake.ts"],
+  "//": "`src/test-support/` queda fuera del build a proposito: `paridad.ts` importa el motor de `server/` para poder comparar las dos implementaciones, y eso esta fuera del `rootDir` de este paquete. No es un problema para los tests —vitest resuelve sin `rootDir`— y es lo correcto para el deploy: el andamio de los tests no tiene por que viajar al runtime, igual que `scripts/`.",
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/test-support",
+    "dist",
+    "src/parser/**/*.ts",
+    "src/ingest/mojibake.ts"
+  ],
   "references": [{ "path": "./tsconfig.parser.json" }]
 }

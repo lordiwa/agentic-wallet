@@ -16,6 +16,17 @@ dist/
 dist-demo/
 build/
 
+# Emitido junto al fuente. `tsc` sin `--outDir` (correr `tsc` a mano sobre un
+# archivo suelto de `server/`, o `--build` con un tsconfig ajeno) deja el `.js`,
+# el `.d.ts` y el mapa al lado del `.ts`. Ahi no vive nada versionado: todo lo
+# que hay en `src/` es TypeScript.
+server/src/**/*.js
+server/src/**/*.d.ts
+server/src/**/*.js.map
+functions/src/**/*.js
+functions/src/**/*.d.ts
+functions/src/**/*.js.map
+
 # Cache de deploys de Firebase Hosting (hashes de archivos ya subidos).
 .firebase/
 
