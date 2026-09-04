@@ -49048,6 +49048,7 @@ var CATEGORIES = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
   "otros"
 ];
 function normalize(text) {

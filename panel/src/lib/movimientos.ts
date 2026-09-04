@@ -130,6 +130,7 @@ const CATEGORIAS: readonly string[] = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
   "otros",
 ];
 

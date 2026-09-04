@@ -19,7 +19,7 @@ describe("nombreCategoria", () => {
 });
 
 describe("las categorías que la pregunta puede ofrecer", () => {
-  it("ofrece las seis que faltaban, con su nombre", () => {
+  it("ofrece las siete que faltaban, con su nombre", () => {
     const porClave = new Map(opcionesDeCategoria().map((o) => [o.clave, o.nombre]));
     expect(porClave.get("vivienda")).toBe("Vivienda");
     expect(porClave.get("entretenimiento")).toBe("Entretenimiento");
@@ -27,6 +27,7 @@ describe("las categorías que la pregunta puede ofrecer", () => {
     expect(porClave.get("deuda")).toBe("Deuda");
     expect(porClave.get("prestamo")).toBe("Préstamo");
     expect(porClave.get("regalo")).toBe("Regalo");
+    expect(porClave.get("implementos_trabajo")).toBe("Implementos de trabajo");
   });
 
   it("no ofrece los dos fallbacks: responder con ellos deja el grupo en la cola para siempre", () => {
@@ -67,5 +68,18 @@ describe("barrasDeCategoria", () => {
   it("el total que dibuja es exactamente el que llegó: el panel no recalcula", () => {
     const barras = barrasDeCategoria({ comida: 77.5 });
     expect(barras[0].total).toBe(77.5);
+  });
+
+  /**
+   * El lado del panel de la pregunta *"¿las categorías nuevas se contabilizan
+   * en el Resumen?"*. El gráfico no tiene una lista de categorías que dibuja:
+   * dibuja las claves que el motor le manda, y las nuevas son claves como
+   * cualquier otra. El caso lo fija con una clave inventada además de la nueva,
+   * porque lo que se está protegiendo es la propiedad, no el nombre.
+   */
+  it("una categoría nueva es una barra más: no hay lista de las que se dibujan", () => {
+    const barras = barrasDeCategoria({ comida: 20, implementos_trabajo: 45, categoria_futura: 10 });
+    expect(barras.map((b) => b.clave)).toEqual(["implementos_trabajo", "comida", "categoria_futura"]);
+    expect(barras[0]).toMatchObject({ nombre: "Implementos de trabajo", total: 45, ancho: 100 });
   });
 });

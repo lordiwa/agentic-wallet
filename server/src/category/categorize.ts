@@ -53,12 +53,19 @@
  * ticket that supplies merchant patterns for them. This is intentional, not
  * an oversight: AC1 forbids guessing, so no such rule was invented.
  *
- * Lo mismo vale para las seis que se sumaron después (`vivienda`,
- * `entretenimiento`, `limpieza`, `deuda`, `prestamo`, `regalo`): son valores
- * de salida que sólo alcanza una regla del usuario. Sumar una categoría al
- * glosario NO recategoriza nada por sí sola — las reglas ya escritas siguen
- * apuntando a la categoría que apuntaban, y lo que estaba en `otros` sigue en
- * `otros` hasta que alguien responda la pregunta.
+ * Lo mismo vale para las siete que se sumaron después (`vivienda`,
+ * `entretenimiento`, `limpieza`, `deuda`, `prestamo`, `regalo`,
+ * `implementos_trabajo`): son valores de salida que sólo alcanza una regla del
+ * usuario. Sumar una categoría al glosario NO recategoriza nada por sí sola —
+ * las reglas ya escritas siguen apuntando a la categoría que apuntaban, y lo
+ * que estaba en `otros` sigue en `otros` hasta que alguien responda la
+ * pregunta.
+ *
+ * Y sumarla **alcanza** para que se contabilice: nadie mantiene una lista
+ * aparte de "categorías que suman". `spendingByCategory` agrupa por lo que
+ * `categorize` devuelva (`strategy/spending.ts`), la cola deriva sus
+ * respondibles de `CATEGORIES` menos los fallbacks, y el gráfico del panel
+ * dibuja las claves que le llegan. Esta constante es el único registro.
  */
 
 /**
@@ -84,6 +91,7 @@ export const CATEGORIES = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
   "otros",
 ] as const;
 

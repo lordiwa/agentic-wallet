@@ -269,6 +269,7 @@ categorías válidas son fijas:
 comida  transporte  salud  mascota  servicios
 recarga  efectivo  transferencia_persona  suscripcion
 vivienda  entretenimiento  limpieza  deuda  prestamo  regalo
+implementos_trabajo
 otros
 ```
 

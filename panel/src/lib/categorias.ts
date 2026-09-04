@@ -34,6 +34,7 @@ const NOMBRES: Record<Category, string> = {
   deuda: "Deuda",
   prestamo: "Préstamo",
   regalo: "Regalo",
+  implementos_trabajo: "Implementos de trabajo",
   otros: "Otros",
 };
 
@@ -101,6 +102,7 @@ export const CATEGORIAS_ELEGIBLES: Category[] = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
 ];
 
 export interface OpcionCategoria {

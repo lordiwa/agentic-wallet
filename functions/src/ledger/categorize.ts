@@ -28,6 +28,7 @@ export const CATEGORIES = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
   "otros",
 ] as const;
 

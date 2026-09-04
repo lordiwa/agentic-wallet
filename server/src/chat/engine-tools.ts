@@ -220,6 +220,7 @@ const KNOWN_CATEGORIES: readonly Category[] = [
   "deuda",
   "prestamo",
   "regalo",
+  "implementos_trabajo",
   "otros",
 ];
 

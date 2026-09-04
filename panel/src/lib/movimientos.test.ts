@@ -95,6 +95,11 @@ describe("la categoría recalculada manda sola (H21)", () => {
   it("una categoría que no está en el glosario del motor no es una categoría", () => {
     expect(categoriaPedida("salud")).toBe("salud");
     expect(categoriaPedida("transferencia_persona")).toBe("transferencia_persona");
+    // Las que se sumaron después del MVP viajan por el hash como cualquier
+    // otra: si no estuvieran acá, tocar su barra del gráfico abriría la lista
+    // sin filtrar, que es peor que un 400 porque parece que funcionó.
+    expect(categoriaPedida("implementos_trabajo")).toBe("implementos_trabajo");
+    expect(categoriaPedida("vivienda")).toBe("vivienda");
     expect(categoriaPedida("lo-que-sea")).toBeNull();
     expect(categoriaPedida("")).toBeNull();
     expect(categoriaPedida(undefined)).toBeNull();
