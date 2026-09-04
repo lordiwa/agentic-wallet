@@ -120,6 +120,25 @@ function candidatos(sel) {
   return formas;
 }
 
+/**
+ * Busca una propiedad en varias hojas, en orden de preferencia.
+ *
+ * Hace falta porque el `<style scoped>` de un componente NO se derrama sobre la
+ * página: el `.btn` de 8px que define `SyncButton` sólo vale adentro de
+ * `SyncButton`, y en el resto del Resumen el `.btn` es el de `base.css`. Al
+ * comparar una `p*.html` se mira primero el vocabulario común y después el
+ * componente; al comparar una hoja `c*.html`, al revés.
+ */
+function buscar(hojas, sel, prop) {
+  for (const hoja of hojas) {
+    for (const forma of candidatos(sel)) {
+      const reglas = hoja.get(forma);
+      if (reglas?.has(prop)) return reglas.get(prop);
+    }
+  }
+  return undefined;
+}
+
 /** Cuenta pares (selector, propiedad) del preview que la vista reproduce igual. */
 export function comparar(preview, vista, ajustes = {}) {
   const alias = ajustes.alias ?? {};
@@ -130,21 +149,21 @@ export function comparar(preview, vista, ajustes = {}) {
   let iguales = 0;
   const faltantes = [];
   const distintos = [];
+  const hojas = Array.isArray(vista) ? vista : [vista];
   for (const [sel, props] of preview) {
     if (ignorar.has(sel)) continue;
-    const delPanel = candidatos(alias[sel] ?? sel)
-      .map((s) => vista.get(s))
-      .find((m) => m !== undefined);
+    const buscado = alias[sel] ?? sel;
     for (const [prop, valor] of props) {
       if (propsIgnoradas.has(prop)) continue;
       if (superadas[sel]?.includes(prop)) continue;
       total += 1;
-      if (delPanel === undefined || !delPanel.has(prop)) {
+      const delPanel = buscar(hojas, buscado, prop);
+      if (delPanel === undefined) {
         faltantes.push(`${sel} { ${prop}: ${valor} }`);
         continue;
       }
-      if (delPanel.get(prop) === valor) iguales += 1;
-      else distintos.push(`${sel} { ${prop}: ${valor} }  ->  ${delPanel.get(prop)}`);
+      if (delPanel === valor) iguales += 1;
+      else distintos.push(`${sel} { ${prop}: ${valor} }  ->  ${delPanel}`);
     }
   }
   return { total, iguales, faltantes, distintos };

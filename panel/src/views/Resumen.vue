@@ -485,6 +485,7 @@ const destinoCategoria = computed(() =>
   display: grid;
   grid-template-columns: 1.35fr 1fr;
   gap: 12px;
+  margin-bottom: 12px;
 }
 .cols-der {
   display: grid;
@@ -508,10 +509,11 @@ const destinoCategoria = computed(() =>
   height: 8px;
 }
 .amt {
-  width: 84px;
+  width: 76px;
   text-align: right;
   color: var(--apagado);
   font-size: var(--small-size);
+  font-variant-numeric: tabular-nums;
 }
 .next {
   display: flex;

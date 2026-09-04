@@ -121,7 +121,7 @@ function confirmar(): void {
         <select
           :id="`fijo-${propuesta.pattern}`"
           v-model="elegida"
-          class="inp"
+          class="sel"
           :disabled="ocupada"
           data-testid="recurring-selector"
         >
@@ -212,6 +212,7 @@ function confirmar(): void {
   display: block;
   font-size: 13.5px;
   margin: 2px 0 1px;
+  font-variant-numeric: tabular-nums;
 }
 .acts {
   display: flex;
@@ -221,8 +222,9 @@ function confirmar(): void {
   padding-top: 13px;
   border-top: 1px solid var(--superficie-suave);
 }
-/* El selector de `p6-reglas.html`, idéntico al de `ClassifyCard`. */
-.inp {
+/* El selector de `p6-reglas.html`, idéntico al de `ClassifyCard`. En `c8` se
+ * llama `.sel` porque es un `<select>`, no un campo de texto. */
+.sel {
   border: 1px solid var(--linea);
   background: var(--panel);
   color: var(--tinta);
@@ -232,12 +234,14 @@ function confirmar(): void {
   font-size: 13px;
   min-width: 176px;
 }
-.inp:disabled {
+.sel:disabled {
   background: var(--boton-off-bg);
   color: var(--boton-off-texto);
 }
 .pie-nota {
   margin: 10px 0 0;
+  font-size: var(--small-size);
+  color: var(--apagado);
 }
 .sr {
   position: absolute;

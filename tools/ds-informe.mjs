@@ -13,12 +13,17 @@ const filas = [];
 for (const [tarjeta, archivos, ajustes] of MAPA) {
   if (soloEsta !== undefined && tarjeta !== soloEsta) continue;
   const preview = estilosDePreview(`${PREVIEWS}/${tarjeta}.html`);
-  // `base.css` primero: el estilo *scoped* de un componente gana sobre el
-  // vocabulario común, igual que en el navegador.
-  const vista = estilosDeVue([...COMUN, ...archivos]);
+  /*
+   * Dos hojas separadas, no una fusionada: el `<style scoped>` de un componente
+   * no se derrama sobre la página. Una `p*.html` se compara mirando primero el
+   * vocabulario común; una hoja `c*.html`, primero el componente.
+   */
+  const comun = estilosDeVue(COMUN);
+  const propias = estilosDeVue(archivos);
+  const vista = ajustes?.propiasPrimero === true ? [propias, comun] : [comun, propias];
   const r = comparar(preview, vista, { ...ajustes, propsIgnoradas: PROPS_IGNORADAS });
   const pct = r.total === 0 ? 100 : (r.iguales / r.total) * 100;
-  filas.push([tarjeta, archivos, r, pct]);
+  filas.push([tarjeta, archivos, r, pct, ajustes?.superadaPor]);
 
   if (soloEsta !== undefined) {
     console.log(`${tarjeta}  ->  ${archivos.join(" + ")}`);
@@ -33,12 +38,20 @@ for (const [tarjeta, archivos, ajustes] of MAPA) {
 if (soloEsta === undefined) {
   let total = 0;
   let iguales = 0;
-  for (const [tarjeta, archivos, r, pct] of filas) {
-    total += r.total;
-    iguales += r.iguales;
+  for (const [tarjeta, archivos, r, pct, superadaPor] of filas) {
+    // Una tarjeta superada se muestra, pero no cuenta: medir contra el diseño
+    // anterior daría un número que empeora justamente al estar al día.
+    if (superadaPor === undefined) {
+      total += r.total;
+      iguales += r.iguales;
+    }
+    const cola =
+      superadaPor === undefined
+        ? archivos.map((a) => a.split("/").pop()).join(", ")
+        : `(superada por ${superadaPor})`;
     console.log(
       `${tarjeta.padEnd(28)} ${String(r.iguales).padStart(4)}/${String(r.total).padEnd(4)} ` +
-        `${pct.toFixed(1).padStart(5)}%   ${archivos.map((a) => a.split("/").pop()).join(", ")}`
+        `${pct.toFixed(1).padStart(5)}%   ${cola}`
     );
   }
   console.log(

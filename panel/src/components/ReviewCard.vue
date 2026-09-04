@@ -127,12 +127,12 @@ function guardarCorreccion(): void {
           <h3 class="label">
             Monto del ledger <span class="tag ok">fuente de verdad</span>
           </h3>
-          <span class="num" data-testid="review-monto">{{ formatoPlata(fila.amount) }}</span>
+          <span class="val" data-testid="review-monto">{{ formatoPlata(fila.amount) }}</span>
           <span class="small tabular">{{ fila.currency }} · {{ formatoFecha(fila.ts) ?? fila.ts }}</span>
         </div>
         <div class="pane">
           <h3 class="label">Mientras siga acá</h3>
-          <span class="num sm">Fuera de los totales</span>
+          <span class="val n">Fuera de los totales</span>
           <span class="small">no suma en el saldo ni en el gasto por categoría</span>
         </div>
       </div>
@@ -201,12 +201,15 @@ function guardarCorreccion(): void {
 
 <style scoped>
 /* `c2-tarjeta-revision.html` literal: borde de atención, cabecera teñida. */
+/* El ancho máximo es del sistema: una tarjeta de revisión más larga que 820px
+ * deja de leerse como una comparación y pasa a ser una fila. */
 .rc {
   border: 1px solid var(--atencion);
   border-radius: var(--radio-tarjeta);
   background: var(--panel);
   overflow: hidden;
   margin-bottom: 12px;
+  max-width: 820px;
 }
 .rc-h {
   display: flex;
@@ -264,13 +267,39 @@ function guardarCorreccion(): void {
   border: 1px solid var(--linea);
   border-radius: 9px;
   padding: 11px 12px;
-  background: var(--fondo);
+  background: var(--superficie-tenue);
+  position: relative;
+}
+/*
+ * La cifra de un pane es de 19px, no la de 26px del sistema: acá se comparan
+ * dos lecturas al lado de la otra, y a 26px cada columna pide el ojo entera.
+ */
+.pane .val {
+  font-size: 19px;
+  font-weight: var(--cifra-weight);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin: 3px 0 2px;
+}
+/* Cuando lo que hay que decir no es un número ("Sin leer", "Fuera de los
+ * totales"): más chica y apagada, para que nunca se lea como una cantidad. */
+.pane .val.n {
+  font-size: 15px;
+  color: var(--apagado);
+  font-weight: 500;
 }
 /* La columna de la fuente de verdad. El verde no es decoración: es la
  * invariante del motor dicha en el color del sistema para "esto está bien". */
 .pane.truth {
   border-color: var(--tag-ok-borde);
   background: var(--pane-truth-bg);
+}
+/* La columna de la verificación cruzada, en el azul de acción: Claude lee, no
+ * decide. */
+.pane.claude {
+  border-color: var(--tag-acc-borde);
+  background: var(--nota-acc-bg);
 }
 .pane .label {
   display: flex;
@@ -314,11 +343,17 @@ function guardarCorreccion(): void {
   border: 1px solid var(--linea);
   background: var(--panel);
   color: var(--tinta);
-  border-radius: var(--radio-control);
+  border-radius: var(--radio-boton);
   padding: 7px 11px;
   font: inherit;
   font-size: 13px;
-  width: 150px;
+  width: 145px;
+}
+/* El campo del motivo comparte la fila con los botones y se lleva el resto. */
+.inp.note {
+  flex: 1;
+  min-width: 160px;
+  width: auto;
 }
 .inp:disabled {
   background: var(--boton-off-bg);

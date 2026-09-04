@@ -69,6 +69,7 @@ body {
 /* La etiqueta de una tarjeta: 11px, mayúsculas, apagada (`c3`). En las
  * `p*.html` el mismo rótulo aparece como `h3`, y es la misma regla. */
 .label,
+.lab,
 .h3 {
   font-size: var(--label-size);
   text-transform: uppercase;
@@ -257,6 +258,14 @@ label {
   font-weight: 600;
 }
 
+/* La destructiva de contorno (`c2`): descartar no es la acción principal de la
+ * tarjeta, así que lleva el rojo en el borde y en el texto, no en el fondo. */
+.btn.bad {
+  border-color: var(--tag-bad-borde);
+  color: var(--falla);
+}
+
+/* La destructiva llena, para cuando sí es la acción principal. */
 .btn.badb {
   background: var(--falla);
   border-color: var(--falla);
@@ -277,10 +286,16 @@ label {
   padding: 7px 4px;
 }
 
+/*
+ * El botón apagado. El borde es el mismo gris que el fondo: es lo que dicen
+ * las tarjetas revisadas el 3 de septiembre (`p5b`, `c7`, `c8`). Las del 2
+ * —`00-fundamentos` incluida— le ponían `--boton-off-borde`, un gris aparte;
+ * el sistema lo dejó atrás.
+ */
 .btn:disabled,
 .btn.dis {
   background: var(--boton-off-bg);
-  border-color: var(--boton-off-borde);
+  border-color: var(--boton-off-bg);
   color: var(--boton-off-texto);
   cursor: default;
   filter: none;

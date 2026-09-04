@@ -35,6 +35,13 @@ const ANCLAS = { "a.btn": ".btn", "a.btn:hover": ".btn:hover" };
 const PROTOTIPO = [".flow", ".chip", ".chip.now", ".leyenda"];
 
 /**
+ * La galería de estados del chip de backend que `p0b` dibuja debajo de la
+ * tarjeta, bajo el rótulo "El chip de backend, que acompaña a esta pantalla".
+ * Documenta a `BackendChip`, que es otro componente y tiene su propia entrada.
+ */
+const GALERIA_CHIP = [".estados", ".estado", ".estado .t", ".estado .t b"];
+
+/**
  * El andamio de una hoja de componente (`c*.html`): el título de la hoja, su
  * bajada, la rejilla que muestra las variantes una al lado de la otra y la
  * galería de estados. Documenta al componente; no es el componente.
@@ -86,12 +93,41 @@ const HOJA = [
  * excluyen esas tres propiedades para no contar como deriva lo que es la
  * versión anterior del sistema; el resto de `.tag` se sigue comparando.
  */
-const TAG_VIEJA = { ".tag": ["gap", "font-size", "padding"] };
+const TAG_VIEJA = {
+  ".tag": ["gap", "font-size", "padding"],
+  /*
+   * El mismo caso, con el borde del botón apagado: las cinco tarjetas del 2 de
+   * septiembre le dan un gris propio (`#E4E9EF`) y las tres del 3 —`p5b`, `c7`,
+   * `c8`— lo igualan al fondo (`#F0F3F7`), que es lo que lleva `base.css`.
+   */
+  ".btn.dis": ["border-color"],
+};
 
-const LIENZO = { alias: { body: ".lienzo", ...ANCLAS }, ignorar: PROTOTIPO };
-const PAGINA = { alias: { body: ".app", ".wrap": ".contenido", ...ANCLAS }, ignorar: PROTOTIPO };
+const LIENZO = {
+  // `.btn.off` es como la tarjeta llama al botón apagado; el panel usa el
+  // estado real del elemento, `:disabled`.
+  alias: { body: ".lienzo", ".btn.off": ".btn:disabled", ...ANCLAS },
+  ignorar: [...PROTOTIPO, ...GALERIA_CHIP],
+  superadas: TAG_VIEJA,
+  // En las dos pantallas de acceso el componente ES la pantalla entera: su
+  // tarjeta de radio 12 y su botón de ancho completo mandan sobre el
+  // vocabulario común, no al revés.
+  propiasPrimero: true,
+};
+/*
+ * En una `p*.html` el `body` ES el lienzo de la aplicación, y `base.css` lo
+ * escribe igual — así que acá no se traduce nada: se compara `body` con `body`.
+ * Sólo en las dos pantallas de acceso el lienzo es un `div` (`.lienzo`), porque
+ * arriba va el chip de backend que la tarjeta no dibuja.
+ */
+const PAGINA = {
+  // `.bar span:first-child` es el nombre de la categoría en la barra del
+  // Resumen; el panel le pone clase en vez de contarlo por posición.
+  alias: { ".wrap": ".contenido", ".bar span:first-child": ".bar-nombre", ...ANCLAS },
+  ignorar: PROTOTIPO,
+};
 const PAGINA_VIEJA = { ...PAGINA, superadas: TAG_VIEJA };
-const COMPONENTE = { alias: ANCLAS, ignorar: [...PROTOTIPO, ...HOJA] };
+const COMPONENTE = { alias: ANCLAS, ignorar: [...PROTOTIPO, ...HOJA], superadas: TAG_VIEJA, propiasPrimero: true };
 
 export const MAPA = [
   ["p0b-acceso-por-llave", ["panel/src/components/AccessKeyScreen.vue"], LIENZO],
@@ -124,7 +160,21 @@ export const MAPA = [
     ],
     PAGINA,
   ],
-  ["p1-alta-perfil", ["panel/src/views/AltaPerfil.vue"], PAGINA_VIEJA],
+  /*
+   * `p1` está superada por `p1b` y no se cuenta en el total.
+   *
+   * Son la misma pantalla en dos versiones: `p1 — Alta y perfil` (2 de
+   * septiembre) y `p1b — Gastos fijos y perfil` (3 de septiembre). `p1b` no es
+   * un agregado sino un reemplazo — le saca a `p1` el checklist de pasos
+   * (`.step`/`.tick`) y el panel "El agente propone" (`.sug`), y en su lugar
+   * lee los gastos fijos del historial. `AltaPerfil.vue` dibuja `p1b`, empezando
+   * por su título.
+   *
+   * Por eso el 71% contra `p1` no es deriva: es la distancia con el diseño
+   * anterior. Construir `.step` y `.sug` sería volver atrás, y además inventar
+   * una función que `p1b` no pide.
+   */
+  ["p1-alta-perfil", ["panel/src/views/AltaPerfil.vue"], { ...PAGINA_VIEJA, superadaPor: "p1b-gastos-fijos-y-perfil" }],
   [
     "p1b-gastos-fijos-y-perfil",
     ["panel/src/views/AltaPerfil.vue", "panel/src/components/RecurringCard.vue"],
