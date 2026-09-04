@@ -265,7 +265,7 @@ function guardarCorreccion(): void {
 }
 .pane {
   border: 1px solid var(--linea);
-  border-radius: 9px;
+  border-radius: var(--radio-boton);
   padding: 11px 12px;
   background: var(--superficie-tenue);
   position: relative;
@@ -321,11 +321,13 @@ function guardarCorreccion(): void {
   padding: 10px 12px;
   overflow-wrap: anywhere;
 }
+/* La nota de `c2`: en el tema oscuro no redondea de ningún lado, ni siquiera
+ * del libre — se lee como una franja pegada a su barra ámbar. */
 .aviso {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  border-radius: 0;
   font-size: var(--small-size);
   color: var(--texto-nota);
   margin: 13px 0 0;

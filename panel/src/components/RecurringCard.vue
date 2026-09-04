@@ -228,7 +228,7 @@ function confirmar(): void {
   border: 1px solid var(--linea);
   background: var(--panel);
   color: var(--tinta);
-  border-radius: var(--radio-control);
+  border-radius: var(--radio-boton);
   padding: 7px 11px;
   font: inherit;
   font-size: 13px;

@@ -95,7 +95,11 @@ onUnmounted(() => dejarDeEscuchar?.());
   flex-direction: column;
 }
 .brand {
-  color: var(--panel);
+  /* Blanco pleno, como en la tarjeta: la marca queda un escalón por encima de
+     `--tinta` sobre la barra oscura. (Antes pedía `--panel`, que con el tema
+     oscuro pasó a ser el fondo de una tarjeta y dejaba la marca del color del
+     lienzo, o sea invisible.) */
+  color: var(--blanco);
   font-weight: 650;
   font-size: 15px;
   padding: 0 10px 18px;
@@ -121,7 +125,10 @@ onUnmounted(() => dejarDeEscuchar?.());
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 7px;
+  /* El radio de control, no el de tarjeta: el enlace activo es un bloque de la
+     barra, y con la esquina cerrada del tema nuevo se lee como una fila
+     seleccionada de consola y no como una píldora. */
+  border-radius: var(--radio-control);
   color: var(--nav-enlace-texto);
   text-decoration: none;
   font-size: var(--nav-enlace-size);
@@ -130,7 +137,7 @@ onUnmounted(() => dejarDeEscuchar?.());
 .nav a:hover,
 .nav a.on {
   background: var(--nav-activo-bg);
-  color: var(--panel);
+  color: var(--blanco);
 }
 .nav a.on {
   font-weight: 600;

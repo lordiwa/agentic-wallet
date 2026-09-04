@@ -191,8 +191,10 @@ label {
   color: var(--placeholder);
 }
 
-/* El control en línea de una barra de filtros: más chico y con el radio 6 de
- * control, no el 8 de campo (`p4`, `p6`, `c7`). */
+/* El control en línea de una barra de filtros: más chico y con el radio 2 de
+ * control, no el 3 de campo. El sistema nuevo separa las dos cosas — el chip
+ * de filtro (`p4`, `c6`) va en 2, y el campo con su borde (`p6`, `c7`, `c8`)
+ * en 3. */
 .inp.ctl,
 .sel {
   width: auto;

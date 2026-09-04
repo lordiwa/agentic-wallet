@@ -365,12 +365,14 @@ th .sort {
   padding-top: 12px;
   border-top: 1px solid var(--linea);
 }
-/* El selector de `p6-reglas.html`, con el radio de control del sistema. */
+/* El selector de `p6-reglas.html`. Lleva el radio 3 del botón y no el 2 del
+ * control: en el sistema nuevo el 2 es para el chip de filtro (`p4`, `c6`), y
+ * un campo con su borde va un punto más suelto. */
 .inp {
   border: 1px solid var(--linea);
   background: var(--panel);
   color: var(--tinta);
-  border-radius: var(--radio-control);
+  border-radius: var(--radio-boton);
   padding: 7px 11px;
   font: inherit;
   font-size: 13px;
@@ -380,12 +382,13 @@ th .sort {
   background: var(--boton-off-bg);
   color: var(--boton-off-texto);
 }
-/* La nota del sistema: barra de atención a la izquierda. */
+/* La nota del sistema: barra de atención a la izquierda y ninguna esquina
+ * redondeada — en el tema oscuro `c4` la dibuja como una franja. */
 .aviso {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  border-radius: 0;
   font-size: var(--small-size);
   color: var(--texto-nota);
   margin: 0 0 12px;
@@ -437,9 +440,10 @@ th .sort {
 .estado.vacio p {
   margin: 3px 0 0;
 }
+/* El esqueleto de carga de `c4`, con el radio de control del sistema. */
 .sk {
   background: var(--superficie-suave);
-  border-radius: 5px;
+  border-radius: var(--radio-control);
   height: 11px;
   display: block;
   margin: 9px 0;
@@ -463,7 +467,7 @@ th .sort {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  border-radius: 0;
   font-size: var(--small-size);
   color: var(--texto-nota);
   margin: 12px 0 0;

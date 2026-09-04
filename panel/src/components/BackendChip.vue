@@ -176,7 +176,9 @@ onMounted(() => {
 }
 .btn.pri {
   background: var(--boton-primario-bg);
-  border-color: var(--boton-primario-bg);
+  /* El primario del tema oscuro sí lleva borde propio, más claro que su fondo:
+     sin él el botón no se recorta contra la nota que lo contiene. */
+  border-color: var(--boton-primario-borde);
   color: var(--boton-primario-texto);
   font-weight: 600;
 }
@@ -194,7 +196,6 @@ onMounted(() => {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
   font-size: var(--small-size);
   color: var(--texto-nota);
   margin-top: 4px;
@@ -205,11 +206,6 @@ onMounted(() => {
   flex-wrap: wrap;
   margin-top: 9px;
 }
-code {
-  font-family: var(--fuente-mono);
-  font-size: 12px;
-  background: var(--superficie-suave);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
+/* `code` no se redefine acá: la regla de base.css es idéntica a la de la
+   tarjeta, y una copia local sólo sirve para quedarse vieja. */
 </style>

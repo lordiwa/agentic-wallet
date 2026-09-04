@@ -23,6 +23,17 @@
    * pide el rol, no el color, asi que el tema entra por aca y no hay que tocar
    * una vista para que el fondo deje de ser blanco.
    */
+  /*
+   * El blanco puro. No es un rol de §2.1: es el `#fff` que las tarjetas
+   * escriben donde algo tiene que destacarse por encima de `--tinta` — la
+   * marca de la barra lateral, el enlace activo, el texto de un boton lleno.
+   * Existe como token propio porque usar `--boton-primario-texto` para pintar
+   * la marca era pedirle a un rol de boton que hiciera de color de nav, y
+   * porque el error que reemplaza era peor: con `--panel` la marca quedaba
+   * del mismo color que su fondo, o sea invisible.
+   */
+  --blanco: #FFFFFF;
+
   --nav: #170F28; /* fondo de la barra lateral */
   --tinta: #ECEBFA; /* texto principal */
   --apagado: #9A9EC2; /* texto secundario, etiquetas, notas */
@@ -138,7 +149,14 @@
   --superficie-tenue: #181230; /* el violeta mas hondo que el panel: `.pane` y una fila atenuada */
   --texto-atenuado: #787DA3; /* el texto de una fila que el motor ya excluyo */
   --accion-oscura: #9DB8F5; /* el texto de accion sobre su propio fondo, en `.sel.act` */
-  --radio-chip: 2px; /* el control de filtro de `c6`/`p4` */
+  /*
+   * El chip de filtro de `c6`/`p4`. En el sistema claro era un valor propio
+   * (7px, entre el control y el boton); en el oscuro cayo al mismo 2 que el
+   * control. Se queda como token aparte igual: dice de que pieza habla, y si
+   * el sistema vuelve a separarlos no hay que ir a buscar cual de los
+   * `--radio-control` del panel era en realidad un chip.
+   */
+  --radio-chip: 2px;
   --why-borde: rgba(242, 166, 90, 0.4); /* el borde del `.why` de `c2-tarjeta-revision.html` */
   --pane-truth-bg: rgba(63, 214, 179, 0.08); /* el verde tenue de `.pane.truth`, en `c2` */
   --pane-claude-bg: rgba(154, 99, 245, 0.08); /* y el violeta de `.pane.claude`, al lado */

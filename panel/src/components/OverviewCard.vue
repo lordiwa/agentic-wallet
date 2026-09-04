@@ -89,10 +89,12 @@ const navega = computed(() => props.destino !== null && props.destino !== undefi
   top: 12px;
   right: 14px;
 }
-/* El esqueleto de carga de `c3`: dos bloques del gris de superficie. */
+/* El esqueleto de carga de `c3`: dos bloques del gris de superficie, con el
+ * radio de control — es la esquina más cerrada del sistema, y un placeholder no
+ * puede parecer más blando que el dato que va a reemplazarlo. */
 .sk {
   background: var(--superficie-suave);
-  border-radius: 5px;
+  border-radius: var(--radio-control);
   display: block;
 }
 .sk.a {

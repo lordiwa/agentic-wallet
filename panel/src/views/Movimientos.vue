@@ -374,8 +374,9 @@ function abrirFila(id: string | number | null): void {
 }
 /*
  * El control de `c6-selector-filtros.html` / `p4`: borde de línea, 13px,
- * etiqueta en 11px mayúsculas apagada. El radio es 7 y no el 6 de control —
- * es la forma propia del chip de filtro, entre el control y el botón.
+ * etiqueta en 11px mayúsculas apagada. `--radio-chip` sigue siendo un token
+ * propio aunque hoy valga lo mismo que el de control: el día que el chip de
+ * filtro vuelva a separarse del resto, se cambia acá y no en cada vista.
  */
 .sel {
   border: 1px solid var(--linea);

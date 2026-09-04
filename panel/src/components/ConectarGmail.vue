@@ -63,8 +63,8 @@ const { vista, accionar } = gmail;
 
     <!-- El aviso de la vuelta de Google es el bloque `.note` del sistema
          (borde izquierdo de 3px), no una píldora: es una explicación de dos
-         renglones, y una `.tag` de 20px de radio con texto largo se lee como
-         un botón. -->
+         renglones, y una `.tag` con texto largo se lee como un botón que no se
+         puede pulsar. -->
     <p
       v-if="vista.aviso"
       class="note"

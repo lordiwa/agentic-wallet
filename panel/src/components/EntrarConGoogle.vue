@@ -134,7 +134,9 @@ const { entrando, error, entrar } = sesion;
   max-width: 100%;
 }
 .brand {
-  color: var(--panel);
+  /* Blanco pleno sobre el lienzo oscuro, como en la tarjeta. `--panel` es hoy
+     el fondo de una tarjeta y dejaba la marca del color del lienzo. */
+  color: var(--blanco);
   font-weight: 650;
   font-size: 16px;
   display: flex;
@@ -155,14 +157,16 @@ const { entrando, error, entrar } = sesion;
 }
 .card {
   background: var(--panel);
-  border-radius: 12px;
+  border-radius: var(--radio-tarjeta);
   padding: 26px 22px 22px;
   text-align: center;
 }
 .mark {
   width: 44px;
   height: 44px;
-  border-radius: 11px;
+  /* El cuadro de la marca lleva el radio de tarjeta, no uno propio: en la
+     tarjeta nueva es el mismo 4 px que la caja que lo contiene. */
+  border-radius: var(--radio-tarjeta);
   background: var(--nav);
   display: inline-flex;
   align-items: center;
@@ -196,7 +200,7 @@ h1 {
   border: 1px solid var(--boton-secundario-borde);
   background: var(--boton-secundario-bg);
   color: var(--tinta);
-  border-radius: 9px;
+  border-radius: var(--radio-boton);
   padding: 12px 16px;
   font: inherit;
   font-size: 14.5px;
@@ -224,7 +228,9 @@ h1 {
   text-align: left;
   background: var(--fondo);
   border: 1px solid var(--linea);
-  border-radius: 9px;
+  /* El bloque de permisos es un recuadro de lectura, no una tarjeta: en la
+     tarjeta nueva comparte el radio del botón que tiene encima. */
+  border-radius: var(--radio-boton);
   padding: 12px 14px;
   margin-top: 18px;
   font-size: var(--small-size);
@@ -252,7 +258,9 @@ h1 {
   background: var(--tag-bad-bg);
   color: var(--tag-bad-texto);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  /* El error es la misma franja que `.note` con otro color, así que sigue su
+     forma: en el tema oscuro la nota no redondea del lado libre (base.css). */
+  border-radius: 0;
   font-size: var(--small-size);
   text-align: left;
   margin: 14px 0 0;
@@ -261,7 +269,6 @@ h1 {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
   font-size: var(--small-size);
   margin-top: 16px;
   color: var(--texto-nota);

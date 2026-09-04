@@ -243,12 +243,14 @@ function responder(): void {
   padding-top: 13px;
   border-top: 1px solid var(--superficie-suave);
 }
-/* El selector de `p6-reglas.html`, con el radio de control del sistema. */
+/* El selector de `p6-reglas.html`. Lleva el radio 3 del botón y no el 2 del
+ * control: en el sistema nuevo el 2 es para el chip de filtro (`p4`, `c6`), y
+ * un campo con su borde va un punto más suelto. */
 .inp {
   border: 1px solid var(--linea);
   background: var(--panel);
   color: var(--tinta);
-  border-radius: var(--radio-control);
+  border-radius: var(--radio-boton);
   padding: 7px 11px;
   font: inherit;
   font-size: 13px;

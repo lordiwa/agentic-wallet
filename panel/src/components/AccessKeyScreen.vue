@@ -118,7 +118,9 @@ async function entrar(): Promise<void> {
   max-width: 100%;
 }
 .brand {
-  color: var(--panel);
+  /* Blanco pleno sobre el lienzo oscuro, como en la tarjeta. `--panel` es hoy
+     el fondo de una tarjeta y dejaba la marca del color del lienzo. */
+  color: var(--blanco);
   font-weight: 650;
   font-size: 16px;
   display: flex;
@@ -139,14 +141,16 @@ async function entrar(): Promise<void> {
 }
 .card {
   background: var(--panel);
-  border-radius: 12px;
+  border-radius: var(--radio-tarjeta);
   padding: 26px 22px 22px;
   text-align: center;
 }
 .mark {
   width: 44px;
   height: 44px;
-  border-radius: 11px;
+  /* El cuadro de la marca lleva el radio de tarjeta, no uno propio: en la
+     tarjeta nueva es el mismo 4 px que la caja que lo contiene. */
+  border-radius: var(--radio-tarjeta);
   background: var(--nav);
   display: inline-flex;
   align-items: center;
@@ -207,7 +211,7 @@ label {
   border: 1px solid var(--boton-secundario-borde);
   background: var(--boton-secundario-bg);
   color: var(--tinta);
-  border-radius: 9px;
+  border-radius: var(--radio-boton);
   padding: 12px 16px;
   font: inherit;
   font-size: 14.5px;
@@ -217,7 +221,9 @@ label {
 }
 .btn.pri {
   background: var(--boton-primario-bg);
-  border-color: var(--boton-primario-bg);
+  /* El primario del tema oscuro sí lleva borde propio, más claro que su fondo:
+     sin él la única acción de la pantalla no se recorta contra la tarjeta. */
+  border-color: var(--boton-primario-borde);
   color: var(--boton-primario-texto);
 }
 .btn:disabled {
@@ -232,7 +238,9 @@ label {
   background: var(--tag-bad-bg);
   color: var(--tag-bad-texto);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
+  /* El error es la misma franja que `.note` con otro color, así que sigue su
+     forma: en el tema oscuro la nota no redondea del lado libre (base.css). */
+  border-radius: 0;
   font-size: var(--small-size);
   text-align: left;
   margin: 14px 0 0;
@@ -241,7 +249,6 @@ label {
   border-left: 3px solid var(--atencion);
   background: var(--nota-bg);
   padding: 10px 12px;
-  border-radius: 0 var(--radio-boton) var(--radio-boton) 0;
   font-size: var(--small-size);
   margin-top: 16px;
   color: var(--texto-nota);
@@ -254,11 +261,6 @@ label {
   margin-top: 14px;
   line-height: 1.55;
 }
-code {
-  font-family: var(--fuente-mono);
-  font-size: 12px;
-  background: var(--superficie-suave);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
+/* `code` no se redefine acá: la regla de base.css es idéntica a la de la
+   tarjeta, y una copia local sólo sirve para quedarse vieja. */
 </style>

@@ -107,13 +107,20 @@ const vista = computed(() => vistaSync(props.entrada, props.ahora ?? new Date())
 .track {
   margin: 6px 0 4px;
 }
-/* El anillo que gira de `c1`, con los colores de la etiqueta `acc`. */
+/*
+ * El indicador que gira de `c1`, con los colores de la etiqueta `acc`. Con el
+ * tema oscuro dejó de ser un anillo: `c1` lo dibuja con el radio de control, o
+ * sea un cuadrado apenas matado que gira. Es la misma decisión que cerró todas
+ * las esquinas del sistema, y acá se nota más que en ningún lado.
+ */
 .spin {
   width: 15px;
   height: 15px;
-  border-radius: 50%;
+  border-radius: var(--radio-control);
   border: 2px solid var(--tag-acc-borde);
-  border-top-color: var(--accion);
+  /* El violeta CLARO, no el de acción: `c1` lo dibuja así porque el spinner
+     gira sobre el fondo hondo de la tarjeta y el `--accion` se le pierde. */
+  border-top-color: var(--tag-acc-texto);
   flex: none;
   display: inline-block;
   animation: gira 0.9s linear infinite;
