@@ -125,6 +125,7 @@ export function comparar(preview, vista, ajustes = {}) {
   const alias = ajustes.alias ?? {};
   const ignorar = new Set(ajustes.ignorar ?? []);
   const propsIgnoradas = ajustes.propsIgnoradas ?? new Set();
+  const superadas = ajustes.superadas ?? {};
   let total = 0;
   let iguales = 0;
   const faltantes = [];
@@ -136,6 +137,7 @@ export function comparar(preview, vista, ajustes = {}) {
       .find((m) => m !== undefined);
     for (const [prop, valor] of props) {
       if (propsIgnoradas.has(prop)) continue;
+      if (superadas[sel]?.includes(prop)) continue;
       total += 1;
       if (delPanel === undefined || !delPanel.has(prop)) {
         faltantes.push(`${sel} { ${prop}: ${valor} }`);

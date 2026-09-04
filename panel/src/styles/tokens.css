@@ -72,6 +72,9 @@
   --boton-terciario-texto: #2B5FD9;
   --boton-off-bg: #F0F3F7;
   --boton-off-texto: #9AA8B6;
+  /* El borde del boton apagado es un gris propio, mas claro que `--linea`:
+     `00-fundamentos.html` lo escribe aparte del fondo. */
+  --boton-off-borde: #E4E9EF;
 
   /* ---- Shell (§2.1) ---- */
   --shell-columnas: 236px 1fr;
@@ -96,6 +99,7 @@
   --nota-acc-bg: #F5F8FF; /* el azul palido de `.note` informativa (`p3`, `p9`) */
   --aviso-texto: #6B5714; /* el cuerpo del `.alert` amarillo de `p2-resumen` */
   --superficie-suave: #F0F3F7; /* separadores internos, `code`, chips neutros */
+  --placeholder: #B6C1CC; /* el texto de ejemplo de un campo vacio */
   --why-borde: #F0E0B8; /* el borde del `.why` de `c2-tarjeta-revision.html` */
   --pane-truth-bg: #F4FBF7; /* el verde palidisimo de `.pane.truth`, en `c2` */
   --sombra-control: 0 1px 2px rgba(16, 26, 38, 0.06);

@@ -116,6 +116,62 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ----
+ * Formulario. El rótulo de un campo es el mismo `11px` en mayúsculas que
+ * `.label`, con el margen de 5px que llevan las `p*.html`.
+ * ---- */
+
+label {
+  display: block;
+  font-size: var(--label-size);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  color: var(--apagado);
+  font-weight: var(--label-weight);
+  margin: 0 0 5px;
+}
+
+.inp {
+  width: 100%;
+  border: 1px solid var(--linea);
+  background: var(--panel);
+  color: var(--tinta);
+  border-radius: var(--radio-boton);
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.inp::placeholder {
+  color: var(--placeholder);
+}
+
+/* El control en línea de una barra de filtros: más chico y con el radio 6 de
+ * control, no el 8 de campo (`p4`, `p6`, `c7`). */
+.inp.ctl,
+.sel {
+  width: auto;
+  border-radius: var(--radio-control);
+  padding: 7px 11px;
+  font-size: 13px;
+  min-width: 176px;
+}
+
+/* Un enlace que se ve como enlace, al revés de `a.lnk`. */
+.link {
+  color: var(--accion);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Dos columnas iguales: el par de tarjetas que se leen juntas. */
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 11px;
+}
+
 /* ---- Tarjeta ---- */
 
 .card {
@@ -224,7 +280,7 @@ body {
 .btn:disabled,
 .btn.dis {
   background: var(--boton-off-bg);
-  border-color: var(--boton-off-bg);
+  border-color: var(--boton-off-borde);
   color: var(--boton-off-texto);
   cursor: default;
   filter: none;
@@ -422,6 +478,24 @@ td.r {
   flex-wrap: wrap;
   padding-top: 13px;
   border-top: 1px solid var(--superficie-suave);
+}
+
+/* Un nombre técnico dentro de una frase: una clave del `.env`, un host, una
+ * categoría del motor. */
+code {
+  font-family: var(--fuente-mono);
+  font-size: 12px;
+  background: var(--superficie-suave);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* La etiqueta de estado clavada en la esquina de una tarjeta (`c3`). La
+ * tarjeta ya es `position: relative`. */
+.card .corner {
+  position: absolute;
+  top: 12px;
+  right: 14px;
 }
 
 /* ---- Enlace que envuelve una tarjeta o una fila, sin verse como enlace ---- */

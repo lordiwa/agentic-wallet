@@ -42,6 +42,11 @@ const PROTOTIPO = [".flow", ".chip", ".chip.now", ".leyenda"];
 const HOJA = [
   "body",
   "h1",
+  // En una hoja de componente `h2` no es el título de una tarjeta: es el rótulo
+  // de sección de la hoja ("Estados", "Variantes"), y por eso viene en
+  // mayúsculas de 11px como en `00-fundamentos.html`. El `h2` de la aplicación
+  // es el de las `p*.html` (14px), que sí se compara.
+  "h2",
   ".lede",
   ".grid",
   ".two",
@@ -68,8 +73,24 @@ const HOJA = [
   ".reglas li",
 ];
 
+/**
+ * Reglas que una tarjeta posterior dejó atrás.
+ *
+ * La etiqueta `.tag` se achicó en algún momento del sistema: `11.5px / 2px 9px
+ * / gap 5px` sólo sobrevive en las cuatro tarjetas más viejas (`00-fundamentos`,
+ * `p1`, `p2`, `p3`, todas del 2 de septiembre). Las quince revisadas después
+ * —incluida `p1b`, que es la nueva versión de `p1`— dicen `11px / 1px 8px /
+ * gap 4px`, y ese es el valor que lleva `base.css`.
+ *
+ * O sea que acá la tarjeta vieja es la que no está al día, no el panel. Se
+ * excluyen esas tres propiedades para no contar como deriva lo que es la
+ * versión anterior del sistema; el resto de `.tag` se sigue comparando.
+ */
+const TAG_VIEJA = { ".tag": ["gap", "font-size", "padding"] };
+
 const LIENZO = { alias: { body: ".lienzo", ...ANCLAS }, ignorar: PROTOTIPO };
 const PAGINA = { alias: { body: ".app", ".wrap": ".contenido", ...ANCLAS }, ignorar: PROTOTIPO };
+const PAGINA_VIEJA = { ...PAGINA, superadas: TAG_VIEJA };
 const COMPONENTE = { alias: ANCLAS, ignorar: [...PROTOTIPO, ...HOJA] };
 
 export const MAPA = [
@@ -82,12 +103,12 @@ export const MAPA = [
       "panel/src/components/OverviewCard.vue",
       "panel/src/components/SyncButton.vue",
     ],
-    PAGINA,
+    PAGINA_VIEJA,
   ],
   [
     "p3-sincronizacion",
     ["panel/src/views/Conectado.vue", "panel/src/components/ConectarGmail.vue"],
-    PAGINA,
+    PAGINA_VIEJA,
   ],
   [
     "p4-movimientos",
@@ -103,7 +124,7 @@ export const MAPA = [
     ],
     PAGINA,
   ],
-  ["p1-alta-perfil", ["panel/src/views/AltaPerfil.vue"], PAGINA],
+  ["p1-alta-perfil", ["panel/src/views/AltaPerfil.vue"], PAGINA_VIEJA],
   [
     "p1b-gastos-fijos-y-perfil",
     ["panel/src/views/AltaPerfil.vue", "panel/src/components/RecurringCard.vue"],
