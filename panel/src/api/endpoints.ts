@@ -137,9 +137,16 @@ export async function postSync(): Promise<SyncResponse> {
   const startedAt = performance.now();
   try {
     const res = await apiFetch("/api/sync", { method: "POST" });
-    const body = (await res.json().catch(() => null)) as (SyncResponse & { error?: string }) | null;
+    const body = (await res.json().catch(() => null)) as
+      | (SyncResponse & { error?: string; detalle?: string })
+      | null;
     if (!res.ok) {
-      const message = body?.error ?? `Sync failed: ${res.status} ${res.statusText}`;
+      // El `detalle` viaja pegado al `error` porque el 503 tiene dos causas que
+      // no se arreglan igual: `gmail_no_conectado` es "todavía no autorizaste"
+      // y `gmail_reconectar` es "el permiso venció". Quedarse sólo con el
+      // `error` las volvía el mismo cartel, y ninguno decía qué hacer.
+      const base = body?.error ?? `Sync failed: ${res.status} ${res.statusText}`;
+      const message = body?.detalle ? `${base}: ${body.detalle}` : base;
       throw new Error(message);
     }
     logOutcome(op, startedAt, "ok");

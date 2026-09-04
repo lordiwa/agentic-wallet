@@ -105,10 +105,45 @@ describe("409 y 503 comparten el cartel de falla, con distinto texto", () => {
     expect(vista.detalle).toContain("No se reintenta solo");
   });
 
-  it("el 503 manda a la credencial que falta", () => {
+  it("el 503 manda a conectar el correo", () => {
     const vista = vistaSync(entrada({ falla: { codigo: 503, mensaje: "gmail_not_configured" } }), AHORA);
     expect(vista.estado).toBe("fallo");
     expect(vista.titulo).toBe("Falta conectar Gmail");
+  });
+
+  // El texto viejo decía "el server no tiene credencial de Gmail configurada",
+  // y era falso: el backend no guarda ninguna credencial de Gmail compartida.
+  // Mandaba a revisar Secret Manager en vez de a la pantalla de Google.
+  it("el 503 no le echa la culpa a la configuración del server", () => {
+    const vista = vistaSync(
+      entrada({ falla: { codigo: 503, mensaje: "gmail_not_configured", detalle: "gmail_no_conectado" } }),
+      AHORA
+    );
+    expect(vista.titulo).toBe("Falta conectar Gmail");
+    expect(vista.detalle).toContain("todavía no autorizó");
+    expect(vista.detalle).not.toContain("server");
+  });
+
+  it("distingue el permiso vencido del que nunca se dio", () => {
+    const nunca = vistaSync(
+      entrada({ falla: { codigo: 503, mensaje: "gmail_not_configured", detalle: "gmail_no_conectado" } }),
+      AHORA
+    );
+    const vencido = vistaSync(
+      entrada({ falla: { codigo: 503, mensaje: "gmail_not_configured", detalle: "gmail_reconectar" } }),
+      AHORA
+    );
+    expect(vencido.titulo).toBe("Hay que reconectar Gmail");
+    expect(vencido.titulo).not.toBe(nunca.titulo);
+    expect(vencido.detalle).not.toBe(nunca.detalle);
+  });
+
+  // El server local sí puede estar sin credencial de Gmail
+  // (`server/src/api/sync-route.ts` contesta 503 pelado), así que sin `detalle`
+  // no se afirma ninguna de las dos causas.
+  it("sin `detalle` —el server local— no adivina de quién es la acción", () => {
+    const vista = vistaSync(entrada({ falla: { codigo: 503, mensaje: "gmail_not_configured" } }), AHORA);
+    expect(vista.detalle).toBe("No hay una conexión con Gmail que leer.");
   });
 
   it("no dicen lo mismo", () => {

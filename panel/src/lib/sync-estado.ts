@@ -31,6 +31,10 @@ export interface FallaSync {
   codigo: 409 | 503 | "otro";
   /** El mensaje del server, tal cual. Vacío si no mandó ninguno. */
   mensaje: string;
+  /** El `detalle` del cuerpo, que en el 503 dice cuál de las dos causas es
+   * (`gmail_no_conectado` o `gmail_reconectar`). Ausente en los servers que no
+   * lo mandan, y ahí el cartel vuelve al texto genérico. */
+  detalle?: string;
 }
 
 export interface Backlog {
@@ -91,7 +95,7 @@ function tituloDeFalla(falla: FallaSync): string {
     case 409:
       return "Ya hay un sync en curso";
     case 503:
-      return "Falta conectar Gmail";
+      return falla.detalle === "gmail_reconectar" ? "Hay que reconectar Gmail" : "Falta conectar Gmail";
     default:
       return "El sync falló";
   }
@@ -101,13 +105,29 @@ function tituloDeFalla(falla: FallaSync): string {
  * El detalle de una falla. El 409 y el 503 comparten el cartel pero no el
  * texto: uno es "esperá", el otro es "falta una credencial", y tratarlos igual
  * haría que el segundo parezca que se arregla solo.
+ *
+ * **El 503 no es un problema del server.** Decía "el server no tiene credencial
+ * de Gmail configurada", y eso mandaba a revisar Secret Manager cuando lo que
+ * falta es el permiso de UNA persona: el backend no guarda ninguna credencial
+ * de Gmail compartida, guarda un refresh token por usuario, y `gmail_no_conectado`
+ * significa que ese usuario nunca pasó por la pantalla de Google. La acción es
+ * suya y está en esta misma pantalla.
  */
 function detalleDeFalla(falla: FallaSync): string {
   switch (falla.codigo) {
     case 409:
       return "Otro lo está corriendo. No se reintenta solo: un lote tarda minutos.";
     case 503:
-      return "El server no tiene credencial de Gmail configurada.";
+      if (falla.detalle === "gmail_reconectar") {
+        return "Google ya no acepta el permiso. Volvé a conectar tu correo para seguir.";
+      }
+      if (falla.detalle === "gmail_no_conectado") {
+        return "Tu cuenta todavía no autorizó la lectura del correo. Conectá Gmail acá abajo.";
+      }
+      // Sin `detalle` no se sabe de quién es la acción: el server local sí puede
+      // estar sin credencial (`server/src/api/sync-route.ts`), y afirmar
+      // cualquiera de las dos causas sería adivinar.
+      return "No hay una conexión con Gmail que leer.";
     default:
       // El mensaje del server, tal cual — no se traduce ni se adorna.
       return falla.mensaje;

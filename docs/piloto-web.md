@@ -355,11 +355,28 @@ Dicho de otro modo: **no falta ninguna credencial de Gmail en el server.** Lo
 que falta es el consentimiento del humano, que por definición no se puede
 automatizar.
 
+### El paso 3 no existía (2026-09-04)
+
+El diagnóstico de arriba era correcto y la conclusión, incompleta: no falta
+ninguna credencial en el server, pero **el panel tampoco daba dónde tocar
+"Conectar Gmail"**. La tarjeta del consentimiento vivía sólo en `#/conectado`,
+que es una ruta a la que no se navega —se aterriza, y sólo viniendo del redirect
+de Google—, así que quien nunca autorizó pulsaba *Sincronizar*, leía el 503 y ahí
+se terminaba el camino. El cartel del 503 encima decía *"el server no tiene
+credencial de Gmail configurada"*, que mandaba a revisar Secret Manager en vez de
+a la pantalla de Google: el backend no guarda ninguna credencial de Gmail
+compartida, guarda un refresh token por usuario.
+
+Se arregló en el panel, no en el backend: el Resumen monta la misma tarjeta con
+el mismo ciclo (`useGmail`) cuando el buzón no está conectado, y el texto del 503
+distingue sus dos causas (`gmail_no_conectado` y `gmail_reconectar`), que llegan
+en el `detalle` del cuerpo desde siempre.
+
 ### Lo único que queda, y es de Mato
 
 1. Abrir el panel: `https://agentic-wallet-71314.web.app`.
 2. Entrar con Google (la misma cuenta cuyo Gmail se va a leer).
-3. Tocar **Conectar Gmail** → se abre `accounts.google.com`.
+3. Tocar **Conectar Gmail** en el Resumen → se abre `accounts.google.com`.
 4. Autorizar el permiso de **solo lectura** de Gmail.
 5. Google vuelve a `/#/conectado`; a partir de ahí `gmailAuthStatus` pasa a
    `{"conectado":true,"email":"..."}` y la ingesta tiene con qué correr.

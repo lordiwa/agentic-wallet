@@ -30,8 +30,10 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import { isDemoMode } from "../api/base";
+import ConectarGmail from "../components/ConectarGmail.vue";
 import OverviewCard from "../components/OverviewCard.vue";
 import SyncButton from "../components/SyncButton.vue";
+import { useGmail } from "../composables/useGmail";
 import {
   fetchClassifyProgress,
   fetchOverview,
@@ -59,6 +61,22 @@ import { toHash } from "../router/ruta";
    al estado, y no cambia mientras la pantalla está abierta. */
 const demo = isDemoMode();
 
+/**
+ * La conexión de Gmail, en el hogar.
+ *
+ * **Sin esto no había forma de conectar el correo.** La tarjeta existía sólo en
+ * `#/conectado`, que es una ruta a la que no se navega: se aterriza, y sólo
+ * viniendo del redirect de Google. O sea que quien nunca autorizó no tenía
+ * enlace, botón ni pantalla desde donde empezar — pulsaba *Sincronizar*, leía un
+ * 503 y ahí terminaba el camino. La tarjeta es la misma y el ciclo es el mismo
+ * (`useGmail`); lo único nuevo es que se la puede alcanzar.
+ *
+ * `returnTo` apunta a `#/conectado` y no acá: la vuelta de Google trae siete
+ * resultados posibles y cinco son "no quedó conectado, por esto", que es
+ * justamente para lo que existe esa pantalla.
+ */
+const gmail = useGmail({ returnTo: `/${toHash("conectado")}` });
+
 const overview = ref<OverviewResponse | null>(null);
 const estadoSync = ref<SyncStatusResponse | null>(null);
 const cola = ref<ClassifyProgressResponse | null>(null);
@@ -83,6 +101,24 @@ const falla = ref<FallaSync | null>(null);
  * Opacos: entero del server local o `gmail_msg_id` de las funciones (ver
  * `functions/src/ledger/rows.ts`). */
 const ultimoLote = ref<(string | number)[]>([]);
+
+/**
+ * La tarjeta de Gmail se dibuja sólo cuando falta hacer algo. Un buzón ya
+ * conectado no necesita una tarjeta que lo repita en el hogar —lo dice el chip
+ * del sync—, y en el panel local (sin funciones) sería un botón que no lleva a
+ * ningún lado.
+ */
+const faltaConectarGmail = computed(() => {
+  const estado = gmail.vista.value.estado;
+  if (estado === "desconectado" || estado === "reconectar") return true;
+  // Y cuando el sync contestó un 503 **de los que nombran su causa**: ese
+  // cartel dice "conectá Gmail acá abajo" y no puede decirlo sin que abajo haya
+  // algo. Pasa cuando `gmailAuthStatus` falló y la tarjeta quedó en "error", que
+  // igual ofrece reintentar. Un 503 sin `detalle` es el del server local, donde
+  // la credencial que falta es del server y no hay nada que esta tarjeta pueda
+  // hacer.
+  return falla.value?.codigo === 503 && falla.value.detalle !== undefined;
+});
 
 const reloj = useRefresh();
 
@@ -133,7 +169,13 @@ async function cargar(): Promise<void> {
 function fallaDe(err: unknown): FallaSync {
   const mensaje = err instanceof Error ? err.message : String(err);
   if (mensaje.includes("sync_already_running") || mensaje.includes("409")) return { codigo: 409, mensaje };
-  if (mensaje.includes("gmail_not_configured") || mensaje.includes("503")) return { codigo: 503, mensaje };
+  if (mensaje.includes("gmail_not_configured") || mensaje.includes("503")) {
+    // Las dos causas del 503 llegan pegadas al `error` (ver `postSync`). Se
+    // reconocen por nombre y no por posición: un server que no las mande deja
+    // `detalle` en `undefined` y el cartel vuelve al texto genérico.
+    const detalle = ["gmail_reconectar", "gmail_no_conectado"].find((d) => mensaje.includes(d));
+    return { codigo: 503, mensaje, detalle };
+  }
   return { codigo: "otro", mensaje };
 }
 
@@ -297,6 +339,11 @@ const destinoCategoria = computed(() =>
     <div class="card chip" data-testid="chip-sync">
       <SyncButton :entrada="entradaSync" @sincronizar="sincronizar" />
     </div>
+
+    <!-- Justo debajo del chip, que es donde aparece el 503: el cartel dice
+         "conectá Gmail acá abajo" y esto es ese "acá abajo". Se va sola en
+         cuanto el buzón queda conectado. -->
+    <ConectarGmail v-if="faltaConectarGmail" :gmail="gmail" />
 
     <div v-if="errorCarga" class="card error" data-testid="resumen-error">
       <b>El backend no respondió.</b>

@@ -27,6 +27,35 @@ const { endpoints } = vi.hoisted(() => ({
 
 vi.mock("../api/endpoints", () => endpoints);
 
+/**
+ * Las funciones del consentimiento, mockeadas: el hogar ahora monta la tarjeta
+ * de Gmail (`useGmail`), y sin esto todo test correría contra un panel "sin
+ * configurar", que es justo el estado en el que la tarjeta no se dibuja.
+ */
+const { gmailApi } = vi.hoisted(() => ({
+  gmailApi: {
+    gmailConfigurado: vi.fn(() => true),
+    obtenerIdToken: vi.fn(async () => "id-token-de-prueba"),
+    consultarEstadoGmail: vi.fn(),
+    iniciarConexionGmail: vi.fn(),
+  },
+}));
+
+vi.mock("../api/gmail", () => ({
+  ...gmailApi,
+  GmailApiError: class GmailApiError extends Error {},
+}));
+
+function estadoGmail(conectado: boolean, necesitaReconectar = false) {
+  return {
+    conectado,
+    email: conectado ? "cuenta@ejemplo.test" : null,
+    scopes: conectado ? ["https://www.googleapis.com/auth/gmail.readonly"] : [],
+    grantedAt: conectado ? "2026-09-01T10:00:00Z" : null,
+    necesitaReconectar,
+  };
+}
+
 function overview(overrides: Partial<OverviewResponse> = {}): OverviewResponse {
   return {
     balance: { amount: 1840.25, currency: "USD", at: "2026-09-03" },
@@ -111,6 +140,9 @@ beforeEach(() => {
     progress: { processed: 10, total: 10, remaining: 0, complete: true },
     inserted_ids: [],
   } as SyncTriggerResponse);
+  gmailApi.gmailConfigurado.mockReturnValue(true);
+  gmailApi.obtenerIdToken.mockResolvedValue("id-token-de-prueba");
+  gmailApi.consultarEstadoGmail.mockResolvedValue(estadoGmail(true));
 });
 
 afterEach(() => {
@@ -272,6 +304,59 @@ describe("el sync vive adentro del chip", () => {
 
     expect(wrapper.get('[data-testid="sync-button-titulo"]').text()).toBe("Ya hay un sync en curso");
     expect(endpoints.postSync).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * El 503 era un callejón sin salida: la tarjeta del consentimiento vivía sólo
+   * en `#/conectado`, una ruta a la que no se navega —se aterriza viniendo de
+   * Google—, así que quien nunca autorizó su correo leía "falta conectar Gmail"
+   * y no tenía dónde hacerlo. Éstos son los tests de que el camino existe.
+   */
+  it("un 503 ofrece conectar Gmail en la misma pantalla", async () => {
+    gmailApi.consultarEstadoGmail.mockResolvedValue(estadoGmail(false));
+    endpoints.postSync.mockRejectedValue(new Error("gmail_not_configured: gmail_no_conectado"));
+    const wrapper = await montar();
+
+    await wrapper.get('[data-testid="sync-button-accion"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="sync-button-titulo"]').text()).toBe("Falta conectar Gmail");
+    // El texto viejo culpaba al server; el nuevo dice de quién es la acción.
+    expect(wrapper.get('[data-testid="sync-button-detalle"]').text()).not.toContain("server");
+    const tarjeta = wrapper.get('[data-testid="conectar-gmail"]');
+    expect(tarjeta.attributes("data-estado")).toBe("desconectado");
+    expect(wrapper.get('[data-testid="conectar-gmail-accion"]').text()).toContain("Conectar");
+  });
+
+  it("el permiso vencido no se dibuja igual que el que nunca se dio", async () => {
+    gmailApi.consultarEstadoGmail.mockResolvedValue(estadoGmail(true, true));
+    endpoints.postSync.mockRejectedValue(new Error("gmail_not_configured: gmail_reconectar"));
+    const wrapper = await montar();
+
+    await wrapper.get('[data-testid="sync-button-accion"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="sync-button-titulo"]').text()).toBe("Hay que reconectar Gmail");
+    expect(wrapper.get('[data-testid="conectar-gmail"]').attributes("data-estado")).toBe("reconectar");
+  });
+
+  it("con el buzón conectado la tarjeta no está: el hogar no repite lo que ya funciona", async () => {
+    const wrapper = await montar();
+    expect(wrapper.find('[data-testid="conectar-gmail"]').exists()).toBe(false);
+  });
+
+  // El server local también contesta 503 con `gmail_not_configured`, pero ahí la
+  // credencial que falta es SUYA (`server/src/api/sync-route.ts`) y esta tarjeta
+  // no la puede arreglar: no se ofrece una acción que no hace nada.
+  it("un 503 sin causa —el server local— no ofrece conectar nada", async () => {
+    endpoints.postSync.mockRejectedValue(new Error("gmail_not_configured"));
+    const wrapper = await montar();
+
+    await wrapper.get('[data-testid="sync-button-accion"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="sync-button-titulo"]').text()).toBe("Falta conectar Gmail");
+    expect(wrapper.find('[data-testid="conectar-gmail"]').exists()).toBe(false);
   });
 
   it("R9: si el server dice que hay un lote corriendo, el chip no arranca limpio", async () => {
