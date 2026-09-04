@@ -93,11 +93,26 @@
   --nav-pie: #6D8093;
   --texto-nota: #3D4A57; /* el cuerpo de `.note` y `.scopes` */
   --nota-bg: #FFFAF0; /* el amarillo palido del aviso */
+  --nota-acc-bg: #F5F8FF; /* el azul palido de `.note` informativa (`p3`, `p9`) */
   --aviso-texto: #6B5714; /* el cuerpo del `.alert` amarillo de `p2-resumen` */
   --superficie-suave: #F0F3F7; /* separadores internos, `code`, chips neutros */
   --why-borde: #F0E0B8; /* el borde del `.why` de `c2-tarjeta-revision.html` */
   --pane-truth-bg: #F4FBF7; /* el verde palidisimo de `.pane.truth`, en `c2` */
   --sombra-control: 0 1px 2px rgba(16, 26, 38, 0.06);
+
+  /*
+   * ---- El logotipo de Google, de `p0-acceso.html` ----
+   *
+   * No son colores del sistema: son los cuatro de la marca, y el preview los
+   * dibuja porque el boton de identidad de Google los lleva. Estaban afuera del
+   * panel por la regla de "ningun hex fuera de este archivo", que es justo lo
+   * que este archivo existe para permitir — el lugar correcto para un hex ajeno
+   * es aca con nombre, no un `.gbtn` sin logotipo.
+   */
+  --google-azul: #4285F4;
+  --google-verde: #34A853;
+  --google-amarillo: #FBBC05;
+  --google-rojo: #EA4335;
 
   /*
    * ---- La pagina institucional (`home.html` del design system) ----

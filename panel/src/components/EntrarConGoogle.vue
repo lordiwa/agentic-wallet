@@ -12,8 +12,10 @@
  * Google. Que eso se lea antes del click es la mitad del trabajo de esta
  * pantalla; la otra mitad es no pedir nada más.
  *
- * Sin logo de Google a propósito: sus colores son hex de marca, y en este panel
- * no hay un solo hex fuera de `tokens.css` (§2.5, y su test lo verifica).
+ * El botón, el logotipo y el bloque de permisos son los de `p0-acceso.html`
+ * (`.gbtn`, `.scopes`, `.tick`). Los cuatro hex de la marca de Google viven en
+ * `tokens.css` como `--google-*`: la regla es que ningún componente escriba un
+ * hex, no que el panel se quede sin el logotipo.
  */
 import { isDemoMode } from "../api/base";
 import { useSesion, type SesionVista } from "../composables/useSesion";
@@ -43,16 +45,50 @@ const { entrando, error, entrar } = sesion;
         </p>
 
         <button
-          class="btn pri"
+          class="gbtn"
           type="button"
           :disabled="entrando"
           data-testid="entrar-google"
           @click="entrar()"
         >
-          {{ entrando ? "Abriendo Google…" : "Entrar con Google" }}
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <path
+              fill="var(--google-azul)"
+              d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.2-3.8 6.6-9.5 6.6-16.1z"
+            />
+            <path
+              fill="var(--google-verde)"
+              d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.6-3.9-12.3-9.1H4.4v5.7C8 41.1 15.4 46 24 46z"
+            />
+            <path
+              fill="var(--google-amarillo)"
+              d="M11.7 28.1c-.4-1.3-.7-2.7-.7-4.1s.2-2.8.7-4.1v-5.7H4.4C2.9 17.2 2 20.5 2 24s.9 6.8 2.4 9.8l7.3-5.7z"
+            />
+            <path
+              fill="var(--google-rojo)"
+              d="M24 10.8c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.1 29.9 2 24 2 15.4 2 8 6.9 4.4 14.2l7.3 5.7c1.7-5.2 6.6-9.1 12.3-9.1z"
+            />
+          </svg>
+          {{ entrando ? "Abriendo Google…" : "Continuar con Google" }}
         </button>
 
         <p v-if="error !== null" class="err" data-testid="entrar-error">{{ error }}</p>
+
+        <div class="scopes">
+          <b>Qué autoriza esta cuenta</b>
+          <div>
+            <span class="tick">✓</span
+            ><span>Entrar al panel — la sesión es la de Google, no una frase compartida.</span>
+          </div>
+          <div>
+            <span class="tick">✓</span
+            ><span>Leer sólo los correos de notificación bancaria, en modo lectura.</span>
+          </div>
+          <div>
+            <span class="tick">✓</span
+            ><span>Se puede revocar desde tu cuenta de Google, sin tocar el panel.</span>
+          </div>
+        </div>
 
         <div class="note">
           <b>Entrar no da acceso a tu correo.</b> Esto es sólo identidad: nombre y dirección. Leer
@@ -70,7 +106,7 @@ const { entrando, error, entrar } = sesion;
           Ver el modo demostración, sin entrar
         </button>
 
-        <p class="foot">
+        <p class="foot en-tarjeta">
           Tus movimientos quedan atados a tu cuenta y no los ve nadie más. Podés desconectar el
           correo cuando quieras.
         </p>
@@ -151,10 +187,11 @@ h1 {
   margin: 0 0 22px;
   line-height: 1.55;
 }
-.btn {
+.gbtn {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   width: 100%;
   border: 1px solid var(--boton-secundario-borde);
   background: var(--boton-secundario-bg);
@@ -164,20 +201,51 @@ h1 {
   font: inherit;
   font-size: 14.5px;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
   box-shadow: var(--sombra-control);
 }
-.btn.pri {
-  background: var(--boton-primario-bg);
-  border-color: var(--boton-primario-bg);
-  color: var(--boton-primario-texto);
+.gbtn svg {
+  width: 19px;
+  height: 19px;
+  flex: none;
 }
-.btn:disabled {
+.gbtn:disabled {
   background: var(--boton-off-bg);
   border-color: var(--boton-off-bg);
   color: var(--boton-off-texto);
   cursor: default;
   box-shadow: none;
+}
+.scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--fondo);
+  border: 1px solid var(--linea);
+  border-radius: 9px;
+  padding: 12px 14px;
+  margin-top: 18px;
+  font-size: var(--small-size);
+  color: var(--texto-nota);
+}
+.scopes b {
+  font-size: var(--label-size);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  color: var(--apagado);
+  font-weight: var(--label-weight);
+}
+.scopes div {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.tick {
+  color: var(--al-dia);
+  font-weight: 700;
+  line-height: 1.35;
 }
 .err {
   border-left: 3px solid var(--falla);
@@ -212,10 +280,15 @@ h1 {
   cursor: pointer;
 }
 .foot {
-  color: var(--apagado);
+  color: var(--nav-pie);
   font-size: 11.5px;
   text-align: center;
   margin-top: 14px;
   line-height: 1.55;
+}
+/* Sobre el lienzo oscuro el pie es `--nav-pie`; dentro de la tarjeta blanca
+ * sube a `--apagado`, que es lo que `p0-acceso.html` escribe en linea. */
+.foot.en-tarjeta {
+  color: var(--apagado);
 }
 </style>
