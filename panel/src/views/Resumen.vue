@@ -427,11 +427,11 @@ const destinoCategoria = computed(() =>
         <a
           v-for="barra in barras"
           :key="barra.clave"
-          class="bar lnk"
+          class="bar bar-cat lnk"
           :href="toHash('movimientos', { categoria: barra.clave })"
           data-testid="barra-categoria"
         >
-          <span class="bar-nombre">{{ barra.nombre }}</span>
+          <span class="bar-nombre" :title="barra.nombre">{{ barra.nombre }}</span>
           <span class="track"><i class="fill" :style="{ width: `${barra.ancho}%` }"></i></span>
           <span class="amt tabular">{{ formatoPlata(barra.total) }}</span>
         </a>
@@ -560,6 +560,26 @@ const destinoCategoria = computed(() =>
   flex: none;
   color: var(--texto-nota);
 }
+/*
+ * El nombre de la categoría necesita más columna que el rótulo del Colchón, y
+ * por eso se separa: la etiqueta más larga del glosario —"Transferencia a
+ * persona", y detrás "Implementos de trabajo", que es de las nuevas— no entra
+ * en 104px a 13px, así que la fila se partía en dos renglones. El ancho lo fija
+ * esa etiqueta, no un número redondo.
+ *
+ * Tiene que ser **fijo y el mismo para todas las barras**: si cada nombre
+ * midiera lo suyo, las barras arrancarían en columnas distintas y dejarían de
+ * ser comparables, que es lo único que un gráfico de barras hace.
+ *
+ * `overflow-wrap: anywhere` es la guarda para lo que no es glosario:
+ * `nombreCategoria()` cae a la clave cruda cuando el motor manda una categoría
+ * que el panel todavía no nombra, y una clave larga sin espacios desbordaría
+ * sobre el dibujo. Preferimos verla envuelta antes que encima de la barra.
+ */
+.bar-cat .bar-nombre {
+  width: 152px;
+  overflow-wrap: anywhere;
+}
 .track {
   flex: 1;
   height: 8px;
@@ -617,7 +637,11 @@ const destinoCategoria = computed(() =>
   .cards {
     grid-template-columns: 1fr;
   }
-  .bar-nombre {
+  /* La segunda regla no es redundante: `.bar-cat .bar-nombre` pesa más que
+     `.bar-nombre`, así que sin ella el ancho fijo del gráfico le ganaría a esta
+     media query y en un teléfono no quedaría barra que mirar. */
+  .bar-nombre,
+  .bar-cat .bar-nombre {
     width: auto;
     flex: 1;
     min-width: 0;

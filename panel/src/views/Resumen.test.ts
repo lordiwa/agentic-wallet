@@ -7,6 +7,7 @@ import { defineComponent } from "vue";
 import { provideRefresh } from "../composables/useRefresh";
 import Resumen from "./Resumen.vue";
 import { ROTULO_SIN_LEER } from "../lib/formato";
+import { CATEGORIAS_ELEGIBLES, nombreCategoria } from "../lib/categorias";
 import type {
   ClassifyProgressResponse,
   OverviewResponse,
@@ -178,6 +179,46 @@ describe("el hogar dibuja lo que el motor calculó", () => {
     expect(barras[0].attributes("href")).toBe("#/movimientos?categoria=comida");
     expect(barras[0].text()).toContain("77,50");
     expect(barras[2].attributes("href")).toBe("#/movimientos?categoria=transporte");
+  });
+
+  /**
+   * Lo que Mato reportó: "en las barras no salen las categorías". La barra ya
+   * se dibujaba —eso lo cubría el test de arriba, que sólo mira `href` y
+   * monto—, así que el nombre visible no lo cubría nadie. Este recorre el
+   * glosario **entero**, incluidas las siete nuevas, para que agregar una
+   * octava sin nombrarla falle acá y no en la pantalla de alguien.
+   */
+  it("cada barra muestra el nombre de su categoría, para las 17 del glosario (incluidas las nuevas)", async () => {
+    const todas = [...CATEGORIAS_ELEGIBLES, "transferencia_persona", "otros"] as const;
+    // Montos distintos para que ninguna barra quede fuera por empate ni por cero.
+    const gasto = Object.fromEntries(todas.map((clave, i) => [clave, (i + 1) * 10]));
+    endpoints.fetchOverview.mockResolvedValue(overview({ spending_by_category: gasto }));
+
+    const wrapper = await montar();
+    const barras = wrapper.findAll('[data-testid="barra-categoria"]');
+    expect(barras).toHaveLength(todas.length);
+
+    const textos = barras.map((b) => b.get(".bar-nombre").text());
+    for (const clave of todas) {
+      const nombre = nombreCategoria(clave);
+      // Que el nombre esté, y que NO sea la clave cruda: el fallback de
+      // `nombreCategoria` dibuja la clave, y eso es justo lo que no queremos ver.
+      expect(textos).toContain(nombre);
+      expect(nombre).not.toBe(clave);
+    }
+  });
+
+  it("una categoría que el panel todavía no nombra se dibuja con su clave, no en blanco", async () => {
+    // El motor puede sumar una categoría antes que el panel la nombre. Verla
+    // fea es aceptable; verla vacía es una barra sin dueño.
+    endpoints.fetchOverview.mockResolvedValue(
+      overview({ spending_by_category: { categoria_del_futuro: 50 } as never })
+    );
+
+    const wrapper = await montar();
+    const barras = wrapper.findAll('[data-testid="barra-categoria"]');
+    expect(barras).toHaveLength(1);
+    expect(barras[0].get(".bar-nombre").text()).toBe("categoria_del_futuro");
   });
 
   it("el calendario dice 'Sin leer' donde el campo puede venir nulo, sin inventar una fecha", async () => {
