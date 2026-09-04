@@ -49,6 +49,21 @@ body {
   margin-bottom: 14px;
 }
 
+/*
+ * El aviso de modo demostración que `p2` pone arriba a la derecha. Es el ámbar
+ * de atención, no el neutro: que los datos sean inventados es algo que hay que
+ * ver antes de leer una cifra, no algo que se consulta.
+ */
+.demo {
+  background: var(--tag-warn-bg);
+  border: 1px solid var(--atencion);
+  border-radius: var(--radio-boton);
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--aviso-texto);
+}
+
 /* La píldora ámbar del contador en la barra lateral (`p2`..`p10`). */
 .pill {
   background: var(--atencion);
@@ -468,6 +483,9 @@ th {
 td {
   padding: 9px 12px 9px 0;
   border-bottom: 1px solid var(--superficie-suave);
+  /* Toda celda de tabla puede llevar plata, y toda cifra de plata es tabular
+     (§2.1): si no, una columna que se actualiza sola tiembla. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* La última fila no lleva raya: la cierra el borde de la tarjeta. */

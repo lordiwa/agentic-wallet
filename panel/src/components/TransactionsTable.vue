@@ -304,10 +304,12 @@ th .sort {
   color: var(--boton-off-texto);
   font-weight: 400;
 }
-/* Lo que el motor ya excluyó de los totales: gris y sin peso. */
+/* Lo que el motor ya excluyó de los totales: gris y sin peso. El fondo es más
+ * tenue que el de la aplicación y el texto más apagado que el secundario — la
+ * fila tiene que leerse como apagada al lado de una que sí cuenta. */
 .dim td {
-  background: var(--fondo);
-  color: var(--apagado);
+  background: var(--superficie-tenue);
+  color: var(--texto-atenuado);
 }
 /* La barra ámbar al margen de lo que está en revisión (`c4`). */
 .flag td {
@@ -319,10 +321,13 @@ th .sort {
 .tag + .tag {
   margin-left: 4px;
 }
+/* Las acciones de una fila no compiten con el dato: van a la derecha y un
+ * punto por debajo en contraste. */
 .rowacts {
   display: flex;
   gap: 5px;
   justify-content: flex-end;
+  opacity: 0.85;
 }
 .rowacts .btn {
   padding: 5px 11px;

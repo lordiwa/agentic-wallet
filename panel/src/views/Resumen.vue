@@ -29,6 +29,7 @@
  * cuando el dato es "todavía no sé" es inventar una respuesta.
  */
 import { computed, onMounted, ref, watch } from "vue";
+import { isDemoMode } from "../api/base";
 import OverviewCard from "../components/OverviewCard.vue";
 import SyncButton from "../components/SyncButton.vue";
 import {
@@ -53,6 +54,10 @@ import { tarjetaGastosFijos } from "../lib/gastos-fijos";
 import { ROTULO_SIN_LEER, formatoEntero, formatoFecha, formatoPlata, plural } from "../lib/formato";
 import { tagSync, vistaSync, type Backlog, type FallaSync } from "../lib/sync-estado";
 import { toHash } from "../router/ruta";
+
+/* El modo demostración se lee una vez al montar: `p2` lo anuncia arriba, junto
+   al estado, y no cambia mientras la pantalla está abierta. */
+const demo = isDemoMode();
 
 const overview = ref<OverviewResponse | null>(null);
 const estadoSync = ref<SyncStatusResponse | null>(null);
@@ -276,6 +281,10 @@ const destinoCategoria = computed(() =>
         <p class="sub">Qué pasa hoy, en diez segundos.</p>
       </div>
       <div class="topr">
+        <!-- `p2` pone el aviso de demostración acá arriba, al lado del estado:
+             la barra lateral también lo dice, pero el pie de una columna
+             oscura no es donde se mira antes de leer una cifra. -->
+        <span v-if="demo" class="demo" data-testid="resumen-demo">Modo demostración</span>
         <span class="fresh">
           <span class="tag" :class="tagEstado.clase" data-testid="resumen-estado">{{ tagEstado.texto }}</span>
           <span v-if="actualizado">actualizado {{ actualizado }}</span>

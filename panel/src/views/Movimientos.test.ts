@@ -98,7 +98,7 @@ describe("dos filtros, y nada más", () => {
     // Los cuatro controles que no tienen respaldo no se dibujan (H21 mal
     // planteado, H22, H23): el filtro por contraparte, el de tipo, "Interna"
     // como dirección y los interruptores de reversados/internas/descartados.
-    const controles = w.get(".controles").text();
+    const controles = w.get(".filters").text();
     expect(controles).not.toContain("Contraparte");
     expect(controles).not.toContain("Tipo");
     expect(controles).not.toContain("Interna");

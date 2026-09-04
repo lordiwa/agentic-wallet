@@ -260,7 +260,7 @@ function abrirFila(id: string | number | null): void {
          barra: radio de control, borde de línea, tipografía 13px. Sin lista que
          filtrar no se dibujan: un control que no puede cambiar nada miente. -->
     <div class="card filtros">
-      <div class="controles">
+      <div class="filters">
         <!-- Cuando se llega desde una barra, la categoría se dibuja como el
              control activo de `c6` y se puede soltar. -->
         <span v-if="enModoCategoria" class="sel act" data-testid="chip-categoria">
@@ -366,20 +366,21 @@ function abrirFila(id: string | number | null): void {
 .filtros {
   margin-bottom: 12px;
 }
-.controles {
+.filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 /*
- * El control de `c6-selector-filtros.html`, con el radio del sistema (6, §2.1):
- * borde de línea, 13px, etiqueta en 11px mayúsculas apagada.
+ * El control de `c6-selector-filtros.html` / `p4`: borde de línea, 13px,
+ * etiqueta en 11px mayúsculas apagada. El radio es 7 y no el 6 de control —
+ * es la forma propia del chip de filtro, entre el control y el botón.
  */
 .sel {
   border: 1px solid var(--linea);
-  border-radius: var(--radio-control);
-  padding: 6px 11px;
+  border-radius: var(--radio-chip);
+  padding: 6px 10px;
   font-size: 13px;
   background: var(--panel);
   display: inline-flex;
@@ -410,19 +411,21 @@ function abrirFila(id: string | number | null): void {
 .sel.off {
   background: var(--boton-off-bg);
 }
-/* El control activo de `c6`: el mismo azul de acción, en su versión clara. */
+/* El control activo de `c6`: el mismo azul de acción, en su versión clara. El
+ * texto va en el azul oscuro, que es el que se lee sobre ese fondo. */
 .sel.act {
   border-color: var(--accion);
   background: var(--tag-acc-bg);
-  color: var(--tag-acc-texto);
+  color: var(--accion-oscura);
 }
 .sel.act b {
   color: var(--tag-acc-texto);
 }
+/* La cruz que saca el filtro es gris, no azul: la acción es el chip, no ella. */
 .sel .x {
   border: 0;
   background: none;
-  color: var(--tag-acc-texto);
+  color: var(--boton-off-texto);
   font: inherit;
   font-size: var(--small-size);
   cursor: pointer;
