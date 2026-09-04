@@ -67,6 +67,15 @@ export interface ResumenIngesta {
   sinPortar: number;
   /** El `ts` más nuevo que se vio, para que el llamador avance su `sinceTs`. */
   ultimoTs: string | null;
+  /**
+   * Los ids de las filas que ESTE lote agregó al ledger.
+   *
+   * Es lo que hace posible el aviso post-sync de categoría (D7-b): "quedaron N
+   * sin clasificar" lleva a la cola acotada a lo que acaba de entrar
+   * (`GET /api/classify/queue?transaction_ids=`), no a la cola entera. Por lote
+   * y no acumulado a propósito — la pregunta es por lo recién leído.
+   */
+  insertedIds: string[];
   pendiente: string[];
 }
 
@@ -131,11 +140,24 @@ export interface DepsIngesta {
 }
 
 export async function ingestar(deps: DepsIngesta, opciones: OpcionesIngesta): Promise<ResumenIngesta> {
+  const maxMensajes = opciones.maxMensajes ?? MAX_MENSAJES_DEFAULT;
+  const ids = await deps.gmail.buscarIds(armarQuery(opciones.sinceTs), maxMensajes);
+  return ingestarIds(deps, ids);
+}
+
+/**
+ * Ingiere una lista de ids YA elegida.
+ *
+ * Está separada de `ingestar` porque el drenado por lotes
+ * (`ingest/sync.ts`) decide qué ids le tocan a esta llamada leyendo un
+ * checkpoint, no volviendo a buscar: Gmail devuelve los mensajes **del más
+ * nuevo al más viejo**, así que "buscá y procesá los primeros N" en un buzón
+ * grande procesa los N más nuevos, avanza la marca al más nuevo de todos, y
+ * deja el resto fuera del alcance de la siguiente búsqueda para siempre.
+ */
+export async function ingestarIds(deps: DepsIngesta, ids: readonly string[]): Promise<ResumenIngesta> {
   const { db, uid, gmail, offsetHours } = deps;
   paths.assertUid(uid);
-  const maxMensajes = opciones.maxMensajes ?? MAX_MENSAJES_DEFAULT;
-
-  const ids = await gmail.buscarIds(armarQuery(opciones.sinceTs), maxMensajes);
 
   const resumen: ResumenIngesta = {
     vistos: 0,
@@ -145,6 +167,7 @@ export async function ingestar(deps: DepsIngesta, opciones: OpcionesIngesta): Pr
     ignorados: 0,
     sinPortar: 0,
     ultimoTs: null,
+    insertedIds: [],
     pendiente: [...INGESTA_PENDIENTE],
   };
 
@@ -204,6 +227,7 @@ export async function ingestar(deps: DepsIngesta, opciones: OpcionesIngesta): Pr
 
     await ref.set(toTransactionDoc(fila, offsetHours) as unknown as Record<string, unknown>);
     resumen.insertados += 1;
+    resumen.insertedIds.push(msg.gmail_msg_id);
     if (fila.needs_review === 1) resumen.enRevision += 1;
   }
 

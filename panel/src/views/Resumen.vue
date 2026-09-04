@@ -30,10 +30,8 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import OverviewCard from "../components/OverviewCard.vue";
-import PendienteCard from "../components/PendienteCard.vue";
 import SyncButton from "../components/SyncButton.vue";
 import {
-  esNoPortado,
   fetchClassifyProgress,
   fetchOverview,
   fetchRecurring,
@@ -64,11 +62,6 @@ const cola = ref<ClassifyProgressResponse | null>(null);
 const gastosFijos = ref<RecurringResponse | null>(null);
 const cargando = ref(true);
 const errorCarga = ref<string | null>(null);
-/** Este backend todavía no sirve esa ruta (`501 no_portado`). Es otra cosa que
- * un error, y se dibuja distinto: ver `components/PendienteCard.vue`. */
-const overviewPendiente = ref(false);
-const syncPendiente = ref(false);
-const colaPendiente = ref(false);
 /**
  * **Cuándo se leyó bien** (wargaming ronda 4, W31), que es lo único que el
  * rótulo *"actualizado hace X"* puede decir con verdad. El reloj compartido late
@@ -81,23 +74,25 @@ const ultimaLecturaOk = ref<Date | null>(null);
 /** Esta pestaña disparó un lote y todavía no volvió. */
 const enVuelo = ref(false);
 const falla = ref<FallaSync | null>(null);
-/** Los ids del último lote, que es a lo que se acota el aviso de categoría. */
-const ultimoLote = ref<number[]>([]);
+/** Los ids del último lote, que es a lo que se acota el aviso de categoría.
+ * Opacos: entero del server local o `gmail_msg_id` de las funciones (ver
+ * `functions/src/ledger/rows.ts`). */
+const ultimoLote = ref<(string | number)[]>([]);
 
 const reloj = useRefresh();
 
 /**
  * El hogar se carga **pieza por pieza**, y esa es la corrección de fondo.
  *
- * Era un `Promise.all` de tres: la primera que rechazara tumbaba las otras dos.
- * En el panel publicado eso significaba que el `501 no_portado` de
- * `/api/sync/status` se llevaba puesto al `/api/overview` real —el único ya
- * portado, el que trae las cifras de verdad— y el Resumen quedaba con el cartel
- * de desconexión arriba de cuatro tarjetas vacías, sobre un backend sano.
+ * Era un `Promise.all` de tres: la primera que rechazara tumbaba las otras dos,
+ * y con el pivot a medias el fallo de una ruta sin portar se llevaba puesto al
+ * `/api/overview` real —el que trae las cifras de verdad— dejando el Resumen
+ * con el cartel de desconexión arriba de cuatro tarjetas vacías, sobre un
+ * backend sano.
  *
- * Ahora cada pedido falla solo. Lo que contesta, se dibuja; lo que todavía no
- * está en este backend se dice con `PendienteCard`, que no es lo mismo que un
- * error; y sólo un fallo de verdad del overview enciende el cartel rojo.
+ * Ya no hay rutas sin portar, pero la separación se queda: **una ruta lenta o
+ * caída no puede vaciar las otras tres**. Lo que contesta se dibuja, y sólo un
+ * fallo del overview enciende el cartel rojo.
  */
 async function cargar(): Promise<void> {
   const [datos, sync, progreso, recurrentes] = await Promise.allSettled([
@@ -111,12 +106,6 @@ async function cargar(): Promise<void> {
     overview.value = datos.value;
     errorCarga.value = null;
     ultimaLecturaOk.value = new Date();
-    overviewPendiente.value = false;
-  } else if (esNoPortado(datos.reason)) {
-    // Ni cifras viejas ni un cero: se dice que esta parte todavía no se lee.
-    overview.value = null;
-    errorCarga.value = null;
-    overviewPendiente.value = true;
   } else {
     // No se dibuja el último valor conocido con cara de actual (`c3`): si el
     // backend no responde, se dice.
@@ -124,10 +113,7 @@ async function cargar(): Promise<void> {
   }
 
   estadoSync.value = sync.status === "fulfilled" ? sync.value : null;
-  syncPendiente.value = sync.status === "rejected" && esNoPortado(sync.reason);
-
   cola.value = progreso.status === "fulfilled" ? progreso.value : null;
-  colaPendiente.value = progreso.status === "rejected" && esNoPortado(progreso.reason);
 
   // Con su propio destino desde siempre: un server anterior a N4 devuelve 404
   // en esta ruta, y eso nunca pudo tumbar el hogar. Sin respuesta, la tarjeta
@@ -299,22 +285,9 @@ const destinoCategoria = computed(() =>
 
     <!-- El chip del sync: disparar, la barra, Seguir, hasta Al día. La
          pantalla P3 no existe; esto es todo el ciclo. -->
-    <PendienteCard
-      v-if="syncPendiente"
-      titulo="El estado de tus sincronizaciones"
-      nota="Podés conectar tu correo igual: el permiso se pide desde “Tu correo”."
-      data-testid="pendiente-sync"
-    />
-    <div v-else class="card chip" data-testid="chip-sync">
+    <div class="card chip" data-testid="chip-sync">
       <SyncButton :entrada="entradaSync" @sincronizar="sincronizar" />
     </div>
-
-    <PendienteCard
-      v-if="overviewPendiente"
-      titulo="Tus cifras del mes"
-      nota="Saldo, gasto por categoría y calendario salen todos del mismo cálculo."
-      data-testid="pendiente-overview"
-    />
 
     <div v-if="errorCarga" class="card error" data-testid="resumen-error">
       <b>El backend no respondió.</b>
@@ -359,9 +332,6 @@ const destinoCategoria = computed(() =>
       />
     </div>
 
-    <!-- Sin overview no se dibujan las tarjetas ni el gráfico: serían ocho
-         "Sin leer" repitiendo lo que la `PendienteCard` ya dijo una vez. -->
-    <template v-if="!overviewPendiente">
     <div class="cards">
       <OverviewCard
         etiqueta="Saldo"
@@ -463,7 +433,6 @@ const destinoCategoria = computed(() =>
         </div>
       </div>
     </div>
-    </template>
   </div>
 </template>
 

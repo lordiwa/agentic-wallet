@@ -68,7 +68,15 @@ const writeSchemas: Partial<{ [K in keyof StrategyConfig]: z.ZodType<StrategyCon
   }),
   sueldo: fieldSchemas.sueldo.extend({
     diasPago: z.array(
-      z.string().refine(esVentanaDePago, {
+      // La referencia se resuelve DENTRO del closure y no al construir el
+      // schema. `strategy/calendar.ts` importa `getStrategyConfig` de este
+      // módulo, así que los dos forman un ciclo: al pasar `esVentanaDePago`
+      // directo, un consumidor que entre por `calendar.js` primero construye
+      // este `refine` con la referencia todavía sin inicializar y
+      // `setStrategyConfig` explota con "check is not a function" — para todas
+      // sus superficies, no sólo para ese consumidor. La llamada diferida
+      // ocurre recién al validar, cuando el ciclo ya se cerró.
+      z.string().refine((spec) => esVentanaDePago(spec), {
         message:
           "cada dia de pago es una ventana que el calendario sepa leer: \"15-15\" (el 15), " +
           "\"18-20\" (entre el 18 y el 20) o \"<=5\" (los primeros 5), con dias entre 1 y 31. " +

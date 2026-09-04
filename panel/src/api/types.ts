@@ -12,7 +12,18 @@
  */
 
 export interface TransactionRow {
-  id: number;
+  /**
+   * **Opaco, y por eso `string | number`.**
+   *
+   * El server local devuelve el `INTEGER` de SQLite; las Cloud Functions
+   * devuelven el `gmail_msg_id`, que es el id del documento de Firestore (ver
+   * `functions/src/ledger/rows.ts`). El panel nunca hace aritmética con él: lo
+   * usa de clave de lista y lo devuelve tal cual en
+   * `POST /api/review/:id/resolve`. Tipar `number` sobre un string era mentira
+   * en tiempo de compilación y un `NaN` esperando en cualquier operación que
+   * alguien agregara.
+   */
+  id: string | number;
   gmail_msg_id: string;
   gmail_thread_id: string | null;
   ts: string;
@@ -215,7 +226,7 @@ export interface ConversationDetailResponse {
  * es lo que hace que el aviso post-sync de categoría lleve a la cola acotada
  * al lote (D7-b) y no a la cola entera.
  */
-export type SyncTriggerResponse = SyncResponse & { inserted_ids?: number[] };
+export type SyncTriggerResponse = SyncResponse & { inserted_ids?: (string | number)[] };
 
 /** `GET /api/classify/progress` — `server/src/classify/progress.ts`. */
 export interface ClassifyProgressResponse {
@@ -295,8 +306,8 @@ export interface ClassifyApplyResponse {
 /** El rastro que `POST /api/review/:id/resolve` deja al resolver
  * (`server/src/review/resolve.ts`). */
 export interface ReviewResolutionRow {
-  id: number;
-  transaction_id: number;
+  id: string | number;
+  transaction_id: string | number;
   gmail_msg_id: string;
   action: ReviewAction;
   previous_amount: number | null;

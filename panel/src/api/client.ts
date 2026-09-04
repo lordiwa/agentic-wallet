@@ -61,43 +61,42 @@ export function buildHeaders(init?: RequestInit): Headers {
 }
 
 /**
- * Los paths del panel que las Cloud Functions ya implementan, y con que nombre.
+ * Las rutas que NO viven en la funcion `api`, con el nombre que tienen.
  *
- * Es una lista explicita y no un prefijo (`/api/*` -> `/*`) porque el pivot
- * porto UNA ruta, no el API entero: un prefijo mandaria `/api/transactions` a
- * una funcion que no existe y el panel leeria el 404 de Firebase como si fuera
- * del backend. Lo que falta se contesta abajo, con su nombre.
+ * Hasta el portado completo esto era al reves: una lista explicita de lo UNICO
+ * que existia (`/api/overview`), porque un prefijo habria mandado
+ * `/api/transactions` a una funcion inexistente y el panel habria leido el 404
+ * de Firebase como si fuera del backend. Ya no: **todo `/api/*` lo sirve la
+ * funcion `api`**, y lo que queda aca son las dos excepciones, cada una por su
+ * motivo (ver el doc de `functions/src/api/router.ts`).
+ *
+ * - `/api/sync` -> `ingest`, la unica funcion que descifra el refresh token.
+ *   Tenerla aparte es lo que hace que el resto del backend no tenga la clave
+ *   maestra en su proceso; ademas necesita 540 s de timeout.
+ * - `/api/health` -> `health`, la sonda publica, que no comparte proceso con
+ *   nada que lea un ledger.
  */
-export const RUTAS_EN_FUNCIONES: Readonly<Record<string, string>> = {
-  "/api/overview": "/overview",
+export const RUTAS_APARTE: Readonly<Record<string, string>> = {
+  "/api/sync": "/ingest",
+  "/api/health": "/health",
 };
 
-/** El path de la funcion, o `null` si esa ruta todavia no se porto. */
-export function rutaEnFunciones(path: string): string | null {
-  const sinQuery = path.split("?")[0] ?? path;
-  return RUTAS_EN_FUNCIONES[sinQuery] ?? null;
+/**
+ * A donde va un path del panel dentro de las funciones. **Nunca `null`**: no
+ * queda una sola ruta del flujo sin portar, asi que "esto todavia no lo leo de
+ * tu cuenta" dejo de ser una respuesta posible.
+ */
+export function rutaEnFunciones(path: string): string {
+  const [sinQuery, query] = path.split("?");
+  const base = sinQuery ?? path;
+  const destino = RUTAS_APARTE[base] ?? base;
+  return query === undefined ? destino : `${destino}?${query}`;
 }
 
 /** Hay identidad y hay a donde hablarle: el backend real del pivot. */
 async function backendDeFirebase(): Promise<string | null> {
   if (getFunctionsBase() === "") return null;
   return obtenerIdToken();
-}
-
-/**
- * Lo que se contesta cuando hay sesion pero la ruta no esta portada.
- *
- * **No es un `demoFetch`**, y esa es toda la decision: quien entro con su
- * cuenta esta mirando su propio dinero, y devolverle la ficcion del modo
- * demostracion seria mostrarle movimientos que no son suyos como si lo fueran.
- * Es la misma regla que `pendiente` en `functions/src/api/overview.ts`: "no lo
- * tengo" y "es cero" no pueden contestar igual.
- */
-function noPortadoTodavia(path: string): Response {
-  return new Response(JSON.stringify({ error: "no_portado", path }), {
-    status: 501,
-    headers: { "Content-Type": "application/json" },
-  });
 }
 
 /**
@@ -121,8 +120,6 @@ export async function panelFetch(path: string, init?: RequestInit): Promise<Resp
     if (idToken === null) return demoFetch(path, init);
 
     const ruta = rutaEnFunciones(path);
-    if (ruta === null) return noPortadoTodavia(path);
-
     const headers = new Headers(init?.headers);
     headers.set("Authorization", `Bearer ${idToken}`);
     return fetch(`${getFunctionsBase()}${ruta}`, { ...init, headers });

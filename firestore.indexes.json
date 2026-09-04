@@ -1,18 +1,8 @@
 {
-  "//": "Indices compuestos del ledger. Firestore indexa cada campo por separado solo; cualquier consulta con dos o mas condiciones necesita uno de estos declarado. Ver docs/pivot-firebase.md 1.4.",
+  "//": "Indices compuestos del ledger. Firestore indexa cada campo por separado solo; cualquier consulta con dos o mas condiciones necesita uno de estos declarado, y una consulta sin indice NO devuelve menos filas: falla. Por eso la lista cubre todas las combinaciones que el borde HTTP puede producir, no solo las que el panel manda hoy. Ver docs/pivot-firebase.md 1.4 y docs/portado-completo.md.",
   "indexes": [
     {
-      "//": "spendingRowsForMonth: el grafico de gasto por categoria del mes.",
-      "collectionGroup": "transactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "countable", "order": "ASCENDING" },
-        { "fieldPath": "direction", "order": "ASCENDING" },
-        { "fieldPath": "month", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "//": "El listado de movimientos del panel: contables, mas recientes primero.",
+      "//": "LISTADO, camino de los contables. Las ocho entradas que siguen son las ocho combinaciones de filtros que `transactionsQuerySchema` acepta (type, direction, counterparty), cada una ordenada por ts DESC. Un indice sirve para su prefijo, no para un subconjunto salteado: (countable, type, ts) NO responde (countable, direction, ts).",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -21,7 +11,6 @@
       ]
     },
     {
-      "//": "El mismo listado filtrado por tipo (los chips del panel).",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -31,22 +20,202 @@
       ]
     },
     {
-      "//": "La cola de clasificacion cuando se recomputa un grupo: todas las filas de una contraparte.",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "queueEligible", "order": "ASCENDING" },
-        { "fieldPath": "pattern", "order": "ASCENDING" }
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
       ]
     },
     {
-      "//": "El balance desde el snapshot: contables en una ventana de tiempo.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "//": "LISTADO, camino de las que esperan revision. El listado del panel es la UNION de este conjunto y el de arriba (ver firestore-ledger.listTransactions): son disjuntos, y juntos son exactamente el filtro por defecto de queryTransactions. Mismas ocho combinaciones.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "counterparty", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "//": "resolveCounterparty: la contraparte REAL del ledger para un patron normalizado, con la grafia del movimiento mas reciente. Es la consulta que hace imposible escribir una regla que no matchea nada.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pattern", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "spanDeGasto: el primer y ultimo gasto, para mesesDeHistorial. El conjunto es el de suggestSpendBaseline y no el de un total (sin is_discarded, sin excluir los reversos): se copia el conjunto, no se arregla.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "isReversed", "order": "ASCENDING" },
+        { "fieldPath": "isInternal", "order": "ASCENDING" },
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "isReversed", "order": "ASCENDING" },
+        { "fieldPath": "isInternal", "order": "ASCENDING" },
+        { "fieldPath": "needsReview", "order": "ASCENDING" },
+        { "fieldPath": "ts", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "El balance desde el snapshot y el gasto del mes salen de UNA lectura de los contables (ver ledger/strategy.ts), asi que este indice ya no lo pide el overview. Se deja porque `?direction=` con rango de fechas lo usa, y porque borrarlo y volver a crearlo cuesta una reconstruccion completa.",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "countable", "order": "ASCENDING" },
         { "fieldPath": "direction", "order": "ASCENDING" },
         { "fieldPath": "ts", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "spendingRowsForMonth. El overview ya no lo usa —recalcula sobre los contables, que es lo que hace que la lista de una barra y la barra no puedan discrepar— pero lo usa la migracion para verificar por mes, y borrar un indice es gratis solo hasta que hace falta.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "countable", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "month", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "La cola de clasificacion cuando se recomputa un grupo: todas las filas de una contraparte.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "queueEligible", "order": "ASCENDING" },
+        { "fieldPath": "pattern", "order": "ASCENDING" }
       ]
     }
   ],

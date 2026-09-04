@@ -10,7 +10,7 @@ import type {
   TransactionRow,
 } from "../api/types";
 
-const { endpoints, ErrorDelMotor, ErrorNoPortado } = vi.hoisted(() => {
+const { endpoints, ErrorDelMotor } = vi.hoisted(() => {
   class ErrorDelMotor extends Error {
     constructor(
       readonly codigo: string,
@@ -20,17 +20,8 @@ const { endpoints, ErrorDelMotor, ErrorNoPortado } = vi.hoisted(() => {
       this.name = "ErrorDelMotor";
     }
   }
-  // "Esta ruta todavía no está en este backend" (`501 no_portado`), que la
-  // vista distingue de una caída.
-  class ErrorNoPortado extends Error {
-    constructor(readonly ruta: string) {
-      super(`no_portado: ${ruta}`);
-      this.name = "ErrorNoPortado";
-    }
-  }
   return {
     ErrorDelMotor,
-    ErrorNoPortado,
     endpoints: {
       fetchClassifyQueue: vi.fn(),
       fetchClassifyProgress: vi.fn(),
@@ -46,8 +37,6 @@ const { endpoints, ErrorDelMotor, ErrorNoPortado } = vi.hoisted(() => {
 vi.mock("../api/endpoints", () => ({
   ...endpoints,
   ErrorDelMotor,
-  ErrorNoPortado,
-  esNoPortado: (err: unknown) => err instanceof ErrorNoPortado,
 }));
 
 function grupo(overrides: Partial<ClassifyGroupRow> = {}): ClassifyGroupRow {
@@ -504,16 +493,18 @@ describe("el estado vacío no puede afirmar nada sobre un ledger que no se leyó
   });
 });
 
-describe("una ruta que este backend todavía no sirve se dice distinto que una caída", () => {
-  it("no enciende el cartel de desconexión, y tampoco afirma que no queda nada", async () => {
-    endpoints.fetchClassifyQueue.mockRejectedValue(new ErrorNoPortado("/api/classify/queue"));
+/**
+ * W5, por el lado del fallo: con la cola portada, un rechazo de
+ * `/api/classify/queue` es una caída de verdad — y lo que NO se puede hacer es
+ * afirmar que no queda nada por clasificar sobre un ledger que nunca se leyó.
+ */
+describe("con el backend caido se dice, y no se afirma que la cola este vacia", () => {
+  it("enciende el cartel y no dibuja el estado vacio", async () => {
+    endpoints.fetchClassifyQueue.mockRejectedValue(new Error("Failed to fetch"));
     const w = await montar();
 
-    expect(w.find('[data-testid="preguntas-error"]').exists()).toBe(false);
-    expect(w.get('[data-testid="pendiente-preguntas"]').text()).toContain("No es un error");
-    // W5 otra vez, por el otro lado: sin haber leído el ledger no se afirma
-    // que esté vacío.
+    expect(w.get('[data-testid="preguntas-error"]').text()).toContain("Failed to fetch");
+    expect(w.text()).not.toContain("No queda nada por clasificar");
     expect(w.find('[data-testid="monto-vacio"]').exists()).toBe(false);
-    expect(w.find('[data-testid="panel-que-es"]').exists()).toBe(false);
   });
 });

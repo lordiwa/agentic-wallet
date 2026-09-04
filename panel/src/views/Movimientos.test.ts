@@ -20,14 +20,6 @@ const { endpoints } = vi.hoisted(() => ({
       }
     },
     // La vista pregunta si el fallo es "esta ruta todavía no está en este
-    // backend" (`501 no_portado`), que no es lo mismo que una caída.
-    ErrorNoPortado: class ErrorNoPortado extends Error {
-      constructor(readonly ruta: string) {
-        super(`no_portado: ${ruta}`);
-        this.name = "ErrorNoPortado";
-      }
-    },
-    esNoPortado: (err: unknown) => err instanceof Error && err.name === "ErrorNoPortado",
   },
 }));
 
@@ -349,28 +341,17 @@ describe("el rótulo de frescura (W31)", () => {
 });
 
 /**
- * El `501 no_portado` no es una caída.
- *
- * En el panel publicado, con sesión de Google, `api/client.ts` contesta 501 a
- * toda ruta que las Cloud Functions todavía no exponen — y `/api/transactions`
- * es una de ellas. Dibujarlo con el cartel rojo de desconexión hacía que un
- * servicio sano se viera roto, y encima dejaba arriba una barra de filtros que
- * no podía filtrar nada.
+ * Con el ledger entero portado (ver `docs/portado-completo.md`), un fallo de
+ * `/api/transactions` vuelve a ser lo único que puede ser: el backend no
+ * respondió. Se dice con el cartel, y **no se dejan filas viejas con cara de
+ * actuales**.
  */
-describe("una ruta que este backend todavía no sirve se dice distinto que una caída", () => {
-  it("no enciende el cartel de desconexión: dice que todavía no lee esa parte", async () => {
-    endpoints.fetchTransactions.mockRejectedValue(new endpoints.ErrorNoPortado("/api/transactions"));
+describe("cuando el backend no responde se dice, y no se miente con datos viejos", () => {
+  it("enciende el cartel con el motivo, sin tabla", async () => {
+    endpoints.fetchTransactions.mockRejectedValue(new Error("Failed to fetch"));
     const w = await montar();
 
-    expect(w.find('[data-testid="movimientos-error"]').exists()).toBe(false);
-    expect(w.get('[data-testid="pendiente-movimientos"]').text()).toContain("No es un error");
-  });
-
-  it("no deja filtros ni tabla: no hay nada que filtrar", async () => {
-    endpoints.fetchTransactions.mockRejectedValue(new endpoints.ErrorNoPortado("/api/transactions"));
-    const w = await montar();
-
-    expect(w.find('[data-testid="filtro-desde"]').exists()).toBe(false);
-    expect(w.find('[data-testid="tabla-movimientos"]').exists()).toBe(false);
+    expect(w.get('[data-testid="movimientos-error"]').text()).toContain("Failed to fetch");
+    expect(w.findAll('[data-testid="fila-movimiento"]')).toHaveLength(0);
   });
 });

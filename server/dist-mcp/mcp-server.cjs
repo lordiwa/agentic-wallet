@@ -49760,7 +49760,15 @@ var writeSchemas = {
   }),
   sueldo: fieldSchemas.sueldo.extend({
     diasPago: external_exports.array(
-      external_exports.string().refine(esVentanaDePago, {
+      // La referencia se resuelve DENTRO del closure y no al construir el
+      // schema. `strategy/calendar.ts` importa `getStrategyConfig` de este
+      // módulo, así que los dos forman un ciclo: al pasar `esVentanaDePago`
+      // directo, un consumidor que entre por `calendar.js` primero construye
+      // este `refine` con la referencia todavía sin inicializar y
+      // `setStrategyConfig` explota con "check is not a function" — para todas
+      // sus superficies, no sólo para ese consumidor. La llamada diferida
+      // ocurre recién al validar, cuando el ciclo ya se cerró.
+      external_exports.string().refine((spec) => esVentanaDePago(spec), {
         message: 'cada dia de pago es una ventana que el calendario sepa leer: "15-15" (el 15), "18-20" (entre el 18 y el 20) o "<=5" (los primeros 5), con dias entre 1 y 31. Un dia suelto como "15" no parsea y deja el calendario de pagos mudo'
       })
     )

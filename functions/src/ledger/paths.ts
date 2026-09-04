@@ -82,3 +82,28 @@ export const CONFIG_DOCS = {
 export function configDoc(db: Firestore, uid: string, name: keyof typeof CONFIG_DOCS) {
   return userDoc(db, uid).collection("config").doc(CONFIG_DOCS[name]);
 }
+
+/**
+ * Un id de documento de Firestore no puede contener "/", ni ser "." o "..", ni
+ * pasar de 1500 bytes. Un patrón normalizado es texto libre del banco: casi
+ * siempre inofensivo, pero "casi" no alcanza para una clave primaria.
+ *
+ * Se codifica sólo lo prohibido y se deja el resto legible, para que un humano
+ * pueda mirar la consola de Firestore y reconocer la regla.
+ *
+ * Vive **acá** y no en `scripts/migrate-tenant.ts`, que es donde nació: el
+ * `firebase.json` excluye `scripts/` del deploy, así que un escritor de reglas
+ * en runtime (`POST /classify`, `POST /classify/silence`) que la importara de
+ * allá compilaría en local y no existiría en producción. `migrate-tenant.ts` la
+ * reexporta desde acá para no tener dos.
+ */
+export function encodeDocId(raw: string): string {
+  const safe = raw.replace(/\//g, "%2F");
+  // `encodeURIComponent(".")` devuelve "." — el punto es un caracter no
+  // reservado de URI. La sustitucion tiene que ser explicita.
+  if (safe === ".") return "%2E";
+  if (safe === "..") return "%2E%2E";
+  if (/^__.*__$/.test(safe)) return `x${safe}`;
+  const bytes = Buffer.from(safe, "utf8");
+  return bytes.length <= 1500 ? safe : bytes.subarray(0, 1500).toString("utf8");
+}

@@ -192,12 +192,12 @@ export async function migrateTenant(options: {
     const ruleDocs = ruleRows.map((row) => ({
       // El id del documento ES el patrón: una regla por patrón, que es
       // exactamente el UNIQUE que tenía la tabla.
-      ref: paths.rules(firestore, uid).doc(encodeDocId(row.pattern)),
+      ref: paths.rules(firestore, uid).doc(paths.encodeDocId(row.pattern)),
       data: { pattern: row.pattern, category: row.category, createdAt: row.created_at ?? "" },
     }));
 
     const silencedDocs = silencedRows.map((row) => ({
-      ref: paths.silenced(firestore, uid).doc(encodeDocId(row.pattern)),
+      ref: paths.silenced(firestore, uid).doc(paths.encodeDocId(row.pattern)),
       data: { pattern: row.pattern, counterparty: row.counterparty, createdAt: row.created_at },
     }));
 
@@ -217,7 +217,7 @@ export async function migrateTenant(options: {
     }));
 
     const savingsDocs = savingsRows.map((row) => ({
-      ref: paths.savings(firestore, uid).doc(row.label && row.label !== "" ? encodeDocId(row.label) : `legacy-${row.id}`),
+      ref: paths.savings(firestore, uid).doc(row.label && row.label !== "" ? paths.encodeDocId(row.label) : `legacy-${row.id}`),
       data: {
         label: row.label,
         targetCents: row.target === null ? null : toCents(row.target),
@@ -317,23 +317,13 @@ export async function migrateTenant(options: {
 }
 
 /**
- * Un id de documento de Firestore no puede contener "/", ni ser "." o "..",
- * ni pasar de 1500 bytes. Un patrón normalizado es texto libre del banco: casi
- * siempre inofensivo, pero "casi" no alcanza para una clave primaria.
- *
- * Se codifica sólo lo prohibido y se deja el resto legible, para que un humano
- * pueda mirar la consola de Firestore y reconocer la regla.
+ * La codificación del id de documento vive en `src/ledger/paths.ts` desde que
+ * hay escritores de reglas en runtime: `firebase.json` excluye `scripts/` del
+ * deploy, así que una función que la importara de acá no la tendría en
+ * producción. Se reexporta para no romper a quien ya la importaba de este
+ * módulo (incluido `migrate-tenant.test.ts`).
  */
-export function encodeDocId(raw: string): string {
-  const safe = raw.replace(/\//g, "%2F");
-  // `encodeURIComponent(".")` devuelve "." — el punto es un caracter no
-  // reservado de URI. La sustitucion tiene que ser explicita.
-  if (safe === ".") return "%2E";
-  if (safe === "..") return "%2E%2E";
-  if (/^__.*__$/.test(safe)) return `x${safe}`;
-  const bytes = Buffer.from(safe, "utf8");
-  return bytes.length <= 1500 ? safe : bytes.subarray(0, 1500).toString("utf8");
-}
+export { encodeDocId } from "../src/ledger/paths.js";
 
 // --- CLI -------------------------------------------------------------------
 

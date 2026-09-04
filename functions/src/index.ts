@@ -24,6 +24,7 @@ import {
   gmailStatusHandler,
 } from "./api/gmail-oauth.js";
 import { ingestHandler } from "./api/ingest.js";
+import { apiHandler } from "./api/router.js";
 import { cargarConfig } from "./oauth/config.js";
 
 const app = initializeApp();
@@ -147,6 +148,34 @@ export const gmailAuthCallback = onRequest(
 export const gmailAuthStatus = onRequest(
   { ...OAUTH_RUNTIME, concurrency: 20 },
   gmailStatusHandler({ auth, db })
+);
+
+/**
+ * `api` — **todo el flujo del panel salvo el sync**, en una sola función.
+ *
+ * Diecisiete rutas bajo `/api/*`: movimientos, revisión, clasificación,
+ * estrategia, perfil y estado del sync. Por qué van juntas y por qué la ingesta
+ * y el OAuth NO, está en el doc de `api/router.ts`; el resumen es que ésta es
+ * la única familia que comparte CORS, verificación de token y capa de datos, y
+ * ninguna de sus rutas necesita el refresh token ni un timeout largo.
+ *
+ * `concurrency: 20` como `overview`, y por lo mismo: **nada de estado global
+ * por tenant en este runtime**. El huso horario, la moneda y el uid viajan en
+ * el contexto de cada petición, nunca en un módulo ni en `process.env`.
+ *
+ * **Sin `secrets`.** Este proceso no descifra nada, y no tener la clave maestra
+ * es la garantía más fuerte de que no la puede filtrar: no está acá.
+ */
+export const api = onRequest(
+  {
+    region: "us-central1",
+    invoker: "public", // la autorizacion la hace el ID token, no IAM
+    memory: "512MiB",
+    timeoutSeconds: 120,
+    maxInstances: 20,
+    concurrency: 20,
+  },
+  apiHandler({ auth, db })
 );
 
 /**

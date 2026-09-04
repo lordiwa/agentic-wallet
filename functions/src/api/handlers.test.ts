@@ -281,14 +281,43 @@ describe.skipIf(!hayEmulador)("overviewHandler contra Firestore", () => {
     expect(body.buffer_status).toMatchObject({ financiado: true, fijado: false });
   });
 
-  it("dice lo que todavia no calcula en vez de devolver un cero creible", async () => {
+  /**
+   * El overview ya no lleva `pendiente`: los cuatro campos que faltaban están
+   * calculados por el motor portado. Que el array haya desaparecido es parte
+   * del contrato — mientras estuvo, el panel decidía NO dibujar esas tarjetas,
+   * y si volviera a aparecer las escondería sobre cifras que hoy existen.
+   */
+  it("ya no declara nada pendiente: los nueve campos del motor estan", async () => {
     const { req, res, estado } = parHttp({ headers: { authorization: "Bearer t" } });
     await overviewHandler({ auth: authQueDevuelve(uidA), db })(req, res);
-    expect((estado.body as { pendiente: string[] }).pendiente).toEqual([
+    const body = estado.body as Record<string, unknown>;
+    expect(body.pendiente).toBeUndefined();
+    for (const campo of [
+      "balance",
+      "card",
+      "counts",
       "safe_to_spend_hoy",
+      "buffer_status",
       "card_status",
       "transfers_summary",
       "next_payday",
-    ]);
+      "spending_by_category",
+    ]) {
+      expect(Object.hasOwn(body, campo)).toBe(true);
+    }
+  });
+
+  /**
+   * **R7 dicho en dos campos.** `safe_to_spend_hoy: 0` sin día de pago
+   * configurado NO es "tenés cero pesos": es "no hay próximo cobro contra el
+   * que dividir". Lo que lo distingue es `next_payday: null`, y por eso los dos
+   * viajan juntos.
+   */
+  it("sin dia de pago configurado el safe-to-spend es 0 con next_payday en null", async () => {
+    const { req, res, estado } = parHttp({ headers: { authorization: "Bearer t" } });
+    await overviewHandler({ auth: authQueDevuelve(uidA), db })(req, res);
+    const body = estado.body as Record<string, unknown>;
+    expect(body.next_payday).toBeNull();
+    expect(body.safe_to_spend_hoy).toBe(0);
   });
 });

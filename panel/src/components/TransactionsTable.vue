@@ -43,7 +43,7 @@ const props = withDefaults(
     categoria?: Category | null;
     /** La fila abierta, o `null`. La pantalla es la dueña del estado: cerrar el
      * detalle al recargar no puede ser una decisión de la tabla. */
-    abierta?: number | null;
+    abierta?: string | number | null;
     /** Qué cambió después de responder (F13/R19). Se dibuja adentro del
      * detalle, que es donde se hizo la pregunta. */
     efecto?: Efecto | null;
@@ -58,7 +58,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  abrir: [id: number | null];
+  abrir: [id: string | number | null];
   clasificar: [fila: TransactionRow, category: Category];
   cargarMas: [];
 }>();
@@ -80,7 +80,7 @@ const opciones = computed(() => opcionesDeCategoria());
  * fila porque el estado cuelga del id, no del componente. */
 const elegida = ref<Category | "">("");
 
-function alternar(id: number): void {
+function alternar(id: string | number): void {
   elegida.value = "";
   emit("abrir", props.abierta === id ? null : id);
 }

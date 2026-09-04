@@ -141,7 +141,8 @@ export interface Marca {
 /** Cómo se dibuja una fila. Ninguno de estos campos es una decisión nueva
  * sobre el movimiento: son los que el motor ya tomó, traducidos. */
 export interface VistaFila {
-  id: number;
+  /** Opaco: entero del server local o `gmail_msg_id` de las funciones. */
+  id: string | number;
   fecha: string;
   fechaCompleta: string;
   contraparte: string;

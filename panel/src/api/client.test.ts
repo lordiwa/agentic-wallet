@@ -118,7 +118,8 @@ describe("panelFetch con sesion — el ledger sale de las funciones, no del demo
     const res = await panelFetch("/api/overview");
 
     const [url, init] = fake.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe(`${FUNCIONES}/overview`);
+    // `/api/*` lo sirve la funcion `api`, asi que el path viaja entero.
+    expect(url).toBe(`${FUNCIONES}/api/overview`);
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer id-token-de-prueba");
     expect((await res.json()).counts.total).toBe(1159);
   });
@@ -133,16 +134,38 @@ describe("panelFetch con sesion — el ledger sale de las funciones, no del demo
     expect(await res.json()).toHaveProperty("safe_to_spend_hoy");
   });
 
-  it("una ruta sin portar contesta 501, NO la ficcion del demo", async () => {
+  /**
+   * Esto contestaba `501 no_portado`: el pivot habia portado UNA ruta y el
+   * resto se contestaba desde el cliente. Ya no queda ninguna sin portar (ver
+   * `docs/portado-completo.md`), asi que el ledger entero sale de las
+   * funciones y la query viaja con el path.
+   */
+  it("el resto del ledger tambien sale de las funciones, con su query", async () => {
     setProveedorIdToken(async () => "id-token-de-prueba");
-    const fake = vi.fn(async () => new Response("{}"));
+    const fake = vi.fn(async () => new Response('{"transactions":[],"count":0}'));
     vi.stubGlobal("fetch", fake);
 
     const res = await panelFetch("/api/transactions?limit=50");
 
-    expect(fake).not.toHaveBeenCalled();
-    expect(res.status).toBe(501);
-    expect((await res.json()).error).toBe("no_portado");
+    const [url] = fake.mock.calls[0] as unknown as [string];
+    expect(url).toBe(`${FUNCIONES}/api/transactions?limit=50`);
+    expect((await res.json()).count).toBe(0);
+  });
+
+  /**
+   * El sync NO va a la funcion `api`: es la unica que descifra el refresh
+   * token, y tenerla aparte es lo que hace que el resto del backend no tenga la
+   * clave maestra en su proceso.
+   */
+  it("el sync va a su propia funcion, que es la unica con la clave maestra", async () => {
+    setProveedorIdToken(async () => "id-token-de-prueba");
+    const fake = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fake);
+
+    await panelFetch("/api/sync", { method: "POST" });
+
+    const [url] = fake.mock.calls[0] as unknown as [string];
+    expect(url).toBe(`${FUNCIONES}/ingest`);
   });
 
   it("un server propio le gana a la sesion: la eleccion explicita no se pisa", async () => {
@@ -168,10 +191,25 @@ describe("panelFetch con sesion — el ledger sale de las funciones, no del demo
 });
 
 describe("rutaEnFunciones", () => {
-  it("mapea solo lo portado y descarta la query", () => {
-    expect(rutaEnFunciones("/api/overview")).toBe("/overview");
-    expect(rutaEnFunciones("/api/overview?x=1")).toBe("/overview");
-    expect(rutaEnFunciones("/api/transactions")).toBeNull();
+  it("todo /api/* pasa derecho: no queda ninguna ruta sin portar", () => {
+    expect(rutaEnFunciones("/api/overview")).toBe("/api/overview");
+    expect(rutaEnFunciones("/api/transactions")).toBe("/api/transactions");
+    expect(rutaEnFunciones("/api/classify/queue")).toBe("/api/classify/queue");
+  });
+
+  it("la query viaja con el path", () => {
+    expect(rutaEnFunciones("/api/overview?x=1")).toBe("/api/overview?x=1");
+    expect(rutaEnFunciones("/api/transactions?limit=50&from=2026-01-01")).toBe(
+      "/api/transactions?limit=50&from=2026-01-01"
+    );
+  });
+
+  it("las dos excepciones tienen su propia funcion, por su propio motivo", () => {
+    expect(rutaEnFunciones("/api/sync")).toBe("/ingest");
+    expect(rutaEnFunciones("/api/health")).toBe("/health");
+    // `/api/sync/status` NO es `/api/sync`: la lee la funcion `api`, que no
+    // necesita el refresh token para contestar cuando fue el ultimo lote.
+    expect(rutaEnFunciones("/api/sync/status")).toBe("/api/sync/status");
   });
 });
 

@@ -21,13 +21,6 @@ const { endpoints } = vi.hoisted(() => ({
         this.name = "ErrorDelMotor";
       }
     },
-    ErrorNoPortado: class ErrorNoPortado extends Error {
-      constructor(readonly ruta: string) {
-        super(`no_portado: ${ruta}`);
-        this.name = "ErrorNoPortado";
-      }
-    },
-    esNoPortado: (err: unknown) => err instanceof Error && err.name === "ErrorNoPortado",
   },
 }));
 
@@ -400,13 +393,11 @@ describe("réplica del design system", () => {
   });
 });
 
-describe("una ruta que este backend todavía no sirve se dice distinto que una caída", () => {
-  it("no enciende el cartel de desconexión ni dibuja el formulario vacío", async () => {
-    endpoints.fetchProfile.mockRejectedValue(new endpoints.ErrorNoPortado("/api/onboarding/profile"));
+describe("cuando el backend no responde se dice, y no se dibuja un perfil vacio", () => {
+  it("enciende el cartel con el motivo", async () => {
+    endpoints.fetchProfile.mockRejectedValue(new Error("Failed to fetch"));
     const w = await montar();
 
-    expect(w.find('[data-testid="alta-error"]').exists()).toBe(false);
-    expect(w.get('[data-testid="pendiente-alta"]').text()).toContain("No es un error");
-    expect(w.find('[data-testid="alta-perfil"]').exists()).toBe(false);
+    expect(w.get('[data-testid="alta-error"]').text()).toContain("Failed to fetch");
   });
 });
