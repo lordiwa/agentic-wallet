@@ -293,3 +293,99 @@ Con el HTTPS arriba, el `redirect_uri` de OAuth pasa a ser
 `https://wallet.2.25.119.1.sslip.io/api/gmail/callback` y hay que registrarlo
 en la consola de Google Cloud. Eso ya es Fase 3 del pivot
 (`docs/pivot-saas.md` §5), no Fase 0.
+
+---
+
+## 7. Cómo quedó de verdad: el borde es Firebase, y Gmail ya está cableado
+
+Lo de arriba (§1–§6) es el camino de Caddy en una VPS, que quedó bloqueado por
+el 443 ajeno. **El borde público terminó siendo Firebase Hosting + Cloud
+Functions** (`docs/pivot-firebase.md`), y ahí el `redirect_uri` no es el de
+sslip.io sino el de la función:
+
+```
+https://us-central1-agentic-wallet-71314.cloudfunctions.net/gmailAuthCallback
+```
+
+Esta sección es el estado **verificado contra producción** de esa conexión, no
+el procedimiento. El procedimiento y el diseño están en `pivot-firebase.md`
+§D.7; el flujo viejo de escritorio, en `conectar-gmail.md`.
+
+### Qué está puesto y comprobado
+
+| Pieza | Estado |
+|---|---|
+| Secreto `WALLET_TOKEN_KEK` | Secret Manager, versión 1 `ENABLED`. Decodifica a **32 bytes** exactos, que es lo que exige `masterKeyFromEnv` |
+| Secreto `WALLET_GMAIL_CLIENT_SECRET` | Secret Manager, versión 1 `ENABLED`. Idéntico al del cliente "Bolsillo-web-client"; sin espacios ni salto de línea al final |
+| Montaje de los secretos | `gmailAuthStart`, `gmailAuthCallback` e `ingest` los declaran y los reciben en la versión 1. `gmailAuthStatus`, `api`, `overview` y `health` **no** los tienen — el mínimo privilegio de `index.ts` es real, no sólo una intención |
+| Variables públicas | `WALLET_GMAIL_CLIENT_ID`, `WALLET_OAUTH_REDIRECT_URI` y `WALLET_PANEL_ORIGIN` están en las siete funciones, con los valores de `functions/.env.agentic-wallet-71314` |
+| El par client_id/client_secret | **Válido para Google.** Un canje con un `code` inventado devuelve `invalid_grant` (400), no `invalid_client` (401): Google reconoce las credenciales y lo único que rechaza es el código |
+| La URL de consentimiento | Google la contesta con un `302` a su pantalla de login. Ni `redirect_uri_mismatch` ni `deleted_client`: la redirect URI está registrada byte por byte |
+| `gmail.googleapis.com` | `ENABLED` en el proyecto **855144098021**, que es el dueño del cliente OAuth y por lo tanto el que cuenta para la cuota |
+
+### El flujo, extremo a extremo, sin navegador
+
+Con un ID token real del uid del piloto (firmado con ADC vía
+`iamcredentials.signJwt` sobre la SA `firebase-adminsdk-fbsvc`, que es la única
+forma de conseguir uno sin navegador):
+
+```
+GET  /gmailAuthStatus   sin token  →  401 {"error":"sin_token"}
+GET  /gmailAuthStatus   con token  →  200 {"conectado":false,"email":null,...}
+POST /gmailAuthStart    sin token  →  401 {"error":"sin_token"}
+POST /gmailAuthStart    con token  →  200 {authUrl,...}
+        → accounts.google.com/o/oauth2/v2/auth
+        → scope=gmail.readonly, access_type=offline, prompt=consent
+GET  /gmailAuthCallback sin params           →  302 ?gmail=state_invalido
+GET  /gmailAuthCallback ?error=access_denied →  302 ?gmail=cancelado
+GET  /gmailAuthCallback state real + code falso →  302 ?gmail=google_rechazo
+```
+
+**El último renglón es la prueba que importa.** `google_rechazo` está detrás de
+tres puertas que sólo se abren con los secretos cargados: `cargarConfig()` tuvo
+que encontrar el `client_secret` y una KEK de 32 bytes (si falta cualquiera de
+los dos tira `falta la variable ...` y la función responde 500, no un 302);
+`canjearState()` tuvo que **descifrar** con la KEK el state que `gmailAuthStart`
+había **cifrado** con ella minutos antes —o sea, la clave maestra hace el viaje
+de ida y vuelta contra Firestore—; y recién entonces `canjearCode()` habló con
+Google, que rechazó el código inventado. Lo que falla ahí es el código de
+prueba, nunca la configuración.
+
+Dicho de otro modo: **no falta ninguna credencial de Gmail en el server.** Lo
+que falta es el consentimiento del humano, que por definición no se puede
+automatizar.
+
+### Lo único que queda, y es de Mato
+
+1. Abrir el panel: `https://agentic-wallet-71314.web.app`.
+2. Entrar con Google (la misma cuenta cuyo Gmail se va a leer).
+3. Tocar **Conectar Gmail** → se abre `accounts.google.com`.
+4. Autorizar el permiso de **solo lectura** de Gmail.
+5. Google vuelve a `/#/conectado`; a partir de ahí `gmailAuthStatus` pasa a
+   `{"conectado":true,"email":"..."}` y la ingesta tiene con qué correr.
+
+Dos cosas que pueden salir mal en ese paso, las dos en la consola de Google y
+ninguna verificable desde acá:
+
+- **La pantalla de consentimiento es External/Testing.** Sólo autoriza a las
+  cuentas que estén en la lista de *Test users*. Si aparece "Acceso bloqueado:
+  … no ha completado el proceso de verificación", es eso: hay que agregar el
+  correo a esa lista. La lista no se puede leer por API —ver
+  `oauth-para-humanos.md`—, así que se comprueba entrando.
+- **En Testing, el refresh token dura 7 días.** Cuando caduca, el panel muestra
+  `necesitaReconectar` y hay que repetir los cinco pasos. Se arregla publicando
+  la app, no tocando código.
+
+Y una tercera, improbable pero fácil de reconocer si pasa: si la primera
+ingesta devuelve un 403 que menciona *"Gmail API has not been used in project
+743241056894"*, es que la cuota se está contando contra el proyecto de Firebase
+y no contra el del cliente OAuth; se destraba habilitando `gmail.googleapis.com`
+también ahí. El error dice el número de proyecto, así que no hay que adivinar.
+
+### La copia de la KEK
+
+`WALLET_TOKEN_KEK` está respaldada **fuera del repo**, en
+`/opt/data/backups/wallet-keys/` con permisos `0600`. No es opcional: esa clave
+cifra los refresh tokens guardados en Firestore, y perderla no rompe el
+servicio de inmediato —rompe la posibilidad de descifrar lo ya guardado, y
+obliga a que cada usuario vuelva a dar consentimiento.
