@@ -203,8 +203,10 @@ label {
 }
 
 /* Un enlace que se ve como enlace, al revés de `a.lnk`. */
+/* El enlace va en el violeta CLARO, no en el de accion: sobre fondo oscuro el
+   `--accion` no tiene contraste suficiente para un texto de 13px subrayado. */
 .link {
-  color: var(--accion);
+  color: var(--boton-terciario-texto);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -280,8 +282,11 @@ label {
   clip-path: var(--boton-bisel);
 }
 
+/* El sistema oscurece al pasar por encima, igual que el claro. Es lo que dicen
+   las tarjetas nuevas, y sobre fondo oscuro sigue leyendose como un "se hunde"
+   — que es el gesto que buscaba. */
 .btn:hover {
-  filter: brightness(1.08);
+  filter: brightness(0.96);
 }
 
 .btn.pri {
@@ -291,9 +296,11 @@ label {
   font-weight: 600;
 }
 
+/* Como la primaria: el borde es un paso mas claro que el fondo, no el mismo
+   color. Sobre fondo oscuro es lo que le da el canto al boton lleno. */
 .btn.ok {
   background: var(--al-dia);
-  border-color: var(--al-dia);
+  border-color: var(--tag-ok-texto);
   color: var(--boton-primario-texto);
   font-weight: 600;
 }
@@ -334,15 +341,17 @@ label {
 }
 
 /*
- * El botón apagado. Con el tema oscuro el borde propio volvió: el fondo del
- * botón apagado y el de la tarjeta que lo contiene están a dos pasos de
- * distancia, y sin borde el control no tiene contra qué recortarse. Por eso
- * vuelve `--boton-off-borde`, que el sistema claro había dejado atrás.
+/*
+ * El botón apagado. El borde es el mismo color que el fondo: es lo que dicen
+ * las tarjetas donde el botón aparece EN USO (`c7`, `c8`). `00-fundamentos`
+ * le pone un borde aparte (`--boton-off-borde`, que existe por eso), pero
+ * cuando la hoja de muestra y la pantalla real se contradicen, manda la
+ * pantalla real — es la que Mato mira.
  */
 .btn:disabled,
 .btn.dis {
   background: var(--boton-off-bg);
-  border-color: var(--boton-off-borde);
+  border-color: var(--boton-off-bg);
   color: var(--boton-off-texto);
   cursor: default;
   filter: none;
@@ -354,10 +363,13 @@ label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11.5px;
+  /* 11px y `1px 8px`: es lo que dicen dieciseis de las veinte tarjetas donde
+     la etiqueta aparece. `00-fundamentos` y `p2` la dibujan un punto mas
+     grande, pero son la minoria y la hoja de muestra no le gana a la pantalla. */
+  font-size: var(--label-size);
   font-weight: 600;
   border-radius: var(--radio-etiqueta);
-  padding: 2px 9px;
+  padding: 1px 8px;
   border: 1px solid;
   white-space: nowrap;
 }
@@ -395,7 +407,7 @@ label {
 /* ---- Barra de progreso (`c1`, `c3`, `p2`, `p3`) ---- */
 
 .track {
-  height: 8px;
+  height: 7px;
   background: var(--superficie-suave);
   border-radius: var(--radio-etiqueta);
   overflow: hidden;
@@ -574,7 +586,7 @@ a.lnk {
 }
 
 a.lnk:hover {
-  filter: brightness(1.12);
+  filter: brightness(0.97);
 }
 
 a.card.lnk {

@@ -43,7 +43,7 @@
    * cuerpo sigue en `system-ui`: es el que se lee todo el dia.
    */
   --fuente-titulo: "Space Grotesk", system-ui, sans-serif;
-  --fuente-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fuente-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --cifra-size: 26px;
   --cifra-weight: 640;
   --h1-size: 20px;
@@ -136,7 +136,7 @@
   --superficie-suave: #241B40; /* separadores internos, `code`, `.track`, chips neutros */
   --placeholder: #B6C1CC; /* el texto de ejemplo de un campo vacio */
   --superficie-tenue: #181230; /* el violeta mas hondo que el panel: `.pane` y una fila atenuada */
-  --texto-atenuado: #6B7096; /* el texto de una fila que el motor ya excluyo */
+  --texto-atenuado: #787DA3; /* el texto de una fila que el motor ya excluyo */
   --accion-oscura: #9DB8F5; /* el texto de accion sobre su propio fondo, en `.sel.act` */
   --radio-chip: 2px; /* el control de filtro de `c6`/`p4` */
   --why-borde: rgba(242, 166, 90, 0.4); /* el borde del `.why` de `c2-tarjeta-revision.html` */

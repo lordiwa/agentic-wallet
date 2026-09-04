@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import Inicio from "./Inicio.vue";
@@ -40,19 +42,28 @@ describe("Inicio (la portada institucional)", () => {
     expect(conHash).toEqual(["#/resumen", "#/resumen", "#/resumen", "#/resumen"]);
   });
 
-  it("pide las tipografías de la portada recién al montarla, y una sola vez", () => {
+  /*
+   * Antes este caso afirmaba lo contrario: que la portada pedia las fuentes al
+   * montarse, y una sola vez. Era correcto mientras el panel usaba `system-ui`
+   * y la portada era la unica que necesitaba tipografia de terceros. Con el
+   * tema oscuro dejo de serlo —Space Grotesk titula y IBM Plex Mono dibuja las
+   * etiquetas en TODA pantalla—, asi que pedirlas desde un componente ya no
+   * ahorra nada y encima mete un salto de fuente cuando el `<link>` entra con
+   * la vista ya montada. El contrato nuevo es el de abajo.
+   */
+  it("NO pide las tipografías desde la vista: las pide el documento", () => {
     const selector = 'link[href*="Space+Grotesk"]';
-    // Los `mount` de los casos anteriores comparten este `document`, asi que la
-    // pregunta "se pidieron?" solo tiene sentido desde una cabeza limpia.
     for (const previo of document.head.querySelectorAll(selector)) previo.remove();
+
+    mount(Inicio);
     expect(document.head.querySelectorAll(selector)).toHaveLength(0);
+  });
 
-    mount(Inicio);
-    expect(document.head.querySelectorAll(selector)).toHaveLength(1);
-
-    // Un segundo montaje no vuelve a pedirlas.
-    mount(Inicio);
-    expect(document.head.querySelectorAll(selector)).toHaveLength(1);
+  it("`index.html` las pide, con sus `preconnect`", () => {
+    const html = readFileSync(path.resolve(import.meta.dirname, "../../index.html"), "utf8");
+    expect(html).toContain("Space+Grotesk");
+    expect(html).toContain("IBM+Plex+Mono");
+    expect(html).toContain("https://fonts.gstatic.com");
   });
 });
 

@@ -15,27 +15,18 @@
  * Por eso esta vista se dibuja **sola**, fuera de `AppShell` y fuera de las dos
  * puertas de `App.vue`: trae su propia navegacion y su propio fondo.
  *
- * Las dos fuentes de la portada (Space Grotesk, IBM Plex Mono) se piden recien
- * al montarla. El panel no carga tipografia de terceros —usa `system-ui`— y
- * esta pagina no es razon para que empiece a hacerlo en cada visita al
- * Resumen: la peticion sale cuando alguien abre la portada, y no antes.
+ * Las dos fuentes (Space Grotesk, IBM Plex Mono) ya NO se piden desde aca.
+ * Las pide `index.html`, junto con sus `preconnect`. El motivo por el que
+ * vivian en un `onMounted` —"el panel usa `system-ui` y esta pagina no es
+ * razon para que cargue tipografia de terceros en cada visita al Resumen"—
+ * dejo de ser cierto cuando el sistema paso al tema oscuro: ahora Space
+ * Grotesk titula y IBM Plex Mono dibuja las etiquetas en TODA pantalla, asi
+ * que la descarga ya no es un costo que la portada le imponga al panel.
  */
-import { onMounted } from "vue";
 import { toHash } from "../router/ruta";
 
 /** A donde va "Entrar al panel": la puerta, o sea la raiz del panel. */
 const alPanel = toHash("resumen");
-
-const FUENTES =
-  "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
-
-onMounted(() => {
-  if (document.querySelector(`link[href="${FUENTES}"]`) !== null) return;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = FUENTES;
-  document.head.appendChild(link);
-});
 
 /**
  * Los enlaces del indice hacen scroll, no navegan.

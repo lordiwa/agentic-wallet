@@ -188,4 +188,13 @@ export const MAPA = [
   ["c8-tarjeta-gasto-fijo", ["panel/src/components/RecurringCard.vue"], COMPONENTE],
 ];
 
-export const PREVIEWS = "/opt/data/home/wallet-panel-ds-previews";
+/*
+ * El export vigente del design system, el del tema oscuro.
+ *
+ * El anterior (`~/wallet-panel-ds-previews`, el sistema claro) NO se borra
+ * pero tampoco se compara: quedo obsoleto entero cuando el sistema se rehizo.
+ * Apuntar aca es lo que hace que el informe mida contra lo que Mato aprobo y
+ * no contra lo que el panel ya replicaba — que es como un 100% de coincidencia
+ * puede convivir con "no se parece en nada".
+ */
+export const PREVIEWS = "/opt/data/ds-export";
