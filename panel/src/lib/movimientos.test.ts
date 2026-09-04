@@ -173,7 +173,7 @@ describe("cómo se lee una fila", () => {
     // El caso que H21 existe para evitar: la barra contó esta fila como salud
     // porque una regla del usuario lo dice, y la columna todavía dice `otros`.
     const vista = vistaDeFila(fila({ category: "otros" }), "salud");
-    expect(vista.categoria).toBe("Salud");
+    expect(vista.categoria).toBe("Salud y medicina");
     expect(vista.sinCategoria).toBe(false);
   });
 });

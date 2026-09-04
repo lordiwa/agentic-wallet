@@ -52,6 +52,13 @@
  * they are currently unreachable output values, reserved for a future
  * ticket that supplies merchant patterns for them. This is intentional, not
  * an oversight: AC1 forbids guessing, so no such rule was invented.
+ *
+ * Lo mismo vale para las seis que se sumaron después (`vivienda`,
+ * `entretenimiento`, `limpieza`, `deuda`, `prestamo`, `regalo`): son valores
+ * de salida que sólo alcanza una regla del usuario. Sumar una categoría al
+ * glosario NO recategoriza nada por sí sola — las reglas ya escritas siguen
+ * apuntando a la categoría que apuntaban, y lo que estaba en `otros` sigue en
+ * `otros` hasta que alguien responda la pregunta.
  */
 
 /**
@@ -71,6 +78,12 @@ export const CATEGORIES = [
   "efectivo",
   "transferencia_persona",
   "suscripcion",
+  "vivienda",
+  "entretenimiento",
+  "limpieza",
+  "deuda",
+  "prestamo",
+  "regalo",
   "otros",
 ] as const;
 

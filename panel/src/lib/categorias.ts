@@ -1,5 +1,5 @@
 /**
- * Cómo se escriben las diez categorías del glosario
+ * Cómo se escriben las categorías del glosario
  * (`server/src/category/categorize.ts`). Es traducción, no clasificación: acá
  * no se decide qué categoría le toca a nada — eso lo hace el motor, y el panel
  * dibuja lo que le llega.
@@ -8,19 +8,32 @@
  * se dibuja con su propia clave antes que con un nombre inventado: si el motor
  * suma una, se ve fea hasta que alguien la nombre, que es mejor que verse bien
  * y estar mal.
+ *
+ * `salud` se lee **"Salud y medicina"** y no "Salud" a secas: es la misma
+ * categoría de siempre —la clave no cambió, así que ninguna regla ya escrita ni
+ * ninguna fila ya clasificada se movió— pero la palabra que la gente busca en
+ * la lista es "medicina", y una categoría que existe pero no se encuentra es,
+ * para quien pregunta, una categoría que no existe. Nombrar las dos cosas es
+ * más barato que partir la farmacia en dos buckets.
  */
 import type { Category } from "../api/types";
 
 const NOMBRES: Record<Category, string> = {
   comida: "Comida",
   transporte: "Transporte",
-  salud: "Salud",
+  salud: "Salud y medicina",
   mascota: "Mascota",
   servicios: "Servicios",
   recarga: "Recarga",
   efectivo: "Efectivo",
   transferencia_persona: "Transferencia a persona",
   suscripcion: "Suscripción",
+  vivienda: "Vivienda",
+  entretenimiento: "Entretenimiento",
+  limpieza: "Limpieza",
+  deuda: "Deuda",
+  prestamo: "Préstamo",
+  regalo: "Regalo",
   otros: "Otros",
 };
 
@@ -68,6 +81,10 @@ export function barrasDeCategoria(gasto: Record<string, number | undefined>): Ba
  * Vive acá y no en un componente porque la usan dos: la tarjeta de la cola
  * (N3) y la de un gasto fijo propuesto (N4), y son la misma pregunta hecha
  * sobre dos poblaciones.
+ *
+ * El orden es el del glosario del motor, no uno propio: cuando el server
+ * rechaza una categoría lista las suyas en ese orden, y dos listas que dicen lo
+ * mismo en distinto orden se leen como dos listas distintas.
  */
 export const CATEGORIAS_ELEGIBLES: Category[] = [
   "comida",
@@ -78,6 +95,12 @@ export const CATEGORIAS_ELEGIBLES: Category[] = [
   "recarga",
   "efectivo",
   "suscripcion",
+  "vivienda",
+  "entretenimiento",
+  "limpieza",
+  "deuda",
+  "prestamo",
+  "regalo",
 ];
 
 export interface OpcionCategoria {

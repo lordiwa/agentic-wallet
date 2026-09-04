@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barrasDeCategoria, nombreCategoria } from "./categorias";
+import { barrasDeCategoria, nombreCategoria, opcionesDeCategoria, CATEGORIAS_ELEGIBLES } from "./categorias";
 
 describe("nombreCategoria", () => {
   it("traduce las claves del glosario del motor", () => {
@@ -9,6 +9,35 @@ describe("nombreCategoria", () => {
 
   it("una clave que no conoce se dibuja tal cual, no con un nombre inventado", () => {
     expect(nombreCategoria("categoria_nueva_del_motor")).toBe("categoria_nueva_del_motor");
+  });
+
+  it("salud se lee nombrando también la palabra que la gente busca", () => {
+    // La clave no cambió — las reglas ya escritas siguen diciendo `salud` — y
+    // la etiqueta nombra las dos cosas para que "medicina" se encuentre.
+    expect(nombreCategoria("salud")).toBe("Salud y medicina");
+  });
+});
+
+describe("las categorías que la pregunta puede ofrecer", () => {
+  it("ofrece las seis que faltaban, con su nombre", () => {
+    const porClave = new Map(opcionesDeCategoria().map((o) => [o.clave, o.nombre]));
+    expect(porClave.get("vivienda")).toBe("Vivienda");
+    expect(porClave.get("entretenimiento")).toBe("Entretenimiento");
+    expect(porClave.get("limpieza")).toBe("Limpieza");
+    expect(porClave.get("deuda")).toBe("Deuda");
+    expect(porClave.get("prestamo")).toBe("Préstamo");
+    expect(porClave.get("regalo")).toBe("Regalo");
+  });
+
+  it("no ofrece los dos fallbacks: responder con ellos deja el grupo en la cola para siempre", () => {
+    expect(CATEGORIAS_ELEGIBLES).not.toContain("otros");
+    expect(CATEGORIAS_ELEGIBLES).not.toContain("transferencia_persona");
+  });
+
+  it("ninguna opción se dibuja con su clave: todas tienen nombre", () => {
+    for (const { clave, nombre } of opcionesDeCategoria()) {
+      expect(nombre).not.toBe(clave);
+    }
   });
 });
 

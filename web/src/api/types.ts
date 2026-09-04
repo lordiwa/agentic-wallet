@@ -105,6 +105,12 @@ export type Category =
   | "efectivo"
   | "transferencia_persona"
   | "suscripcion"
+  | "vivienda"
+  | "entretenimiento"
+  | "limpieza"
+  | "deuda"
+  | "prestamo"
+  | "regalo"
   | "otros";
 
 /** spending_by_category: only categories with at least one matching row appear. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { categorize } from "./categorize.js";
+import { categorize, CATEGORIES } from "./categorize.js";
 import type { CategorizeInput, EstablishmentRule } from "./categorize.js";
+import { RESPONDABLE_CATEGORIES, UNCLASSIFIED_CATEGORIES } from "../classify/queue.js";
 
 /**
  * A user's merchant rules, as `npm run onboard` would have written them.
@@ -142,5 +143,41 @@ describe("categorize", () => {
     expect(categorize({ type: "credito", counterparty: "VETERINARIA LUNA" })).toBe("otros");
     // Type-driven rules still apply without any merchant rules at all.
     expect(categorize({ type: "retiro", counterparty: null })).toBe("efectivo");
+  });
+});
+
+/**
+ * Las seis categorías que se sumaron al glosario después del MVP. Lo que estos
+ * casos fijan no es que existan —eso lo diría el compilador— sino la propiedad
+ * que hace que sumarlas sea seguro: **una categoría nueva no reclasifica nada
+ * por sí sola.** El glosario es más largo, pero `categorize` no cambió de
+ * opinión sobre ninguna entrada que ya sabía contestar.
+ */
+describe("las categorias que se sumaron al glosario", () => {
+  const NUEVAS = ["vivienda", "entretenimiento", "limpieza", "deuda", "prestamo", "regalo"] as const;
+
+  it("estan en el glosario y se pueden responder (no son fallbacks)", () => {
+    for (const categoria of NUEVAS) {
+      expect(CATEGORIES).toContain(categoria);
+      expect(RESPONDABLE_CATEGORIES).toContain(categoria);
+      expect(UNCLASSIFIED_CATEGORIES.has(categoria)).toBe(false);
+    }
+  });
+
+  it("solo las alcanza una regla del usuario: sin regla nada cae ahi solo", () => {
+    // Ninguna es alcanzable por `type`, que es como debe ser: adivinar que un
+    // consumo es 'vivienda' por su tipo seria inventar el dato.
+    for (const type of ["debito", "credito", "transferencia", "servicio", "recarga", "retiro"]) {
+      expect(NUEVAS).not.toContain(categorize({ type, counterparty: "Comercio Ficticio" }) as never);
+    }
+    expect(categorize({ type: "debito", counterparty: "Arriendo Ficticio" }, [
+      { category: "vivienda", pattern: "arriendo ficticio" },
+    ])).toBe("vivienda");
+  });
+
+  it("no mueven ninguna clasificacion vieja: las reglas ya escritas siguen dando lo mismo", () => {
+    for (const { input, expected } of CASES) {
+      expect(categorize(input, RULES)).toBe(expected);
+    }
   });
 });

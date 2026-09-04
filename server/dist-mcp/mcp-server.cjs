@@ -49042,6 +49042,12 @@ var CATEGORIES = [
   "efectivo",
   "transferencia_persona",
   "suscripcion",
+  "vivienda",
+  "entretenimiento",
+  "limpieza",
+  "deuda",
+  "prestamo",
+  "regalo",
   "otros"
 ];
 function normalize(text) {

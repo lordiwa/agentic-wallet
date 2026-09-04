@@ -261,6 +261,24 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
     expect((estado.body as { error: string }).error).toBe("invalid classify body");
   });
 
+  /**
+   * La contracara del caso de arriba: las seis categorías que se sumaron al
+   * glosario después del MVP entran por el borde. El panel las ofrece desde su
+   * propia lista (`panel/src/lib/categorias.ts`) — no hay ruta que se las
+   * dicte —, así que si el enum del server no las tuviera, la tarjeta mostraría
+   * el botón y la respuesta sería un 400 sin explicación.
+   */
+  it("las categorias nuevas del glosario se aceptan, no son un 400", async () => {
+    for (const category of ["vivienda", "entretenimiento", "limpieza", "deuda", "prestamo", "regalo"]) {
+      const estado = await llamar({
+        method: "POST",
+        path: "/api/classify",
+        body: { counterparty: "Tienda A", category },
+      });
+      expect(estado.status).toBe(200);
+    }
+  });
+
   /** Los dos fallbacks no se pueden responder: escribirían una regla y dejarían
    * al grupo en la cola para siempre. */
   it("responder con un fallback se rechaza en el borde", async () => {
