@@ -277,6 +277,12 @@ CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions (direction
 CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counterparty);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
 CREATE INDEX IF NOT EXISTS idx_review_resolutions_tx ON review_resolutions (transaction_id);
+-- Dos sobres con el mismo id son el mismo sobre escrito dos veces, y la
+-- pregunta "cuánto tengo en cada uno" deja de tener una respuesta. UNIQUE y no
+-- una comprobación en el código porque dos peticiones simultáneas pasan las
+-- dos por el SELECT antes de que ninguna haya insertado. Las filas viejas
+-- tienen sobre_id NULL y SQLite no las considera duplicadas entre sí.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_savings_sobre_id ON savings (sobre_id);
 `;
 
 /**
@@ -319,5 +325,12 @@ export function migrate(db: Database.Database): void {
   // default 0 es el correcto para todo el historial: nadie descartó nada
   // todavía. Ver review/resolve.ts y strategy/totals.ts.
   addColumnIfMissing(db, "transactions", "is_discarded", "INTEGER NOT NULL DEFAULT 0");
+  // `savings` nació como la fila del colchón y nada más: una clave entera y un
+  // `label`. Los sobres necesitan un id estable y legible —el mismo que en
+  // Firestore es el nombre del documento— porque renombrar un sobre no puede
+  // moverlo de lugar. Nullable porque la fila del colchón que ya existe no lo
+  // tiene, y ahí `label` alcanza para reconocerla (ver db/sobres.ts).
+  addColumnIfMissing(db, "savings", "sobre_id", "TEXT");
+  addColumnIfMissing(db, "savings", "created_at", "TEXT");
   db.exec(CREATE_INDEXES);
 }

@@ -38,6 +38,15 @@ import {
 } from "./derive.js";
 import * as paths from "./paths.js";
 import { toLedgerRow, type LedgerRow } from "./rows.js";
+import type { SobreDoc } from "./sobres.js";
+
+/** Lo que hace falta para escribir un sobre nuevo: la salida de `planCrearSobre`. */
+export interface SobreNuevo {
+  id: string;
+  nombre: string;
+  montoCents: number;
+  objetivoCents: number | null;
+}
 
 /** La config de estrategia, con los mismos nombres y defaults que
  * `server/src/seed/default-config.ts`. Un tenant recién creado la tiene toda
@@ -353,6 +362,52 @@ export class FirestoreLedger {
       { merge: true }
     );
     return fromCents(toCents(reserved));
+  }
+
+  /**
+   * Todos los sobres guardados, el del colchón incluido.
+   *
+   * `savings` es la misma colección de siempre: el colchón **no** se movió de
+   * lugar para que existieran los sobres, porque ya era uno. Ver el doc de
+   * `sobres.ts`. Se lee entera y sin ordenar —son unidades, no miles— y quien
+   * ordena y completa lo que falta es `armarSobres`.
+   */
+  async sobresDocs(): Promise<SobreDoc[]> {
+    const snap = await paths.savings(this.db, this.uid).get();
+    return snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SobreDoc, "id">) }));
+  }
+
+  /**
+   * Crea un sobre. Falla si el id ya existe: quien decide que un nombre choca
+   * es `planCrearSobre`, y esta guarda es la que cierra la carrera entre dos
+   * pestañas que lo crean a la vez (`create` es atómico en Firestore, un
+   * `set` con merge no).
+   */
+  async crearSobre(plan: SobreNuevo, now: Date): Promise<void> {
+    await paths.savings(this.db, this.uid).doc(plan.id).create({
+      label: plan.nombre,
+      reservedCents: plan.montoCents,
+      targetCents: plan.objetivoCents,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+  }
+
+  /**
+   * Escribe los campos que el ajuste tocó y ninguno más. El objetivo del
+   * colchón NO se escribe acá —vive en `config/strategy`, y ése es el que el
+   * safe-to-spend lee—: el router lo manda a `writeStrategyConfig`.
+   */
+  async actualizarSobre(
+    id: string,
+    campos: { nombre?: string; montoCents?: number; objetivoCents?: number | null },
+    now: Date
+  ): Promise<void> {
+    const patch: Record<string, unknown> = { updatedAt: now.toISOString() };
+    if (campos.nombre !== undefined) patch.label = campos.nombre;
+    if (campos.montoCents !== undefined) patch.reservedCents = campos.montoCents;
+    if (campos.objetivoCents !== undefined) patch.targetCents = campos.objetivoCents;
+    await paths.savings(this.db, this.uid).doc(id).set(patch, { merge: true });
   }
 
   /**

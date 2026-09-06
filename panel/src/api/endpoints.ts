@@ -38,6 +38,8 @@ import type {
   RecurringResponse,
   ReviewAction,
   ReviewResolveResponse,
+  SobreWriteResponse,
+  SobresResponse,
   SyncResponse,
   SyncStatusResponse,
   TransactionsListResponse,
@@ -435,4 +437,65 @@ export function postProfile(patch: {
 /** El análisis del historial (H30). Es un GET: propone, no guarda. */
 export function fetchRecurring(): Promise<RecurringResponse> {
   return getJSON<RecurringResponse>("onboarding.recurring", "/api/onboarding/recurring");
+}
+
+/* ==========================================================================
+ * Sobres. Tres llamadas y ninguna cuenta: la lista, el alta y el ajuste.
+ *
+ * `ajustarSobre` es el primer `PATCH` del panel, y va por su propia función en
+ * vez de ensanchar `postJSON` con un verbo: los dos errores que devuelve son
+ * códigos del motor (`sobre_duplicado`, `monto_negativo`, `sobre_del_sistema`)
+ * y viajan igual que los de la cola — en `ErrorDelMotor`, con el código intacto,
+ * porque la pantalla muestra el motivo y no un rojo genérico.
+ * ========================================================================== */
+
+async function escribirJSON<T>(op: string, metodo: "POST" | "PATCH", path: string, body: unknown): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    const res = await apiFetch(path, {
+      method: metodo,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const parsed = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    if (!res.ok) {
+      throw new ErrorDelMotor(parsed?.error ?? `${res.status} ${res.statusText}`, res.status);
+    }
+    logOutcome(op, startedAt, "ok");
+    return parsed as T;
+  } catch (err) {
+    // Ni el nombre del sobre ni su monto entran al log: son datos de la
+    // persona, igual que una contraparte (CLAUDE.md, telemetría).
+    logOutcome(op, startedAt, "error", {
+      message: err instanceof ErrorDelMotor ? err.codigo : err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+}
+
+/** Cuánto hay en cada sobre. El del colchón viene siempre, exista o no su
+ * documento: un colchón sin reservar es cero, no un colchón que falta. */
+export function fetchSobres(): Promise<SobresResponse> {
+  return getJSON<SobresResponse>("sobres.list", "/api/sobres");
+}
+
+/** Crea un sobre. Sin `monto` arranca en cero — no se inventa un saldo. */
+export function crearSobre(entrada: {
+  nombre: string;
+  monto?: number;
+  objetivo?: number | null;
+}): Promise<SobreWriteResponse> {
+  return escribirJSON<SobreWriteResponse>("sobres.create", "POST", "/api/sobres", entrada);
+}
+
+/**
+ * Ajusta un sobre. `aporte` y `monto` son excluyentes y responden a dos
+ * preguntas distintas: *"metí 200"* y *"quedaron 900"*. Mandar las dos es una
+ * contradicción y el motor la rechaza — el panel no elige por el usuario.
+ */
+export function ajustarSobre(
+  id: string,
+  patch: { nombre?: string; monto?: number; aporte?: number; objetivo?: number | null }
+): Promise<SobreWriteResponse> {
+  return escribirJSON<SobreWriteResponse>("sobres.update", "PATCH", `/api/sobres/${encodeURIComponent(id)}`, patch);
 }

@@ -123,6 +123,33 @@ export const reviewResolveBodySchema = z.object({
 });
 
 /**
+ * POST /sobres y PATCH /sobres/:id.
+ *
+ * Acá se valida **la forma y nada más**, como en todo este archivo: que el
+ * nombre no choque con otro sobre, que un retiro no deje el sobre en negativo y
+ * que nadie cree un segundo colchón lo decide `ledger/sobres.ts`. Por eso el
+ * largo del nombre tampoco se comprueba dos veces: el máximo vive en el motor
+ * (`MAX_NOMBRE`) y el esquema sólo exige que haya algo escrito.
+ *
+ * `objetivo` acepta `null` explícito porque borrar el objetivo es una acción
+ * ("ya no mido este sobre") y no se puede expresar omitiendo el campo, que es
+ * lo que significa "no lo toques".
+ */
+export const sobreCrearBodySchema = z.object({
+  nombre: z.string().min(1),
+  monto: z.number().finite().nonnegative().optional(),
+  objetivo: z.number().finite().nonnegative().nullable().optional(),
+});
+
+export const sobreAjustarBodySchema = z.object({
+  nombre: z.string().min(1).optional(),
+  monto: z.number().finite().nonnegative().optional(),
+  /** Negativo es un retiro. El único campo de plata del API que lo admite. */
+  aporte: z.number().finite().optional(),
+  objetivo: z.number().finite().nonnegative().nullable().optional(),
+});
+
+/**
  * POST /onboarding/profile.
  *
  * Los dos campos son opcionales porque la escritura es parcial: el colchón se

@@ -8,23 +8,27 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function montar(pantalla: "resumen" | "preguntas" | "movimientos" = "resumen") {
+function montar(pantalla: "resumen" | "preguntas" | "movimientos" | "sobres" = "resumen") {
   return mount(AppShell, { props: { pantalla } });
 }
 
 describe("la navegación recortada", () => {
-  it("son tres, y son estas tres", () => {
+  it("son cuatro, y son estas cuatro", () => {
     const enlaces = montar().findAll('[data-testid="nav"] a');
-    expect(enlaces.map((a) => a.text())).toEqual(["Resumen", "Preguntas", "Movimientos"]);
+    expect(enlaces.map((a) => a.text())).toEqual(["Resumen", "Preguntas", "Movimientos", "Sobres"]);
   });
 
   /**
-   * El sistema dibuja nueve enlaces. Los otros seis no están y no es un
+   * El sistema dibuja nueve enlaces. Los otros cinco no están y no es un
    * olvido: lo que no tiene backend, o no entra al MVP, no se dibuja.
+   *
+   * `Ahorro` salió de esta lista: es la pantalla `p9-ahorro.html`, y entró —con
+   * el nombre que le pone quien la usa, *Sobres*— cuando dejó de ser una
+   * promesa. La regla no cambió; cambió de qué lado de ella está esa pantalla.
    */
   it("no hay enlace a una pantalla que el MVP no construye", () => {
     const texto = montar().text();
-    for (const ausente of ["Sincronización", "Reglas", "Estrategia", "Ahorro", "Chat", "Configuración"]) {
+    for (const ausente of ["Sincronización", "Reglas", "Estrategia", "Chat", "Configuración"]) {
       expect(texto).not.toContain(ausente);
     }
   });
@@ -33,7 +37,7 @@ describe("la navegación recortada", () => {
     const hrefs = montar()
       .findAll('[data-testid="nav"] a')
       .map((a) => a.attributes("href"));
-    expect(hrefs).toEqual(["#/resumen", "#/preguntas", "#/movimientos"]);
+    expect(hrefs).toEqual(["#/resumen", "#/preguntas", "#/movimientos", "#/sobres"]);
   });
 
   it("marca la pantalla activa, y sólo una", () => {

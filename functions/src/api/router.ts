@@ -41,12 +41,20 @@ import type { Request } from "firebase-functions/v2/https";
 import type { Response } from "express";
 import { authenticate, AuthError } from "../auth/verify.js";
 import { instanteDesde, instanteHasta } from "../ledger/dates.js";
-import { fromCents, localMonthRange, type TransactionDoc } from "../ledger/derive.js";
+import { fromCents, localMonthRange, toCents, type TransactionDoc } from "../ledger/derive.js";
 import { FirestoreLedger } from "../ledger/firestore-ledger.js";
 import { planWriteProfile, readProfile } from "../ledger/profile.js";
 import { computeProgress, groupUnclassified, type ClassifyGroup } from "../ledger/queue.js";
 import { mesesDeHistorialDe, suggestRecurringExpenses } from "../ledger/recurring.js";
 import { serializeTransaction, toLedgerRow, type LedgerRow } from "../ledger/rows.js";
+import {
+  armarSobres,
+  nombreChoca,
+  planAjustarSobre,
+  planCrearSobre,
+  totalEnSobresCents,
+  type SobreCents,
+} from "../ledger/sobres.js";
 import { categorizedSpendingRows, transferenciasMes } from "../ledger/strategy.js";
 import {
   classifyCounterparty,
@@ -63,6 +71,8 @@ import {
   onboardingProfileBodySchema,
   reviewResolveBodySchema,
   silenceBodySchema,
+  sobreAjustarBodySchema,
+  sobreCrearBodySchema,
   transactionsQuerySchema,
 } from "./schemas.js";
 
@@ -416,6 +426,141 @@ async function postBuffer(ctx: Contexto, body: unknown): Promise<Record<string, 
   return { savings: { label: "colchon", reserved, updated_at: ctx.now.toISOString() } };
 }
 
+/* --- sobres -----------------------------------------------------------------
+ *
+ * El sobre del colchón es el que ya existía (`savings/colchon`), no uno nuevo:
+ * el porqué está en el doc de `ledger/sobres.ts`. Lo que este bloque tiene que
+ * respetar, y por eso las escrituras del colchón se bifurcan, es que su monto y
+ * su objetivo viven donde el motor los lee — `savings/colchon.reservedCents` y
+ * `config/strategy.colchonObjetivo`— y no en campos paralelos que el
+ * safe-to-spend ignoraría.
+ */
+
+/** La lista completa, con la config leída fresca: el objetivo del colchón puede
+ * haber cambiado en la misma petición. */
+async function sobresDe(ctx: Contexto): Promise<SobreCents[]> {
+  const [docs, config] = await Promise.all([ctx.ledger.sobresDocs(), ctx.ledger.strategyConfig()]);
+  return armarSobres(docs, toCents(config.colchonObjetivo));
+}
+
+function serializarSobre(sobre: SobreCents): Record<string, unknown> {
+  return {
+    id: sobre.id,
+    nombre: sobre.nombre,
+    monto: fromCents(sobre.montoCents),
+    // `null` es "sin fijar" y NO cero, igual que `colchon_fijado` en el perfil
+    // (R25): quién decide eso es el motor, no el cliente.
+    objetivo: sobre.objetivoCents === null ? null : fromCents(sobre.objetivoCents),
+    sistema: sobre.sistema,
+    creado_en: sobre.creadoEn,
+    actualizado_en: sobre.actualizadoEn,
+  };
+}
+
+async function getSobres(ctx: Contexto): Promise<Record<string, unknown>> {
+  const sobres = await sobresDe(ctx);
+  return {
+    sobres: sobres.map(serializarSobre),
+    // La suma la hace el motor en centavos enteros: sumar los `monto` ya
+    // convertidos en el cliente es cómo se cuela un céntimo de flotante.
+    total: fromCents(totalEnSobresCents(sobres)),
+    moneda: ctx.moneda,
+  };
+}
+
+/** Los centavos de un campo opcional que además admite `null` (borrar). */
+function centavosOpcionales(valor: number | null | undefined): number | null | undefined {
+  if (valor === undefined) return undefined;
+  return valor === null ? null : toCents(valor);
+}
+
+async function postSobres(ctx: Contexto, body: unknown): Promise<Record<string, unknown>> {
+  const parsed = sobreCrearBodySchema.safeParse(body ?? {});
+  if (!parsed.success) throw malaForma("invalid sobre body", parsed.error.flatten());
+
+  const plan = planCrearSobre(
+    {
+      nombre: parsed.data.nombre,
+      montoCents: parsed.data.monto === undefined ? undefined : toCents(parsed.data.monto),
+      objetivoCents: centavosOpcionales(parsed.data.objetivo),
+    },
+    await sobresDe(ctx)
+  );
+  if (!plan.ok) throw new ErrorHttp(400, { error: plan.error });
+
+  try {
+    await ctx.ledger.crearSobre(plan.plan, ctx.now);
+  } catch (error) {
+    // `create` es atómico: si dos pestañas mandan el mismo sobre a la vez, la
+    // segunda llega acá en vez de pisar la primera. Es un conflicto (409), no
+    // un cuerpo mal formado.
+    if ((error as { code?: number }).code === 6) {
+      throw new ErrorHttp(409, { error: "sobre_duplicado" });
+    }
+    throw error;
+  }
+
+  return {
+    ok: true,
+    sobre: serializarSobre({
+      id: plan.plan.id,
+      nombre: plan.plan.nombre,
+      montoCents: plan.plan.montoCents,
+      objetivoCents: plan.plan.objetivoCents,
+      sistema: false,
+      creadoEn: ctx.now.toISOString(),
+      actualizadoEn: ctx.now.toISOString(),
+    }),
+  };
+}
+
+async function patchSobre(ctx: Contexto, id: string, body: unknown): Promise<Record<string, unknown>> {
+  const parsed = sobreAjustarBodySchema.safeParse(body ?? {});
+  if (!parsed.success) throw malaForma("invalid sobre body", parsed.error.flatten());
+
+  const sobres = await sobresDe(ctx);
+  const actual = sobres.find((sobre) => sobre.id === id);
+  if (actual === undefined) throw new ErrorHttp(404, { error: "sobre_no_existe" });
+
+  const plan = planAjustarSobre(actual, {
+    nombre: parsed.data.nombre,
+    montoCents: parsed.data.monto === undefined ? undefined : toCents(parsed.data.monto),
+    aporteCents: parsed.data.aporte === undefined ? undefined : toCents(parsed.data.aporte),
+    objetivoCents: centavosOpcionales(parsed.data.objetivo),
+  });
+  if (!plan.ok) throw new ErrorHttp(400, { error: plan.error });
+
+  if (plan.plan.nombre !== undefined && nombreChoca(plan.plan.nombre, id, sobres)) {
+    throw new ErrorHttp(400, { error: "sobre_duplicado" });
+  }
+
+  if (plan.plan.sistema) {
+    // Las dos mitades del colchón, cada una donde el motor la lee.
+    if (plan.plan.montoCents !== undefined) {
+      await ctx.ledger.setColchonReservado(fromCents(plan.plan.montoCents), ctx.now);
+    }
+    if (plan.plan.objetivoCents !== undefined) {
+      await ctx.ledger.writeStrategyConfig({
+        colchonObjetivo: fromCents(plan.plan.objetivoCents ?? 0),
+      });
+    }
+  } else {
+    await ctx.ledger.actualizarSobre(id, plan.plan, ctx.now);
+  }
+
+  return {
+    ok: true,
+    sobre: serializarSobre({
+      ...actual,
+      nombre: plan.plan.nombre ?? actual.nombre,
+      montoCents: plan.plan.montoCents ?? actual.montoCents,
+      objetivoCents:
+        plan.plan.objetivoCents === undefined ? actual.objetivoCents : plan.plan.objetivoCents,
+      actualizadoEn: ctx.now.toISOString(),
+    }),
+  };
+}
+
 async function getTransfers(ctx: Contexto): Promise<Record<string, unknown>> {
   const [contables, config] = await Promise.all([
     ctx.ledger.countableRows(),
@@ -427,6 +572,7 @@ async function getTransfers(ctx: Contexto): Promise<Record<string, unknown>> {
 // --- el enrutador ------------------------------------------------------------
 
 const RESOLVE = /^\/review\/(.+)\/resolve$/;
+const SOBRE = /^\/sobres\/(.+)$/;
 
 async function despachar(
   ctx: Contexto,
@@ -438,6 +584,11 @@ async function despachar(
   const resolve = RESOLVE.exec(path);
   if (resolve && method === "POST") {
     return postReviewResolve(ctx, decodeURIComponent(resolve[1] as string), body);
+  }
+
+  const sobre = SOBRE.exec(path);
+  if (sobre && method === "PATCH") {
+    return patchSobre(ctx, decodeURIComponent(sobre[1] as string), body);
   }
 
   const clave = `${method} ${path}`;
@@ -472,6 +623,10 @@ async function despachar(
       return getRecurring(ctx);
     case "POST /buffer":
       return postBuffer(ctx, body);
+    case "GET /sobres":
+      return getSobres(ctx);
+    case "POST /sobres":
+      return postSobres(ctx, body);
     case "GET /transfers":
       return getTransfers(ctx);
     default:
@@ -503,6 +658,9 @@ export const RUTAS: readonly string[] = [
   "POST /onboarding/profile",
   "GET /onboarding/recurring",
   "POST /buffer",
+  "GET /sobres",
+  "POST /sobres",
+  "PATCH /sobres/:id",
   "GET /transfers",
 ];
 

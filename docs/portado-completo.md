@@ -24,10 +24,11 @@ reinterpreta.
 | Categorías | (usada por overview y movimientos) | `category/categorize.ts` | `ledger/categorize.parity.test.ts` | ✅ |
 | Estrategia | `GET /overview`, `GET /transfers`, `POST /buffer` | `strategy/balance.ts`, `strategy/spending.ts`, `strategy/card.ts`, `strategy/calendar.ts`, `strategy/transfers.ts`, `strategy/dates.ts` | `ledger/strategy.parity.test.ts` | ✅ |
 | Perfil y alta | `GET /onboarding/profile`, `POST /onboarding/profile`, `GET /onboarding/recurring` | `onboard/profile.ts`, `onboard/recurring.ts`, `onboard/suggest.ts` | `ledger/recurring.parity.test.ts` | ✅ |
+| Sobres | `GET /sobres`, `POST /sobres`, `PATCH /sobres/:id` | `strategy/sobres.ts` (copia byte a byte) | `ledger/sobres.parity.test.ts` | ✅ |
 
-Son **17 rutas**. `functions/src/api/router.ts` las exporta en `RUTAS` y
+Son **20 rutas**. `functions/src/api/router.ts` las exporta en `RUTAS` y
 `api/router.test.ts` recorre la lista entera contra el emulador: con un token
-válido las diecisiete contestan `200`, sin token las diecisiete contestan `401
+válido las veinte contestan `200`, sin token las veinte contestan `401
 sin_token`, y `/api/lo-que-sea` contesta `404 ruta_desconocida`. El test
 recorre esas rutas escritas **en la forma en que el panel las pide** (`/api/…`)
 y afirma que son tantas como `RUTAS`, así que una ruta agregada de un lado y no

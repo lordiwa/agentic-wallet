@@ -48989,6 +48989,12 @@ CREATE INDEX IF NOT EXISTS idx_transactions_direction ON transactions (direction
 CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions (counterparty);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_ts ON messages (conversation_id, ts);
 CREATE INDEX IF NOT EXISTS idx_review_resolutions_tx ON review_resolutions (transaction_id);
+-- Dos sobres con el mismo id son el mismo sobre escrito dos veces, y la
+-- pregunta "cu\xE1nto tengo en cada uno" deja de tener una respuesta. UNIQUE y no
+-- una comprobaci\xF3n en el c\xF3digo porque dos peticiones simult\xE1neas pasan las
+-- dos por el SELECT antes de que ninguna haya insertado. Las filas viejas
+-- tienen sobre_id NULL y SQLite no las considera duplicadas entre s\xED.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_savings_sobre_id ON savings (sobre_id);
 `;
 function addColumnIfMissing(db, table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -49015,6 +49021,8 @@ function migrate(db) {
   db.exec(CREATE_REVIEW_RESOLUTIONS);
   addColumnIfMissing(db, "transactions", "account_holder", "TEXT");
   addColumnIfMissing(db, "transactions", "is_discarded", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "savings", "sobre_id", "TEXT");
+  addColumnIfMissing(db, "savings", "created_at", "TEXT");
   db.exec(CREATE_INDEXES);
 }
 
@@ -50427,6 +50435,18 @@ var projectionQuerySchema = external_exports.object({
 });
 var bufferBodySchema = external_exports.object({
   reserved: external_exports.number().finite().nonnegative()
+});
+var sobreCrearBodySchema = external_exports.object({
+  nombre: external_exports.string().min(1),
+  monto: external_exports.number().finite().nonnegative().optional(),
+  objetivo: external_exports.number().finite().nonnegative().nullable().optional()
+});
+var sobreAjustarBodySchema = external_exports.object({
+  nombre: external_exports.string().min(1).optional(),
+  monto: external_exports.number().finite().nonnegative().optional(),
+  /** Negativo es un retiro. El único campo de plata del API que lo admite. */
+  aporte: external_exports.number().finite().optional(),
+  objetivo: external_exports.number().finite().nonnegative().nullable().optional()
 });
 var reviewIdParamSchema = external_exports.object({
   id: external_exports.coerce.number().int().positive()

@@ -30,6 +30,7 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 | Categorías de gasto | `server/src/category/` |
 | La cola de clasificación, su escritor y el silenciador | `server/src/classify/` — ver `docs/plan-final-mvp.md` §N1 |
 | Saldo, sueldo, deudas, colchón, calendario | `server/src/strategy/` |
+| Sobres (el colchón es uno de ellos) | `server/src/strategy/sobres.ts` — ver `docs/sobres.md` |
 | Qué significa "hoy" / "este mes" | `server/src/strategy/dates.ts` |
 | El chat sobre el historial | `server/src/chat/` |
 | Configuración guiada | `server/src/onboard/` — ver `docs/onboarding.md` |

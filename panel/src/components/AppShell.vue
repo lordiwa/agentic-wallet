@@ -8,11 +8,15 @@
  * Los valores exactos están en `styles/tokens.css`, que es el único archivo
  * del panel donde se escribe un color.
  *
- * **La navegación se recorta a tres.** El sistema dibuja nueve enlaces
+ * **La navegación se recorta a cuatro.** El sistema dibuja nueve enlaces
  * (Sincronización, Reglas, Estrategia, Ahorro, Chat, Configuración entre
- * ellos); acá hay Resumen, Preguntas y Movimientos, y no es una omisión
+ * ellos); acá hay Resumen, Preguntas, Movimientos y Sobres, y no es una omisión
  * temporal: lo que no tiene backend, o no entra al MVP, no se dibuja. Un enlace
  * a una pantalla que no existe es una promesa que la interfaz no puede cumplir.
+ *
+ * Sobres es la cuarta por esa misma regla y no por una excepción: es la
+ * pantalla `Ahorro` del sistema (`p9-ahorro.html`), y entró cuando dejó de ser
+ * una promesa — el motor ya sabe cuánto hay en cada sobre y sabe crear uno.
  *
  * Sincronización tampoco está, y por otra razón: existe, pero no como pantalla.
  * El ciclo entero vive adentro del chip del Resumen.
@@ -27,11 +31,12 @@ import { toHash, type Pantalla } from "../router/ruta";
 
 const props = defineProps<{ pantalla: Pantalla }>();
 
-/** Las tres del MVP, en el orden en que se usan. */
+/** Las del MVP, en el orden en que se usan. */
 const ENLACES: { pantalla: Pantalla; texto: string }[] = [
   { pantalla: "resumen", texto: "Resumen" },
   { pantalla: "preguntas", texto: "Preguntas" },
   { pantalla: "movimientos", texto: "Movimientos" },
+  { pantalla: "sobres", texto: "Sobres" },
 ];
 
 const enlaces = computed(() =>

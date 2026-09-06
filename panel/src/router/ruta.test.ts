@@ -15,16 +15,18 @@ describe("parseHash", () => {
   });
 
   it("una pantalla que no existe no es un error: es el hogar", () => {
-    // Las pantallas que el MVP no construye (estrategia, ahorro, chat, reglas)
-    // no tienen enlace, pero alguien puede escribir la URL a mano.
+    // Las pantallas que el MVP no construye (estrategia, chat, reglas) no
+    // tienen enlace, pero alguien puede escribir la URL a mano. `ahorro` ya no
+    // está en esa lista: existe, y se llama `sobres`.
     expect(parseHash("#/estrategia")).toEqual(RUTA_INICIAL);
     expect(parseHash("#/../etc")).toEqual(RUTA_INICIAL);
   });
 
-  it("lee las tres pantallas del MVP", () => {
+  it("lee las cuatro pantallas del MVP", () => {
     expect(parseHash("#/resumen").pantalla).toBe("resumen");
     expect(parseHash("#/preguntas").pantalla).toBe("preguntas");
     expect(parseHash("#/movimientos").pantalla).toBe("movimientos");
+    expect(parseHash("#/sobres").pantalla).toBe("sobres");
   });
 
   it("el contexto del destino viaja en la query", () => {

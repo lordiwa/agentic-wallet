@@ -41,7 +41,12 @@ export function applyCors(req: Request, res: Response, allowed: readonly string[
     res.set("Access-Control-Allow-Origin", origin);
     res.set("Vary", "Origin");
     res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    // Los cuatro verbos que el router despacha. `DELETE` faltaba desde que
+    // existe `DELETE /classify/silence`: en el mismo origen (que es como se
+    // sirve el panel publicado) no se nota, porque no hay preflight, pero un
+    // panel apuntado a otro host con `?api=` recibía el rechazo del navegador
+    // y no del backend, que es la clase de fallo que nadie sabe dónde buscar.
+    res.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     res.set("Access-Control-Max-Age", "3600");
   }
   if (req.method === "OPTIONS") {

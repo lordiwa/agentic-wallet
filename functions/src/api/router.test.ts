@@ -159,6 +159,11 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
     { method: "POST", path: "/api/onboarding/profile", body: { colchon_objetivo: 600 } },
     { method: "GET", path: "/api/onboarding/recurring" },
     { method: "POST", path: "/api/buffer", body: { reserved: 120 } },
+    { method: "GET", path: "/api/sobres" },
+    { method: "POST", path: "/api/sobres", body: { nombre: "Viaje" } },
+    // El colchón sirve para el humo porque es el único sobre que existe
+    // siempre, en cualquier tenant: no hace falta crear nada antes.
+    { method: "PATCH", path: "/api/sobres/colchon", body: { aporte: 10 } },
     { method: "GET", path: "/api/transfers" },
   ];
 
@@ -167,9 +172,9 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
    * panel pedía y el backend decía "todavía no". La lista de arriba es la que
    * `panel/src/api/endpoints.ts` consume, y este test la recorre entera.
    */
-  it("las diecisiete rutas del panel existen y ninguna contesta 501", async () => {
+  it("las veinte rutas del panel existen y ninguna contesta 501", async () => {
     expect(DEL_PANEL).toHaveLength(RUTAS.length);
-    // En su propio tenant: seis de las diecisiete ESCRIBEN, y correrlas sobre el
+    // En su propio tenant: ocho de las veinte ESCRIBEN, y correrlas sobre el
     // ledger compartido dejaría a los tests de abajo mirando un estado que este
     // test acaba de mover (la cola de revisión vacía, una regla escrita).
     const solo = uidDePrueba("api-humo");
@@ -249,6 +254,196 @@ describe.skipIf(!hayEmulador)("la funcion api contra el emulador", () => {
     const estado = await llamar({ path: "/api/review" });
     const filas = (estado.body as { transactions: { id: string; gmail_msg_id: string }[] }).transactions;
     expect(filas[0]!.id).toBe(filas[0]!.gmail_msg_id);
+  });
+
+  /* --- sobres ---------------------------------------------------------------
+   *
+   * Lo que este bloque custodia no son las cifras —ésas las prueba
+   * `ledger/sobres.test.ts`— sino las dos cosas que sólo se ven de punta a
+   * punta: que el sobre del colchón sea EL colchón (el mismo que el resumen
+   * descuenta, no una copia), y que un sobre nuevo no le mueva una cifra a
+   * nadie.
+   */
+  describe("sobres", () => {
+    /** Cada test con su tenant: todos escriben. */
+    async function conTenant<T>(fn: (uid: string) => Promise<T>): Promise<T> {
+      const solo = uidDePrueba("sobres");
+      await sembrarEnFirestore(handle!.db, solo, LEDGER);
+      try {
+        return await fn(solo);
+      } finally {
+        await limpiarTenant(handle!.db, solo);
+      }
+    }
+
+    interface SobreHttp {
+      id: string;
+      nombre: string;
+      monto: number;
+      objetivo: number | null;
+      sistema: boolean;
+    }
+
+    it("el sobre del colchon ES el colchon: los mismos dos numeros que el overview", async () => {
+      await conTenant(async (solo) => {
+        const estado = await llamar({ path: "/api/sobres" }, solo);
+        const { sobres, total, moneda } = estado.body as {
+          sobres: SobreHttp[];
+          total: number;
+          moneda: string;
+        };
+
+        expect(sobres[0]).toMatchObject({
+          id: "colchon",
+          nombre: "Emergencia",
+          sistema: true,
+          // Los del LEDGER de arriba: reservado 100, objetivo 500.
+          monto: 100,
+          objetivo: 500,
+        });
+        expect(total).toBe(100);
+        expect(moneda).toBe("USD");
+
+        const overview = await llamar({ path: "/api/overview" }, solo);
+        const buffer = (overview.body as { buffer_status: { reservado: number; objetivo: number } })
+          .buffer_status;
+        expect({ monto: buffer.reservado, objetivo: buffer.objetivo }).toEqual({
+          monto: sobres[0]!.monto,
+          objetivo: sobres[0]!.objetivo,
+        });
+      });
+    });
+
+    it("un aporte al colchon mueve el safe-to-spend; uno a otro sobre NO", async () => {
+      await conTenant(async (solo) => {
+        const inicial = (
+          (await llamar({ path: "/api/overview" }, solo)).body as { safe_to_spend_hoy: number }
+        ).safe_to_spend_hoy;
+
+        await llamar({ method: "POST", path: "/api/sobres", body: { nombre: "Viaje", monto: 300 } }, solo);
+        const conSobre = (
+          (await llamar({ path: "/api/overview" }, solo)).body as { safe_to_spend_hoy: number }
+        ).safe_to_spend_hoy;
+        // Un sobre nuevo es contabilidad: no hay plata que se haya movido.
+        expect(conSobre).toBe(inicial);
+
+        await llamar({ method: "PATCH", path: "/api/sobres/colchon", body: { aporte: 300 } }, solo);
+        const conColchon = (
+          (await llamar({ path: "/api/overview" }, solo)).body as { safe_to_spend_hoy: number }
+        ).safe_to_spend_hoy;
+        // El colchón sí: es el piso que el motor descuenta.
+        expect(conColchon).toBeLessThan(inicial);
+      });
+    });
+
+    it("crear un sobre lo deja en la lista, con su monto y su total", async () => {
+      await conTenant(async (solo) => {
+        const creado = await llamar(
+          { method: "POST", path: "/api/sobres", body: { nombre: "FlexiAhorro", monto: 1105.73, objetivo: 2000 } },
+          solo
+        );
+        expect(creado.status).toBe(200);
+        expect((creado.body as { sobre: SobreHttp }).sobre).toMatchObject({
+          id: "flexiahorro",
+          nombre: "FlexiAhorro",
+          monto: 1105.73,
+          objetivo: 2000,
+          sistema: false,
+        });
+
+        const lista = (await llamar({ path: "/api/sobres" }, solo)).body as {
+          sobres: SobreHttp[];
+          total: number;
+        };
+        expect(lista.sobres.map((s) => s.id)).toEqual(["colchon", "flexiahorro"]);
+        expect(lista.total).toBe(1205.73);
+      });
+    });
+
+    it("el mismo sobre dos veces es un rechazo, no un segundo sobre", async () => {
+      await conTenant(async (solo) => {
+        await llamar({ method: "POST", path: "/api/sobres", body: { nombre: "Viaje a Perú" } }, solo);
+        const repetido = await llamar(
+          { method: "POST", path: "/api/sobres", body: { nombre: "viaje a peru" } },
+          solo
+        );
+        expect(repetido.status).toBe(400);
+        expect((repetido.body as { error: string }).error).toBe("sobre_duplicado");
+      });
+    });
+
+    it("nadie crea un segundo colchon llamandolo Emergencia", async () => {
+      await conTenant(async (solo) => {
+        const estado = await llamar(
+          { method: "POST", path: "/api/sobres", body: { nombre: "Emergencia" } },
+          solo
+        );
+        expect(estado.status).toBe(400);
+        expect((estado.body as { error: string }).error).toBe("sobre_reservado");
+      });
+    });
+
+    it("el objetivo del colchon se escribe donde el motor lo lee", async () => {
+      await conTenant(async (solo) => {
+        await llamar({ method: "PATCH", path: "/api/sobres/colchon", body: { objetivo: 800 } }, solo);
+        // No en `savings/colchon.targetCents`: en el perfil, que es de donde
+        // salen `colchon_objetivo` y `colchon_fijado`.
+        const perfil = (await llamar({ path: "/api/onboarding/profile" }, solo)).body as {
+          colchon_objetivo: number;
+          colchon_fijado: boolean;
+        };
+        expect(perfil).toMatchObject({ colchon_objetivo: 800, colchon_fijado: true });
+      });
+    });
+
+    it("renombrar y retirar de un sobre propio; el colchon no se renombra", async () => {
+      await conTenant(async (solo) => {
+        await llamar({ method: "POST", path: "/api/sobres", body: { nombre: "Viaje", monto: 100 } }, solo);
+
+        const ajustado = await llamar(
+          { method: "PATCH", path: "/api/sobres/viaje", body: { nombre: "Viaje largo", aporte: -40 } },
+          solo
+        );
+        expect((ajustado.body as { sobre: SobreHttp }).sobre).toMatchObject({
+          id: "viaje",
+          nombre: "Viaje largo",
+          monto: 60,
+        });
+
+        const vaciado = await llamar(
+          { method: "PATCH", path: "/api/sobres/viaje", body: { aporte: -100 } },
+          solo
+        );
+        expect(vaciado.status).toBe(400);
+        expect((vaciado.body as { error: string }).error).toBe("monto_negativo");
+
+        const colchon = await llamar(
+          { method: "PATCH", path: "/api/sobres/colchon", body: { nombre: "Vacaciones" } },
+          solo
+        );
+        expect(colchon.status).toBe(400);
+        expect((colchon.body as { error: string }).error).toBe("sobre_del_sistema");
+      });
+    });
+
+    it("ajustar un sobre que no existe es 404, no un sobre nuevo", async () => {
+      await conTenant(async (solo) => {
+        const estado = await llamar(
+          { method: "PATCH", path: "/api/sobres/no-existe", body: { aporte: 10 } },
+          solo
+        );
+        expect(estado.status).toBe(404);
+        expect((estado.body as { error: string }).error).toBe("sobre_no_existe");
+      });
+    });
+
+    it("los sobres son de su dueno y de nadie mas", async () => {
+      await conTenant(async (solo) => {
+        await llamar({ method: "POST", path: "/api/sobres", body: { nombre: "Secreto" } }, solo);
+        const ajeno = (await llamar({ path: "/api/sobres" }, otro)).body as { sobres: SobreHttp[] };
+        expect(ajeno.sobres.map((s) => s.id)).toEqual(["colchon"]);
+      });
+    });
   });
 
   it("un cuerpo mal formado es 400 con el detalle, no un 500", async () => {

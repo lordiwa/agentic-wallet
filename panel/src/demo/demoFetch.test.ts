@@ -265,3 +265,71 @@ describe("GET /api/transactions con lo que la pantalla de Movimientos pide", () 
     expect([...fechas].sort((a, b) => (a < b ? 1 : -1))).toEqual(fechas);
   });
 });
+
+/**
+ * Sobres en la demo. Lo que hay que custodiar acá es lo mismo que en el motor:
+ * **el sobre de Emergencia es el colchón**. Si la demo lo tratara como uno más,
+ * la pantalla se vería coherente sin datos reales y rota con ellos.
+ */
+describe("sobres", () => {
+  interface SobreDemo {
+    id: string;
+    nombre: string;
+    monto: number;
+    objetivo: number | null;
+    sistema: boolean;
+  }
+  interface ListaDemo {
+    sobres: SobreDemo[];
+    total: number;
+    moneda: string;
+  }
+
+  function escribir(path: string, metodo: "POST" | "PATCH", body: unknown) {
+    return demoFetch(path, { method: metodo, body: JSON.stringify(body) });
+  }
+
+  it("el colchon esta siempre y es el mismo del overview", async () => {
+    const lista = await json<ListaDemo>("/api/sobres");
+    const overview = await json<{ buffer_status: { reservado: number } }>("/api/overview");
+    expect(lista.sobres[0]).toMatchObject({ id: "colchon", nombre: "Emergencia", sistema: true });
+    expect(lista.sobres[0].monto).toBe(overview.buffer_status.reservado);
+  });
+
+  it("ajustar el sobre de Emergencia mueve el colchon del Resumen", async () => {
+    const antes = (await json<ListaDemo>("/api/sobres")).sobres[0].monto;
+    await escribir("/api/sobres/colchon", "PATCH", { aporte: 25 });
+    const overview = await json<{ buffer_status: { reservado: number } }>("/api/overview");
+    expect(overview.buffer_status.reservado).toBe(antes + 25);
+    // Y se devuelve al estado anterior: el módulo guarda estado entre tests.
+    await escribir("/api/sobres/colchon", "PATCH", { aporte: -25 });
+  });
+
+  it("crear un sobre lo deja en la lista y suma al total", async () => {
+    const antes = await json<ListaDemo>("/api/sobres");
+    const res = await escribir("/api/sobres", "POST", { nombre: "Viaje", monto: 40 });
+    expect(res.status).toBe(200);
+
+    const despues = await json<ListaDemo>("/api/sobres");
+    expect(despues.sobres.map((s) => s.id)).toContain("viaje");
+    expect(despues.total).toBe(antes.total + 40);
+  });
+
+  it("nadie crea un segundo colchon, ni con tildes ni repitiendo un nombre", async () => {
+    expect((await escribir("/api/sobres", "POST", { nombre: "Emergencia" })).status).toBe(400);
+    await escribir("/api/sobres", "POST", { nombre: "Regalos" });
+    const repetido = await escribir("/api/sobres", "POST", { nombre: "regalos" });
+    expect(repetido.status).toBe(400);
+    expect(((await repetido.json()) as { error: string }).error).toBe("sobre_duplicado");
+  });
+
+  it("no se puede sacar mas de lo que hay, y el colchon no se renombra", async () => {
+    await escribir("/api/sobres", "POST", { nombre: "Chico", monto: 10 });
+    const vaciado = await escribir("/api/sobres/chico", "PATCH", { aporte: -11 });
+    expect(vaciado.status).toBe(400);
+    expect(((await vaciado.json()) as { error: string }).error).toBe("monto_negativo");
+
+    const renombrado = await escribir("/api/sobres/colchon", "PATCH", { nombre: "Vacaciones" });
+    expect(renombrado.status).toBe(400);
+  });
+});

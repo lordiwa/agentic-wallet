@@ -24,6 +24,17 @@ import { z } from "zod";
 import { buildDailyBrief } from "../brief/build-brief.js";
 import type { Category } from "../category/categorize.js";
 import { markDebtPaid, updateBufferReserved } from "./mutations.js";
+import { insertSobre, listSobreRows, updateSobre } from "../db/sobres.js";
+import { getStrategyConfig, setStrategyConfig } from "../db/strategy-config.js";
+import { fromCents, toCents } from "../strategy/money.js";
+import {
+  armarSobres,
+  nombreChoca,
+  planAjustarSobre,
+  planCrearSobre,
+  totalEnSobresCents,
+  type SobreCents,
+} from "../strategy/sobres.js";
 import {
   countTransactions,
   getBalanceSnapshot,
@@ -44,6 +55,8 @@ import {
   reviewIdParamSchema,
   reviewResolveBodySchema,
   silenceBodySchema,
+  sobreAjustarBodySchema,
+  sobreCrearBodySchema,
   transactionsQuerySchema,
 } from "./schemas.js";
 import {
@@ -411,6 +424,154 @@ export function createApiRouter(getDb: () => Database.Database, options: ApiRout
     }
     const savings = updateBufferReserved(getDb(), parsed.data.reserved);
     res.json({ savings });
+  });
+
+  /* --- sobres ---------------------------------------------------------------
+   *
+   * El mismo contrato que sirven las funciones (`functions/src/api/router.ts`):
+   * el panel es uno solo y no puede tener dos formas de preguntar lo mismo. Y
+   * la misma decisión: **el sobre del colchón es la fila del colchón**, así que
+   * su monto se escribe por `updateBufferReserved` y su objetivo por
+   * `setStrategyConfig`, que son los dos lugares de donde el motor ya los lee.
+   * Un `target` paralelo en `savings` sería un objetivo que la pantalla muestra
+   * y el safe-to-spend ignora.
+   */
+
+  function sobresDe(db: Database.Database): SobreCents[] {
+    return armarSobres(listSobreRows(db), toCents(getStrategyConfig(db).colchonObjetivo));
+  }
+
+  function serializarSobre(sobre: SobreCents) {
+    return {
+      id: sobre.id,
+      nombre: sobre.nombre,
+      monto: fromCents(sobre.montoCents),
+      // `null` es "sin fijar" y NO cero (R25): quién decide eso es el motor.
+      objetivo: sobre.objetivoCents === null ? null : fromCents(sobre.objetivoCents),
+      sistema: sobre.sistema,
+      creado_en: sobre.creadoEn,
+      actualizado_en: sobre.actualizadoEn,
+    };
+  }
+
+  /** Los centavos de un campo opcional que además admite `null` (borrar). */
+  function centavosOpcionales(valor: number | null | undefined): number | null | undefined {
+    if (valor === undefined) return undefined;
+    return valor === null ? null : toCents(valor);
+  }
+
+  router.get("/sobres", (_req, res) => {
+    const db = getDb();
+    const sobres = sobresDe(db);
+    res.json({
+      sobres: sobres.map(serializarSobre),
+      // En centavos enteros: sumar los montos ya convertidos es cómo se cuela
+      // un céntimo de flotante.
+      total: fromCents(totalEnSobresCents(sobres)),
+      moneda: getStrategyConfig(db).moneda,
+    });
+  });
+
+  router.post("/sobres", (req, res) => {
+    const parsed = sobreCrearBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid sobre body", details: parsed.error.flatten() });
+      return;
+    }
+    const db = getDb();
+    const plan = planCrearSobre(
+      {
+        nombre: parsed.data.nombre,
+        montoCents: parsed.data.monto === undefined ? undefined : toCents(parsed.data.monto),
+        objetivoCents: centavosOpcionales(parsed.data.objetivo),
+      },
+      sobresDe(db)
+    );
+    if (!plan.ok) {
+      res.status(400).json({ error: plan.error });
+      return;
+    }
+
+    const ahora = new Date().toISOString();
+    try {
+      insertSobre(db, plan.plan, ahora);
+    } catch (error) {
+      // El índice único es el que decide, no el SELECT de arriba: dos
+      // peticiones simultáneas lo pasan las dos. Es un conflicto (409).
+      if (String((error as Error).message).includes("UNIQUE")) {
+        res.status(409).json({ error: "sobre_duplicado" });
+        return;
+      }
+      throw error;
+    }
+
+    res.json({
+      ok: true,
+      sobre: serializarSobre({
+        id: plan.plan.id,
+        nombre: plan.plan.nombre,
+        montoCents: plan.plan.montoCents,
+        objetivoCents: plan.plan.objetivoCents,
+        sistema: false,
+        creadoEn: ahora,
+        actualizadoEn: ahora,
+      }),
+    });
+  });
+
+  router.patch("/sobres/:id", (req, res) => {
+    const parsed = sobreAjustarBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid sobre body", details: parsed.error.flatten() });
+      return;
+    }
+    const db = getDb();
+    const id = req.params.id as string;
+    const sobres = sobresDe(db);
+    const actual = sobres.find((sobre) => sobre.id === id);
+    if (actual === undefined) {
+      res.status(404).json({ error: "sobre_no_existe" });
+      return;
+    }
+
+    const plan = planAjustarSobre(actual, {
+      nombre: parsed.data.nombre,
+      montoCents: parsed.data.monto === undefined ? undefined : toCents(parsed.data.monto),
+      aporteCents: parsed.data.aporte === undefined ? undefined : toCents(parsed.data.aporte),
+      objetivoCents: centavosOpcionales(parsed.data.objetivo),
+    });
+    if (!plan.ok) {
+      res.status(400).json({ error: plan.error });
+      return;
+    }
+    if (plan.plan.nombre !== undefined && nombreChoca(plan.plan.nombre, id, sobres)) {
+      res.status(400).json({ error: "sobre_duplicado" });
+      return;
+    }
+
+    const ahora = new Date().toISOString();
+    if (plan.plan.sistema) {
+      if (plan.plan.montoCents !== undefined) {
+        updateBufferReserved(db, fromCents(plan.plan.montoCents));
+      }
+      if (plan.plan.objetivoCents !== undefined) {
+        setStrategyConfig(db, { colchonObjetivo: fromCents(plan.plan.objetivoCents ?? 0) });
+      }
+    } else {
+      updateSobre(db, id, plan.plan, ahora);
+    }
+
+    res.json({
+      ok: true,
+      sobre: serializarSobre({
+        ...actual,
+        nombre: plan.plan.nombre ?? actual.nombre,
+        montoCents: plan.plan.montoCents ?? actual.montoCents,
+        objetivoCents:
+          plan.plan.objetivoCents === undefined ? actual.objetivoCents : plan.plan.objetivoCents,
+        actualizadoEn: ahora,
+      }),
+    });
   });
 
   return router;

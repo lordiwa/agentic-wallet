@@ -33,6 +33,7 @@ import Inicio from "./views/Inicio.vue";
 import Movimientos from "./views/Movimientos.vue";
 import Preguntas from "./views/Preguntas.vue";
 import Resumen from "./views/Resumen.vue";
+import Sobres from "./views/Sobres.vue";
 import { probeHealth } from "./api/client";
 import type { DiagnosticoConexion } from "./api/client";
 import { provideRefresh } from "./composables/useRefresh";
@@ -120,6 +121,9 @@ onMounted(async () => {
     <!-- La vuelta de Google (`RUTA_EXITO` del callback). Tampoco está en la
          barra: no se navega, se aterriza. -->
     <Conectado v-else-if="ruta.pantalla === 'conectado'" />
+    <!-- Sobres: la cuarta de la barra. Sin `key` porque no tiene contexto de
+         destino — se entra siempre al mismo lugar. -->
+    <Sobres v-else-if="ruta.pantalla === 'sobres'" />
     <!-- Movimientos (N5). La `key` remonta cuando cambia la categoría: tocar
          otra barra del gráfico estando ya acá tiene que traer la lista de esa
          barra, no dejar la anterior en pantalla. -->

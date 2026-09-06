@@ -236,6 +236,14 @@ export async function demoFetch(path: string, init?: RequestInit): Promise<Respo
 
   if (pathname.startsWith("/api/chat")) return chatStreamResponse();
 
+  if (pathname === "/api/sobres") {
+    return method === "POST" ? demoCrearSobre(init) : jsonResponse(demoListaDeSobres());
+  }
+
+  if (pathname.startsWith("/api/sobres/") && method === "PATCH") {
+    return demoAjustarSobre(decodeURIComponent(pathname.slice("/api/sobres/".length)), init);
+  }
+
   return jsonResponse({ error: "not found" }, 404);
 }
 
@@ -571,7 +579,11 @@ const demoPerfil = { dias_pago: [] as string[], colchon_objetivo: 0 };
  */
 function demoBufferStatus() {
   const objetivo = demoPerfil.colchon_objetivo;
-  const reservado = DEMO_OVERVIEW.buffer_status.reservado;
+  // Mutable desde N6: ajustar el sobre de Emergencia tiene que mover esta
+  // cifra, porque es la MISMA. Si la demo la dejara constante, la pantalla de
+  // sobres se vería coherente acá y no con datos reales, que es exactamente lo
+  // que el modo demostración no puede hacer.
+  const reservado = demoColchonReservado;
   return {
     objetivo,
     reservado,
@@ -752,4 +764,143 @@ function demoTransactions(path: string): Response {
 
   const pagina = filtradas.slice(offset, offset + limit).map(fullRow);
   return jsonResponse({ transactions: pagina, count: pagina.length });
+}
+
+/* ==========================================================================
+ * N6 — sobres en la demo.
+ *
+ * Dos reglas gobiernan este bloque y las dos son del encabezado del archivo:
+ * nombres ficticios, y **lo que se ve acá tiene que poder pasar de verdad**.
+ * Por eso el sobre de Emergencia no es un elemento más de una lista inventada:
+ * es el colchón, sale del mismo `demoColchonReservado` que `demoBufferStatus`, y
+ * ajustarlo mueve el Resumen igual que en el motor. Si acá fuera un sobre
+ * aparte, la demo enseñaría un modelo que el backend no tiene.
+ *
+ * La demo arranca **sin sobres propios**: cuáles tiene una persona lo decide
+ * ella (CLAUDE.md regla 3). Lo que se muestra es cómo se crean.
+ * ========================================================================== */
+
+interface SobreDemo {
+  id: string;
+  nombre: string;
+  monto: number;
+  objetivo: number | null;
+  creado_en: string;
+  actualizado_en: string;
+}
+
+let demoColchonReservado = DEMO_OVERVIEW.buffer_status.reservado;
+const demoSobres: SobreDemo[] = [];
+
+/** Las mismas dos normalizaciones que el motor (`strategy/sobres.ts`): sin
+ * tildes ni mayúsculas para comparar, y con guiones para el id. */
+function demoNormalizar(nombre: string): string {
+  return nombre
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function demoId(nombre: string): string {
+  return demoNormalizar(nombre)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function demoSobreColchon() {
+  return {
+    id: "colchon",
+    nombre: "Emergencia",
+    monto: demoColchonReservado,
+    // R25 en la demo también: un objetivo en cero es SIN FIJAR, y viaja `null`.
+    objetivo: demoPerfil.colchon_objetivo > 0 ? demoPerfil.colchon_objetivo : null,
+    sistema: true,
+    creado_en: null,
+    actualizado_en: null,
+  };
+}
+
+function demoListaDeSobres() {
+  const propios = [...demoSobres]
+    .sort((a, b) => b.monto - a.monto || a.nombre.localeCompare(b.nombre, "es"))
+    .map((sobre) => ({ ...sobre, sistema: false }));
+  const sobres = [demoSobreColchon(), ...propios];
+  return {
+    sobres,
+    total: sobres.reduce((suma, sobre) => suma + sobre.monto, 0),
+    moneda: "USD",
+  };
+}
+
+async function demoCrearSobre(init?: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    nombre?: string;
+    monto?: number;
+    objetivo?: number | null;
+  };
+  const nombre = (body.nombre ?? "").trim().replace(/\s+/g, " ");
+  if (nombre === "") return jsonResponse({ error: "nombre_vacio" }, 400);
+
+  const id = demoId(nombre);
+  if (id === "") return jsonResponse({ error: "nombre_sin_letras" }, 400);
+  if (id === "colchon" || id === "emergencia") return jsonResponse({ error: "sobre_reservado" }, 400);
+  if (demoSobres.some((s) => s.id === id || demoNormalizar(s.nombre) === demoNormalizar(nombre))) {
+    return jsonResponse({ error: "sobre_duplicado" }, 400);
+  }
+
+  const ahora = new Date().toISOString();
+  const sobre: SobreDemo = {
+    id,
+    nombre,
+    // Sin monto arranca en cero: la demo no inventa un saldo tampoco.
+    monto: body.monto ?? 0,
+    objetivo: body.objetivo != null && body.objetivo > 0 ? body.objetivo : null,
+    creado_en: ahora,
+    actualizado_en: ahora,
+  };
+  demoSobres.push(sobre);
+  return jsonResponse({ ok: true, sobre: { ...sobre, sistema: false } });
+}
+
+async function demoAjustarSobre(id: string, init?: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    nombre?: string;
+    monto?: number;
+    aporte?: number;
+    objetivo?: number | null;
+  };
+  if (body.monto !== undefined && body.aporte !== undefined) {
+    return jsonResponse({ error: "monto_y_aporte" }, 400);
+  }
+
+  if (id === "colchon") {
+    if (body.nombre !== undefined) return jsonResponse({ error: "sobre_del_sistema" }, 400);
+    const monto = body.monto ?? demoColchonReservado + (body.aporte ?? 0);
+    if (monto < 0) return jsonResponse({ error: "monto_negativo" }, 400);
+    demoColchonReservado = monto;
+    // El objetivo del colchón es el del PERFIL, acá también: los dos campos que
+    // la demo ya guardaba no se duplican por esta ruta.
+    if (body.objetivo !== undefined) demoPerfil.colchon_objetivo = body.objetivo ?? 0;
+    return jsonResponse({ ok: true, sobre: demoSobreColchon() });
+  }
+
+  const sobre = demoSobres.find((s) => s.id === id);
+  if (sobre === undefined) return jsonResponse({ error: "sobre_no_existe" }, 404);
+
+  const monto = body.monto ?? sobre.monto + (body.aporte ?? 0);
+  if (monto < 0) return jsonResponse({ error: "monto_negativo" }, 400);
+  if (body.nombre !== undefined) {
+    const nombre = body.nombre.trim().replace(/\s+/g, " ");
+    if (nombre === "") return jsonResponse({ error: "nombre_vacio" }, 400);
+    if (demoSobres.some((s) => s.id !== id && demoNormalizar(s.nombre) === demoNormalizar(nombre))) {
+      return jsonResponse({ error: "sobre_duplicado" }, 400);
+    }
+    sobre.nombre = nombre;
+  }
+  sobre.monto = monto;
+  if (body.objetivo !== undefined) sobre.objetivo = body.objetivo != null && body.objetivo > 0 ? body.objetivo : null;
+  sobre.actualizado_en = new Date().toISOString();
+  return jsonResponse({ ok: true, sobre: { ...sobre, sistema: false } });
 }

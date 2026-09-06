@@ -25,10 +25,25 @@ import { onScopeDispose, ref, type Ref } from "vue";
  * antes del hogar. Un cuarto enlace en la barra la volvería un paso obligado de
  * la navegación, que es exactamente lo que el plan decidió no hacer.
  */
-export type Pantalla = "resumen" | "preguntas" | "movimientos" | "alta" | "conectado" | "inicio";
+export type Pantalla =
+  | "resumen"
+  | "preguntas"
+  | "movimientos"
+  | "sobres"
+  | "alta"
+  | "conectado"
+  | "inicio";
 
-/** Las que dibuja la barra lateral. No es la lista de rutas válidas. */
-export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimientos"];
+/**
+ * Las que dibuja la barra lateral. No es la lista de rutas válidas.
+ *
+ * `sobres` es la cuarta y entra por la misma regla que dejó afuera a las otras
+ * cinco del sistema: **lo que tiene backend se dibuja**. Ahora lo tiene —tres
+ * rutas, `GET/POST /api/sobres` y `PATCH /api/sobres/:id`— y contesta la
+ * pregunta que ninguna de las otras tres podía contestar: cuánto hay en cada
+ * sobre.
+ */
+export const PANTALLAS: readonly Pantalla[] = ["resumen", "preguntas", "movimientos", "sobres"];
 
 /**
  * Las rutas que el hash entiende: las tres de la barra más `alta` y

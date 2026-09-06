@@ -431,3 +431,41 @@ export interface TransactionsQuery extends TransactionsFilter {
    * que la barra contó. Cuando viene, el resto de los filtros no aplica. */
   category?: Category;
 }
+
+/* ==========================================================================
+ * Sobres (`GET/POST /api/sobres`, `PATCH /api/sobres/:id`).
+ *
+ * Lo que hay que tener presente al leer estos tipos: **el sobre `colchon` es el
+ * colchón**, el mismo que `buffer_status` describe en el overview. No es un
+ * sobre nuevo que se le parece — es la misma plata, leída por otra ruta. Por eso
+ * es el único con `sistema: true`, y por eso es el único que baja el
+ * `safe_to_spend_hoy`.
+ * ========================================================================== */
+
+export interface Sobre {
+  id: string;
+  nombre: string;
+  monto: number;
+  /**
+   * `null` es **sin fijar**, y no cero. La misma regla que `colchon_fijado`
+   * (R25): un objetivo en cero se leía como uno cumplido y dibujaba la barra
+   * llena sin que nadie hubiera apartado un peso. Quien lo decide es el motor.
+   */
+  objetivo: number | null;
+  /** El colchón. Se ajusta como cualquier otro, pero no se renombra. */
+  sistema: boolean;
+  creado_en: string | null;
+  actualizado_en: string | null;
+}
+
+export interface SobresResponse {
+  sobres: Sobre[];
+  /** La suma, hecha por el motor en centavos enteros. */
+  total: number;
+  moneda: string;
+}
+
+export interface SobreWriteResponse {
+  ok: true;
+  sobre: Sobre;
+}
