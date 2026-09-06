@@ -169,10 +169,22 @@ describe("los cinco indicadores portados dan lo mismo que el motor", () => {
     });
   });
 
-  it("un extracto sin fecha de vencimiento: aTiempo es true porque no hay nada que perder", () => {
+  it("un extracto sin fecha de vencimiento: aTiempo y requeridoPorQuincena son null en los dos motores", () => {
     comparar({
       filas: [fila({ id: 1, type: "credito", amount: 10 })],
       extractos: [{ card_mask: "****3333", issue_date: "2026-06-01", balance: 500, min_payment: 50, due_date: null }],
+      config: { sueldo: { fuente: "", cadencia: "", montoEstimado: 100, diasPago: ["15-15"] } },
+    });
+  });
+
+  // La forma real del ledger de Mato: cinco extractos con saldo y NADA mas.
+  // `ingestStatementEmail` los persiste porque uno de los tres campos parseo, y
+  // los dos motores tienen que contestar los mismos cuatro `null` --- antes
+  // rellenaban con 0/true y encima elegian extractos distintos del mismo lote.
+  it("un extracto que solo trae saldo: minimo, saldoActualEstimado, aTiempo y requeridoPorQuincena son null", () => {
+    comparar({
+      filas: [fila({ id: 1, type: "credito", amount: 25, ts: "2026-06-05T14:00:00.000Z" })],
+      extractos: [{ card_mask: "****4444", issue_date: null, balance: 500, min_payment: null, due_date: null }],
       config: { sueldo: { fuente: "", cadencia: "", montoEstimado: 100, diasPago: ["15-15"] } },
     });
   });

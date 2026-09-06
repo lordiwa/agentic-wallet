@@ -61,7 +61,15 @@ const COLCHON_ALERT_DAYS_BEFORE_MONTH_END = 5;
  */
 const RECORDATORIO_SUELDO_WINDOW_DAYS = 3;
 
-export type BriefAlertType = "transferencias_cerca_tope" | "colchon_no_financiado" | "tarjeta_riesgo_atraso";
+export type BriefAlertType =
+  | "transferencias_cerca_tope"
+  | "colchon_no_financiado"
+  | "tarjeta_riesgo_atraso"
+  /** El extracto no trae fecha máxima de pago: no se puede decir si va a
+   * tiempo ni tarde. Es una alerta propia y no una variante de
+   * `tarjeta_riesgo_atraso` porque la acción que pide es otra —volver a leer
+   * el extracto, no conseguir plata. */
+  | "tarjeta_sin_fecha_de_pago";
 
 export interface BriefAlert {
   type: BriefAlertType;
@@ -209,10 +217,21 @@ export function buildDailyBrief(db: Database.Database, options: BuildDailyBriefO
     }
 
     const tarjeta = tarjetaStatus(db, now);
-    if (tarjeta && !tarjeta.aTiempo) {
+    if (tarjeta && tarjeta.aTiempo === false) {
       alertas.push({
         type: "tarjeta_riesgo_atraso",
-        message: `Riesgo de no pagar la tarjeta a tiempo${tarjeta.fechaMaxima ? ` (vence ${tarjeta.fechaMaxima})` : ""}.`,
+        message: `Riesgo de no pagar la tarjeta a tiempo (vence ${tarjeta.fechaMaxima}).`,
+      });
+    }
+    // `aTiempo === null` es un extracto sin fecha máxima. Antes valía `true` y
+    // esta rama no existía: una tarjeta con saldo y sin fecha pasaba por el
+    // brief sin decir nada, que es exactamente el caso en el que hace falta
+    // decir algo. Sólo se avisa si además hay saldo: un extracto sin fecha y
+    // sin deuda no le pide nada a nadie.
+    if (tarjeta && tarjeta.aTiempo === null && tarjeta.saldoCorte > 0) {
+      alertas.push({
+        type: "tarjeta_sin_fecha_de_pago",
+        message: `La tarjeta tiene saldo pendiente y el extracto no trae fecha máxima de pago: no se puede saber si llegás a tiempo.`,
       });
     }
 

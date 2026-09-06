@@ -72,13 +72,15 @@ export interface ColchonStatus {
   faltante: number;
 }
 
+/** Un `null` es "el extracto no traia ese campo" -- ver
+ * `server/src/strategy/card.ts`. Nunca se dibuja como 0. */
 export interface CardStatus {
   saldoCorte: number;
-  minimo: number;
+  minimo: number | null;
   fechaMaxima: string | null;
-  saldoActualEstimado: number;
-  aTiempo: boolean;
-  requeridoPorQuincena: number;
+  saldoActualEstimado: number | null;
+  aTiempo: boolean | null;
+  requeridoPorQuincena: number | null;
 }
 
 export interface CounterpartyTotal {

@@ -71,22 +71,31 @@ export function CardStatusCard({ overview }: { overview: OverviewResponse }) {
   }
 
   const dias = daysUntil(status.fechaMaxima);
+  // Un campo que el extracto no traia llega en `null` y se dibuja "sin leer",
+  // no en 0: un "Minimo: 0" se lee "no debo nada" (server/src/strategy/card.ts).
+  const oSinLeer = (valor: number | null) => (valor === null ? "sin leer" : valor);
+  const semaforo =
+    status.aTiempo === null
+      ? { texto: "Sin fecha de pago", color: "#8a6d00" }
+      : status.aTiempo
+        ? { texto: "A tiempo", color: "#2e7d32" }
+        : { texto: "En riesgo", color: "#c62828" };
 
   return (
     <div className="card" aria-label="Estado de tarjeta">
       <h3>Estado de tarjeta</h3>
-      <p data-testid="tarjeta-semaforo" style={{ color: status.aTiempo ? "#2e7d32" : "#c62828" }}>
-        {status.aTiempo ? "A tiempo" : "En riesgo"}
+      <p data-testid="tarjeta-semaforo" style={{ color: semaforo.color }}>
+        {semaforo.texto}
       </p>
       <dl>
         <dt>Saldo del corte</dt>
         <dd>{status.saldoCorte}</dd>
         <dt>Minimo</dt>
-        <dd>{status.minimo}</dd>
+        <dd>{oSinLeer(status.minimo)}</dd>
         <dt>Saldo actual estimado</dt>
-        <dd>{status.saldoActualEstimado}</dd>
+        <dd>{oSinLeer(status.saldoActualEstimado)}</dd>
         <dt>Requerido por quincena</dt>
-        <dd>{status.requeridoPorQuincena}</dd>
+        <dd>{oSinLeer(status.requeridoPorQuincena)}</dd>
         <dt>Fecha maxima de pago</dt>
         <dd>
           {status.fechaMaxima ?? "-"}

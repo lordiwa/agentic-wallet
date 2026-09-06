@@ -169,6 +169,27 @@ describe("buildDailyBrief -- alertas (spec §10.2)", () => {
 
     expect(brief.alertas.some((a) => a.type === "tarjeta_riesgo_atraso")).toBe(false);
   });
+
+  it("fires tarjeta_sin_fecha_de_pago -- not tarjeta_riesgo_atraso -- for a statement with a balance and no due date", () => {
+    // The shape of every statement in the real ledger: a balance parsed, the
+    // three date/minimum fields not. This used to produce aTiempo: true and
+    // therefore no alert at all -- the brief stayed silent about a card
+    // carrying a balance precisely because it knew nothing about it.
+    insertStatement(db, { gmail_msg_id: "stmt-1", balance: 150, issue_date: null, min_payment: null, due_date: null });
+
+    const brief = buildDailyBrief(db, { date: TARGET_DAY, now: NOW_MIDDAY });
+
+    expect(brief.alertas.some((a) => a.type === "tarjeta_sin_fecha_de_pago")).toBe(true);
+    expect(brief.alertas.some((a) => a.type === "tarjeta_riesgo_atraso")).toBe(false);
+  });
+
+  it("does not fire tarjeta_sin_fecha_de_pago when the undated statement carries no balance", () => {
+    insertStatement(db, { gmail_msg_id: "stmt-1", balance: 0, issue_date: null, min_payment: 12, due_date: null });
+
+    const brief = buildDailyBrief(db, { date: TARGET_DAY, now: NOW_MIDDAY });
+
+    expect(brief.alertas.some((a) => a.type === "tarjeta_sin_fecha_de_pago")).toBe(false);
+  });
 });
 
 describe("buildDailyBrief -- recordatorioTarjeta", () => {

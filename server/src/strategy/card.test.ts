@@ -108,7 +108,7 @@ describe("tarjetaStatus (spec §9.5)", () => {
     expect(status?.requeridoPorQuincena).toBe(150); // divide-by-zero guard: 0 paychecks before due date
   });
 
-  it("aTiempo is true and requeridoPorQuincena falls back to saldoCorte when fechaMaxima is missing", () => {
+  it("aTiempo and requeridoPorQuincena are null -- not true/saldoCorte -- when fechaMaxima is missing", () => {
     seedDatabase(db);
     insertStatement(db, { gmail_msg_id: "stmt-1", balance: 150, issue_date: "2026-07-01", due_date: null });
     setSueldo(["15-15"], 1000);
@@ -116,7 +116,43 @@ describe("tarjetaStatus (spec §9.5)", () => {
     const status = tarjetaStatus(db, new Date("2026-07-20T12:00:00.000Z"));
 
     expect(status?.fechaMaxima).toBeNull();
-    expect(status?.aTiempo).toBe(true); // nothing to be late for
-    expect(status?.requeridoPorQuincena).toBe(150);
+    // Used to be `true` ("nothing to be late for"). On a card carrying a
+    // balance that reads as reassurance, and it disarmed the brief's
+    // tarjeta_riesgo_atraso alert. Not knowing is its own answer.
+    expect(status?.aTiempo).toBeNull();
+    expect(status?.requeridoPorQuincena).toBeNull();
+    // The balance itself is still known: only the plan around it isn't.
+    expect(status?.saldoCorte).toBe(150);
+  });
+
+  it("minimo is null -- not 0 -- when the statement carried no min_payment", () => {
+    seedDatabase(db);
+    // `ingestStatementEmail` persists a statement as long as ONE of
+    // balance/min_payment/due_date parsed, so a row with a balance and no
+    // minimum is a shape the real ledger produces (Mato's five statements are
+    // exactly this). `minimo: 0` there says "you owe nothing this month".
+    insertStatement(db, { gmail_msg_id: "stmt-1", balance: 150, min_payment: null, due_date: "2026-09-20" });
+
+    expect(tarjetaStatus(db, new Date("2026-07-20T12:00:00.000Z"))?.minimo).toBeNull();
+  });
+
+  it("minimo is 0 when the statement really said 0", () => {
+    seedDatabase(db);
+    insertStatement(db, { gmail_msg_id: "stmt-1", balance: 150, min_payment: 0, due_date: "2026-09-20" });
+
+    expect(tarjetaStatus(db, new Date("2026-07-20T12:00:00.000Z"))?.minimo).toBe(0);
+  });
+
+  it("saldoActualEstimado is null -- not saldoCorte -- when there is no issue_date to measure new charges from", () => {
+    seedDatabase(db);
+    insertStatement(db, { gmail_msg_id: "stmt-1", balance: 150, issue_date: null, due_date: "2026-09-20" });
+    insertTransaction(db, tx({ amount: 45, ts: "2026-07-10T12:00:00Z" }));
+
+    const status = tarjetaStatus(db, new Date("2026-07-20T12:00:00.000Z"));
+
+    // Answering 150 would report "no new spending since the cutoff" when the
+    // truth is that there is no cutoff to compare against.
+    expect(status?.saldoActualEstimado).toBeNull();
+    expect(status?.saldoCorte).toBe(150);
   });
 });

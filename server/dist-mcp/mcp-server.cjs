@@ -49939,8 +49939,8 @@ function tarjetaStatus(db, now = /* @__PURE__ */ new Date()) {
   if (!statement) return null;
   const config2 = getStrategyConfig(db);
   const saldoCorteCents = toCents(statement.balance ?? 0);
-  const minimoCents = toCents(statement.min_payment ?? 0);
-  const saldoActualEstimadoCents = saldoCorteCents + (statement.issue_date ? newChargesCents(db, statement.issue_date) : 0);
+  const minimoCents = statement.min_payment === null ? null : toCents(statement.min_payment);
+  const saldoActualEstimadoCents = statement.issue_date === null ? null : saldoCorteCents + newChargesCents(db, statement.issue_date);
   const fechaMaxima = statement.due_date;
   let paydaysBeforeDue = 0;
   if (fechaMaxima) {
@@ -49949,15 +49949,15 @@ function tarjetaStatus(db, now = /* @__PURE__ */ new Date()) {
   }
   const montoEstimadoCents = toCents(config2.sueldo.montoEstimado);
   const projectedIncomeCents = paydaysBeforeDue * montoEstimadoCents;
-  const aTiempo = fechaMaxima === null ? true : projectedIncomeCents >= saldoCorteCents;
-  const requeridoPorQuincenaCents = paydaysBeforeDue > 0 ? Math.round(saldoCorteCents / paydaysBeforeDue) : saldoCorteCents;
+  const aTiempo = fechaMaxima === null ? null : projectedIncomeCents >= saldoCorteCents;
+  const requeridoPorQuincenaCents = fechaMaxima === null ? null : paydaysBeforeDue > 0 ? Math.round(saldoCorteCents / paydaysBeforeDue) : saldoCorteCents;
   return {
     saldoCorte: fromCents(saldoCorteCents),
-    minimo: fromCents(minimoCents),
+    minimo: minimoCents === null ? null : fromCents(minimoCents),
     fechaMaxima,
-    saldoActualEstimado: fromCents(saldoActualEstimadoCents),
+    saldoActualEstimado: saldoActualEstimadoCents === null ? null : fromCents(saldoActualEstimadoCents),
     aTiempo,
-    requeridoPorQuincena: fromCents(requeridoPorQuincenaCents)
+    requeridoPorQuincena: requeridoPorQuincenaCents === null ? null : fromCents(requeridoPorQuincenaCents)
   };
 }
 

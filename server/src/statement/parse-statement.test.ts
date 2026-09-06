@@ -32,6 +32,52 @@ describe("parseStatementBody: spec 5.4/5.5 fixture", () => {
   });
 });
 
+describe("parseStatementBody: a mojibaked body loses exactly the accented labels", () => {
+  /**
+   * Why this test exists: every statement in the real ledger came out as
+   * `{card_mask, balance}` with `issue_date`, `min_payment` and `due_date`
+   * all null -- which reads like "the parser can't handle this bank" even
+   * though the fixture above is that bank's format and passes.
+   *
+   * It isn't the parser. Three of the five labels carry an accent ("Fecha de
+   * emisión", "Monto mínimo a pagar", "Fecha máxima de pago") and two don't
+   * ("TARJETA No.", "Valor total a pagar"). A body that arrived double-encoded
+   * (the bug `ingest/mojibake.ts` repairs at the decode layer) turns "ó" into
+   * "Ã³", so the three accented label regexes miss and the two clean ones hit
+   * -- producing that exact shape and nothing else.
+   *
+   * `stripDiacritics` does NOT save it: it decomposes real combining marks, and
+   * mojibake isn't one. The repair belongs where it already lives, in the Gmail
+   * client's decode. This locks the signature so the null pattern is read as
+   * "this body was mojibaked, re-sync it" instead of "the parser is broken".
+   */
+  const SANO =
+    "TARJETA No.: 1234XXXXXXXX5678 Fecha de emisión: 2026 / 03 / 15 " +
+    "Monto mínimo a pagar: 100.00 Fecha máxima de pago: 2026 / 04 / 03 Valor total a pagar: 200.00";
+  /** El doble-encode UTF-8 -> latin-1 tal cual llega del mailer. */
+  const MOJIBAKE = Buffer.from(SANO, "utf8").toString("latin1");
+
+  it("parses everything when the body decoded cleanly", () => {
+    expect(parseStatementBody(SANO)).toEqual({
+      card_mask: "1234XXXXXXXX5678",
+      issue_date: "2026-03-15",
+      min_payment: 100,
+      due_date: "2026-04-03",
+      balance: 200,
+    });
+  });
+
+  it("drops the three accented fields and keeps the two unaccented ones", () => {
+    expect(parseStatementBody(MOJIBAKE)).toEqual({
+      card_mask: "1234XXXXXXXX5678",
+      issue_date: null,
+      min_payment: null,
+      due_date: null,
+      balance: 200,
+    });
+  });
+});
+
 describe("parseStatementBody: date normalization (AC4)", () => {
   it("normalizes 'YYYY / MM / DD' (with surrounding whitespace) to ISO 8601", () => {
     const body = "Fecha máxima de pago: 2026 / 08 / 03";

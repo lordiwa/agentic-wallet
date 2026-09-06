@@ -114,13 +114,24 @@ export function esencialesPromedioDiarioCents(contables: readonly LedgerRow[]): 
   return Math.round(totalCents / spanDays);
 }
 
+/**
+ * El plan de pago de la tarjeta. Cada `null` marca un campo del extracto que el
+ * parser no pudo leer, o sea una pregunta que el plan no puede contestar
+ * (CLAUDE.md regla 4). Ver el doc de `server/src/strategy/card.ts`, que es el
+ * original de esta copia.
+ */
 export interface TarjetaStatus {
   saldoCorte: number;
-  minimo: number;
+  /** `null` = el extracto no traía "Monto mínimo a pagar". */
+  minimo: number | null;
   fechaMaxima: string | null;
-  saldoActualEstimado: number;
-  aTiempo: boolean;
-  requeridoPorQuincena: number;
+  /** `null` = sin fecha de emisión no hay corte contra el cual medir "consumos
+   * posteriores", y contestar `saldoCorte` reportaría cero consumos nuevos. */
+  saldoActualEstimado: number | null;
+  /** `null` = no hay fecha máxima contra la cual estar (o no) a tiempo. */
+  aTiempo: boolean | null;
+  /** `null` = sin fecha máxima no hay quincenas sobre las cuales repartir. */
+  requeridoPorQuincena: number | null;
 }
 
 /**
@@ -141,14 +152,16 @@ export function tarjetaStatus(
   if (statement === null) return null;
 
   const saldoCorteCents = toCents(statement.balance ?? 0);
-  const minimoCents = toCents(statement.minPayment ?? 0);
+  const minimoCents = statement.minPayment === null ? null : toCents(statement.minPayment);
 
-  let cargosNuevosCents = 0;
+  let saldoActualEstimadoCents: number | null = null;
   if (statement.issueDate) {
+    let cargosNuevosCents = 0;
     for (const row of contables) {
       if (row.type !== "credito" || row.direction !== "out") continue;
       if (row.ts > statement.issueDate) cargosNuevosCents += row.amountCents;
     }
+    saldoActualEstimadoCents = saldoCorteCents + cargosNuevosCents;
   }
 
   const fechaMaxima = statement.dueDate;
@@ -160,16 +173,16 @@ export function tarjetaStatus(
 
   const montoEstimadoCents = toCents(config.sueldo.montoEstimado);
   const projectedIncomeCents = paydaysBeforeDue * montoEstimadoCents;
+  const requeridoPorQuincenaCents =
+    fechaMaxima === null ? null : paydaysBeforeDue > 0 ? Math.round(saldoCorteCents / paydaysBeforeDue) : saldoCorteCents;
 
   return {
     saldoCorte: fromCents(saldoCorteCents),
-    minimo: fromCents(minimoCents),
+    minimo: minimoCents === null ? null : fromCents(minimoCents),
     fechaMaxima,
-    saldoActualEstimado: fromCents(saldoCorteCents + cargosNuevosCents),
-    aTiempo: fechaMaxima === null ? true : projectedIncomeCents >= saldoCorteCents,
-    requeridoPorQuincena: fromCents(
-      paydaysBeforeDue > 0 ? Math.round(saldoCorteCents / paydaysBeforeDue) : saldoCorteCents
-    ),
+    saldoActualEstimado: saldoActualEstimadoCents === null ? null : fromCents(saldoActualEstimadoCents),
+    aTiempo: fechaMaxima === null ? null : projectedIncomeCents >= saldoCorteCents,
+    requeridoPorQuincena: requeridoPorQuincenaCents === null ? null : fromCents(requeridoPorQuincenaCents),
   };
 }
 

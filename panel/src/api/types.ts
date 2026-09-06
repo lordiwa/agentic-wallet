@@ -95,13 +95,18 @@ export interface ColchonStatus {
   fijado?: boolean;
 }
 
+/**
+ * Los `null` vienen del motor y significan "el extracto no traía ese campo",
+ * no "cero" ni "sí" — ver `server/src/strategy/card.ts`. Cualquier vista que
+ * los dibuje tiene que usar `ROTULO_SIN_LEER`, no un cero.
+ */
 export interface CardStatus {
   saldoCorte: number;
-  minimo: number;
+  minimo: number | null;
   fechaMaxima: string | null;
-  saldoActualEstimado: number;
-  aTiempo: boolean;
-  requeridoPorQuincena: number;
+  saldoActualEstimado: number | null;
+  aTiempo: boolean | null;
+  requeridoPorQuincena: number | null;
 }
 
 export interface CounterpartyTotal {

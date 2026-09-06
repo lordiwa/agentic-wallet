@@ -66,6 +66,28 @@ describe("StrategyCards", () => {
     expect(semaforo).toHaveStyle({ color: "#c62828" });
   });
 
+  it("does not paint 'A tiempo' when aTiempo is null, and shows unread fields as 'sin leer'", () => {
+    // The shape of a statement whose accented labels never parsed: a balance
+    // and nothing else. Painting it green ("A tiempo") or zero ("Minimo: 0")
+    // is the exact reassurance the nulls exist to prevent.
+    const overview: OverviewResponse = {
+      ...baseOverview,
+      card_status: {
+        ...baseOverview.card_status!,
+        minimo: null,
+        fechaMaxima: null,
+        saldoActualEstimado: null,
+        aTiempo: null,
+        requeridoPorQuincena: null,
+      },
+    };
+
+    render(<CardStatusCard overview={overview} />);
+
+    expect(screen.getByTestId("tarjeta-semaforo")).toHaveTextContent("Sin fecha de pago");
+    expect(screen.getAllByText("sin leer")).toHaveLength(3);
+  });
+
   it("shows a warning when the monthly transfer cap is exceeded (sobrepasado)", () => {
     const overview: OverviewResponse = {
       ...baseOverview,
