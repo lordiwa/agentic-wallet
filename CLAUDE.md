@@ -26,6 +26,7 @@ Gmail, arma un ledger en SQLite local, y responde preguntas sobre él.
 |---|---|
 | Soportar otro banco | `server/src/parser/` — ver `docs/multibanco.md` |
 | Cómo se leen y persisten los correos | `server/src/ingest/pipeline.ts` |
+| Un movimiento que no vino de un correo, sino dictado | `functions/scripts/registrar-movimiento.ts` — no hay ruta HTTP que cree filas |
 | Reversos, duplicados, transferencias internas | `server/src/rules/reconcile.ts` |
 | Categorías de gasto | `server/src/category/` |
 | La cola de clasificación, su escritor y el silenciador | `server/src/classify/` — ver `docs/plan-final-mvp.md` §N1 |
