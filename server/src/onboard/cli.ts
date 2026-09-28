@@ -138,6 +138,7 @@ export function parseSetPatch(json: string): Partial<StrategyConfig> {
     "zonaHoraria",
     "colchonObjetivo",
     "topeTransferenciasMensual",
+    "hourlyRate",
     "sueldo",
     "titular",
     "balanceSnapshot",

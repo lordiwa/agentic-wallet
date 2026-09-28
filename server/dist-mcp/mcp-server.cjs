@@ -49719,6 +49719,13 @@ var DEFAULT_STRATEGY_CONFIG = {
   zonaHoraria: "UTC-05:00",
   colchonObjetivo: 0,
   topeTransferenciasMensual: 0,
+  /**
+   * Valor de una hora de trabajo del usuario. Cero significa "no configurado":
+   * ninguna tarifa es plausible sin saber a quién pertenece, y una tarifa
+   * inventada convertiría cualquier gasto en un número de horas falso. El
+   * usuario la carga con `npm run onboard -- --set '{"hourlyRate": ...}'`.
+   */
+  hourlyRate: 0,
   sueldo: {
     fuente: "",
     cadencia: "quincenal",
@@ -49755,6 +49762,10 @@ var strategyConfigSchema = external_exports.object({
   zonaHoraria: external_exports.string(),
   colchonObjetivo: financeNumber,
   topeTransferenciasMensual: financeNumber,
+  // Cuánto vale una hora de trabajo del usuario, en `moneda`. Es un dato que
+  // el ledger no puede inferir (los depósitos de sueldo no dicen cuántas
+  // horas cubren), así que sale de la configuración o no existe.
+  hourlyRate: financeNumber,
   sueldo: external_exports.object({
     fuente: external_exports.string(),
     cadencia: external_exports.string(),
@@ -49812,6 +49823,7 @@ function getStrategyConfig(db) {
       zonaHoraria: read("zonaHoraria"),
       colchonObjetivo: read("colchonObjetivo"),
       topeTransferenciasMensual: read("topeTransferenciasMensual"),
+      hourlyRate: read("hourlyRate"),
       sueldo: read("sueldo"),
       titular: read("titular"),
       balanceSnapshot: read("balanceSnapshot")
@@ -51842,6 +51854,7 @@ var SETTABLE_CONFIG_KEYS = [
   "zonaHoraria",
   "colchonObjetivo",
   "topeTransferenciasMensual",
+  "hourlyRate",
   "sueldo",
   "titular",
   "balanceSnapshot"
@@ -52068,6 +52081,7 @@ function createWalletMcpServer(deps) {
         zonaHoraria: external_exports.string().optional(),
         colchonObjetivo: external_exports.number().optional().describe("Meta del fondo de emergencia"),
         topeTransferenciasMensual: external_exports.number().optional(),
+        hourlyRate: external_exports.number().optional().describe("Cuanto vale una hora de trabajo del usuario, en la misma moneda del perfil"),
         titular: external_exports.string().optional().describe("El titular como lo escribe el banco"),
         // `sueldo` y `balanceSnapshot` van completos o no van: el motor los
         // valida como objeto entero, asi que mandar la mitad no "actualiza un

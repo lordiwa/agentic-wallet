@@ -12,6 +12,10 @@ const strategyConfigSchema = z.object({
   zonaHoraria: z.string(),
   colchonObjetivo: financeNumber,
   topeTransferenciasMensual: financeNumber,
+  // Cuánto vale una hora de trabajo del usuario, en `moneda`. Es un dato que
+  // el ledger no puede inferir (los depósitos de sueldo no dicen cuántas
+  // horas cubren), así que sale de la configuración o no existe.
+  hourlyRate: financeNumber,
   sueldo: z.object({
     fuente: z.string(),
     cadencia: z.string(),
@@ -134,6 +138,7 @@ export function getStrategyConfig(db: Database.Database): StrategyConfig {
       zonaHoraria: read("zonaHoraria"),
       colchonObjetivo: read("colchonObjetivo"),
       topeTransferenciasMensual: read("topeTransferenciasMensual"),
+      hourlyRate: read("hourlyRate"),
       sueldo: read("sueldo"),
       titular: read("titular"),
       balanceSnapshot: read("balanceSnapshot"),

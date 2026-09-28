@@ -109,6 +109,7 @@ const SETTABLE_CONFIG_KEYS = [
   "zonaHoraria",
   "colchonObjetivo",
   "topeTransferenciasMensual",
+  "hourlyRate",
   "sueldo",
   "titular",
   "balanceSnapshot",
@@ -426,6 +427,10 @@ export function createWalletMcpServer(deps: WalletMcpDeps): McpServer {
         zonaHoraria: z.string().optional(),
         colchonObjetivo: z.number().optional().describe("Meta del fondo de emergencia"),
         topeTransferenciasMensual: z.number().optional(),
+        hourlyRate: z
+          .number()
+          .optional()
+          .describe("Cuanto vale una hora de trabajo del usuario, en la misma moneda del perfil"),
         titular: z.string().optional().describe("El titular como lo escribe el banco"),
         // `sueldo` y `balanceSnapshot` van completos o no van: el motor los
         // valida como objeto entero, asi que mandar la mitad no "actualiza un

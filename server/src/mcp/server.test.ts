@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openDb } from "../db/open.js";
 import { insertTransaction } from "../db/repository.js";
-import { setStrategyConfig } from "../db/strategy-config.js";
+import { getStrategyConfig, setStrategyConfig } from "../db/strategy-config.js";
 import { createWalletMcpServer, type WalletMcpDeps } from "./server.js";
 
 /** Cada tool devuelve `{ content: [{ type: 'text', text: '<json>' }] }`. */
@@ -396,6 +396,12 @@ describe("MCP server del wallet", () => {
 
     const colchon = parse(await client.callTool({ name: "get_colchon_status", arguments: {} }));
     expect(colchon.objetivo).toBe(1500);
+  });
+
+  it("set_profile guarda hourlyRate", async () => {
+    const escrito = parse(await client.callTool({ name: "set_profile", arguments: { hourlyRate: 26.56 } }));
+    expect(escrito).toEqual({ ok: true, written: ["hourlyRate"] });
+    expect(getStrategyConfig(db).hourlyRate).toBe(26.56);
   });
 
   it("set_profile falla en vez de escribir nada cuando no recibe campos", async () => {

@@ -389,7 +389,16 @@ npm run onboard -- --set '{
 | `colchonObjetivo` | Cuánto querés tener guardado como red de seguridad |
 | `topeTransferenciasMensual` | Límite mensual de transferencias a personas |
 | `moneda` | Código de moneda, ej. `USD` |
+| `hourlyRate` | Cuánto vale una hora de tu trabajo, en `moneda` |
 | `balanceSnapshot` | `{ amount, at }` — saldo real en una fecha, punto de anclaje |
+
+**`hourlyRate`** el ledger no lo puede deducir: un depósito de sueldo no dice
+cuántas horas cubre. Si el usuario lo sabe, cargalo; si no, queda en cero, que
+es "no configurado":
+
+```bash
+npm run onboard -- --set '{"hourlyRate": 26.56}'
+```
 
 **`balanceSnapshot`** merece una nota. El saldo se calcula sumando el ledger
 desde ese punto. Si el usuario sabe cuánto tenía en el banco en una fecha

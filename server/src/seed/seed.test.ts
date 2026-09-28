@@ -77,6 +77,7 @@ describe("seedDatabase", () => {
 
     expect(byKey.colchonObjetivo).toBe(0);
     expect(byKey.topeTransferenciasMensual).toBe(0);
+    expect(byKey.hourlyRate).toBe(0);
     expect(byKey.titular).toBe("");
     expect(byKey.sueldo).toEqual({ fuente: "", cadencia: "quincenal", montoEstimado: 0, diasPago: [] });
     expect(byKey.balanceSnapshot).toEqual({ amount: 0, at: "1970-01-01" });

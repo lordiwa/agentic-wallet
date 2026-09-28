@@ -41,6 +41,13 @@ export const DEFAULT_STRATEGY_CONFIG = {
   zonaHoraria: "UTC-05:00",
   colchonObjetivo: 0,
   topeTransferenciasMensual: 0,
+  /**
+   * Valor de una hora de trabajo del usuario. Cero significa "no configurado":
+   * ninguna tarifa es plausible sin saber a quién pertenece, y una tarifa
+   * inventada convertiría cualquier gasto en un número de horas falso. El
+   * usuario la carga con `npm run onboard -- --set '{"hourlyRate": ...}'`.
+   */
+  hourlyRate: 0,
   sueldo: {
     fuente: "",
     cadencia: "quincenal",

@@ -26,6 +26,7 @@ describe("getStrategyConfig (TASK-021 AC4)", () => {
     expect(config.zonaHoraria).toBe("UTC-05:00");
     expect(config.colchonObjetivo).toBe(1200);
     expect(config.topeTransferenciasMensual).toBe(1200);
+    expect(config.hourlyRate).toBe(15);
     expect(config.sueldo).toEqual({
       fuente: "Acme Corp S.A.",
       cadencia: "quincenal",
@@ -61,6 +62,7 @@ describe("getStrategyConfig (TASK-021 AC4)", () => {
       zonaHoraria: DEFAULT_STRATEGY_CONFIG.zonaHoraria,
       colchonObjetivo: DEFAULT_STRATEGY_CONFIG.colchonObjetivo,
       topeTransferenciasMensual: DEFAULT_STRATEGY_CONFIG.topeTransferenciasMensual,
+      hourlyRate: DEFAULT_STRATEGY_CONFIG.hourlyRate,
       sueldo: DEFAULT_STRATEGY_CONFIG.sueldo,
       titular: DEFAULT_STRATEGY_CONFIG.titular,
       balanceSnapshot: DEFAULT_STRATEGY_CONFIG.balanceSnapshot,
@@ -116,6 +118,14 @@ describe("getStrategyConfig (TASK-021 AC4)", () => {
 
       const config = getStrategyConfig(db);
       expect(config.topeTransferenciasMensual).toBe(DEFAULT_STRATEGY_CONFIG.topeTransferenciasMensual);
+    });
+
+    it("defaults hourlyRate when it's a string instead of a number", () => {
+      seedFixture(db);
+      setRaw("hourlyRate", "26.56");
+
+      const config = getStrategyConfig(db);
+      expect(config.hourlyRate).toBe(DEFAULT_STRATEGY_CONFIG.hourlyRate);
     });
 
     it("defaults the whole sueldo object when montoEstimado is a string instead of a number", () => {

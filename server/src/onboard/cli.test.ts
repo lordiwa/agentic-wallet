@@ -173,6 +173,12 @@ describe("--set", () => {
     expect(config.colchonObjetivo).toBe(900);
   });
 
+  it("writes hourlyRate, el dato que el ledger no puede inferir solo", async () => {
+    expect(await runOnboardCli(["--set", JSON.stringify({ hourlyRate: 26.56 })], deps())).toBe(0);
+
+    expect(getStrategyConfig(db).hourlyRate).toBe(26.56);
+  });
+
   it("rejects an unknown field instead of silently ignoring a typo", async () => {
     expect(await runOnboardCli(["--set", JSON.stringify({ colchonObjetibo: 100 })], deps())).toBe(1);
     expect(printedJson().error).toContain("colchonObjetibo");

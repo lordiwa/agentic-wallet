@@ -25,6 +25,7 @@ export const FIXTURE_STRATEGY_CONFIG = {
   zonaHoraria: "UTC-05:00",
   colchonObjetivo: 1200,
   topeTransferenciasMensual: 1200,
+  hourlyRate: 15,
   sueldo: {
     fuente: "Acme Corp S.A.",
     cadencia: "quincenal",
